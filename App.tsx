@@ -468,13 +468,24 @@ const App: React.FC = () => {
                 errorCode: vision.errorCode,
                 message: vision.message,
               });
+              
+              let errorContent = '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？';
+              
+              if (vision.errorCode === 'MISSING_KEY') {
+                  errorContent = '【系統提示】伺服器未配置 STEPFUN_VISION_API_KEY，無法分析圖片。請通知管理員檢查 Vercel 環境變數。';
+              } else if (vision.errorCode === 'INVALID_PAYLOAD') {
+                  errorContent = '圖片格式有問題，請試下重新上載 JPG 或 PNG。';
+              } else if (vision.message?.includes('401') || vision.message?.includes('429')) {
+                   errorContent = '【系統提示】AI 視覺服務目前繁忙或配額已滿 (401/429)，請稍後再試。';
+              }
+
               setMessages(prev => {
                 const updated = [...prev];
                 const index = updated.findIndex((m) => m.id === aiMessageId);
                 if (index !== -1) {
                   updated[index] = {
                     ...updated[index],
-                    content: vision.message || '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？',
+                    content: errorContent,
                   };
                 }
                 return updated;
@@ -908,9 +919,19 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
               } else {
                 throw new Error(generateResult.message || '生成失敗');
               }
-            } catch (error) {
+            } catch (error: any) {
               console.error('[App] Generate image error:', error);
               attempt += 1;
+              
+              // 錯誤處理邏輯
+              let errorMessage = '我出圖嗰邊好似有少少延遲，我幫你再試一次出圖，請再等一陣～';
+              if (error.message?.includes('MISSING_KEY')) {
+                  errorMessage = '【系統提示】伺服器未配置 STEPFUN_IMAGE_API_KEY，無法生成圖片。請通知管理員。';
+                  attempt = 2; // 不重試
+              } else if (error.message?.includes('401') || error.message?.includes('429')) {
+                  errorMessage = '【系統提示】AI 出圖服務繁忙或配額不足 (401/429)，無法生成。';
+                  attempt = 2; // 不重試
+              }
 
               if (attempt < 2) {
                 // 第一次失敗：禮貌提示會再試一次
@@ -920,8 +941,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
                   if (index !== -1) {
                     updated[index] = {
                       ...updated[index],
-                      content:
-                        '我出圖嗰邊好似有少少延遲，我幫你再試一次出圖，請再等一陣～',
+                      content: errorMessage,
                     };
                   }
                   return updated;
@@ -929,14 +949,19 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
               } else {
                 // 第二次仍失敗：停止重試，提示用戶可重新上傳
                 console.error('[App] Generate image failed after 2 attempts:', error);
+                
+                // 如果是 Key 缺失或配額問題，顯示具體錯誤，否則顯示通用錯誤
+                const finalErrorMsg = (error.message?.includes('MISSING_KEY') || error.message?.includes('401') || error.message?.includes('429')) 
+                    ? errorMessage 
+                    : '今次出圖好似有啲問題，你可以再試一次上傳相片（JPG/PNG），或者點右上角 WhatsApp，發張相同講下你嘅要求，我哋設計師可以一對一幫你再睇清楚。';
+
                 setMessages((prev) => {
                   const updated = [...prev];
                   const index = updated.findIndex((m) => m.id === aiMessageId);
                   if (index !== -1) {
                     updated[index] = {
                       ...updated[index],
-                      content:
-                        '今次出圖好似有啲問題，你可以再試一次上傳相片（JPG/PNG），或者點右上角 WhatsApp，發張相同講下你嘅要求，我哋設計師可以一對一幫你再睇清楚。',
+                      content: finalErrorMsg,
                     };
                   }
                   return updated;

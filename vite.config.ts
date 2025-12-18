@@ -6,6 +6,7 @@ import visionHandler from './api/vision'
 import generateHandler from './api/generate'
 import kbStatusHandler from './api/kbStatus'
 import visionHealthHandler from './api/vision-health'
+import envCheckHandler from './api/env-check'
 import { IncomingMessage, ServerResponse } from 'http'
 
 // Adapter to bridge Node.js (req, res) to Web API (Request, Response)
@@ -85,6 +86,7 @@ const apiMockPlugin = (): Plugin => ({
       if (pathname === '/api/vision') return adapter(visionHandler, req, res)
       if (pathname === '/api/generate') return adapter(generateHandler, req, res)
       if (pathname === '/api/kb-status') return adapter(kbStatusHandler, req, res)
+      if (pathname === '/api/env-check') return adapter(envCheckHandler, req, res)
 
       // 404 for unknown /api routes
       res.statusCode = 404
