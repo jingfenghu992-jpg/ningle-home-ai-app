@@ -1,9 +1,9 @@
-/// <reference types="node" />
-import { IncomingMessage, ServerResponse } from 'http'
+export const config = {
+  runtime: 'edge',
+};
 
-export const healthHandler = (req: IncomingMessage, res: ServerResponse) => {
-  res.setHeader('Content-Type', 'application/json')
-  res.end(JSON.stringify({ status: 'ok', timestamp: Date.now() }))
+export default function handler(req: Request) {
+  return new Response(JSON.stringify({ status: 'ok', timestamp: Date.now() }), {
+    headers: { 'Content-Type': 'application/json' }
+  });
 }
-
-export default healthHandler;

@@ -1,51 +1,50 @@
-/// <reference types="node" />
-import { IncomingMessage, ServerResponse } from 'http'
+export const config = {
+  runtime: 'edge',
+};
 
-const readBody = (req: IncomingMessage): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk })
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(body))
-      } catch (e) {
-        resolve({})
-      }
-    })
-    req.on('error', reject)
-  })
-}
-
-export const generateHandler = async (req: IncomingMessage, res: ServerResponse) => {
+export default async function handler(req: Request) {
   if (req.method !== 'POST') {
-    res.statusCode = 405
-    res.end('Method Not Allowed')
-    return
+    return new Response('Method Not Allowed', { status: 405 });
   }
 
-  const body = await readBody(req)
-  const { prompt } = body
-
-  if (!prompt) {
-    res.statusCode = 400
-    res.end(JSON.stringify({ ok: false, message: 'Missing prompt' }))
-    return
+  // Environment variable check
+  const apiKey = process.env.STEPFUN_IMAGE_API_KEY;
+  if (!apiKey) {
+    return new Response(JSON.stringify({
+      ok: false,
+      message: 'Missing STEPFUN_IMAGE_API_KEY environment variable'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 
-  // Mock Generation
-  // In a real app, this would call OpenAI/Midjourney
-  // Here we return a placeholder base64 image (1x1 pixel)
-  const b64_json = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-  
-  res.setHeader('Content-Type', 'application/json')
-  
-  // Simulate delay
-  await new Promise(r => setTimeout(r, 2000))
+  try {
+    const body = await req.json();
+    const { prompt } = body;
 
-  res.end(JSON.stringify({
-    ok: true,
-    b64_json: b64_json
-  }))
+    if (!prompt) {
+      return new Response(JSON.stringify({ ok: false, message: 'Missing prompt' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Mock Generation
+    // In a real app, this would call OpenAI/Midjourney
+    // Here we return a placeholder base64 image (1x1 pixel)
+    const b64_json = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    
+    // Simulate delay
+    await new Promise(r => setTimeout(r, 2000));
+
+    return new Response(JSON.stringify({
+      ok: true,
+      b64_json: b64_json
+    }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ ok: false, message: 'Invalid JSON body' }), { status: 400 });
+  }
 }
-
-export default generateHandler;

@@ -1,20 +1,6 @@
-/// <reference types="node" />
-import { IncomingMessage, ServerResponse } from 'http'
-
-const readBody = (req: IncomingMessage): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk })
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(body))
-      } catch (e) {
-        resolve({})
-      }
-    })
-    req.on('error', reject)
-  })
-}
+export const config = {
+  runtime: 'edge',
+};
 
 // D) 拆分 chat / design 职责
 // Helper to construct prompt for design mode
@@ -31,50 +17,70 @@ Answer the user's questions about interior design, renovation, and materials.
 Be professional, friendly, and concise.`
 }
 
-export const chatHandler = async (req: IncomingMessage, res: ServerResponse) => {
+export default async function handler(req: Request) {
   if (req.method !== 'POST') {
-    res.statusCode = 405
-    res.end('Method Not Allowed')
-    return
+    return new Response('Method Not Allowed', { status: 405 });
   }
 
-  const body = await readBody(req)
-  const { messages, mode } = body
+  // Environment variable check
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    return new Response(JSON.stringify({
+      error: 'Missing DEEPSEEK_API_KEY environment variable'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
 
-  // Determine system prompt based on mode
-  const systemPrompt = mode === 'design' ? buildDesignSystemPrompt() : buildConsultantSystemPrompt()
-  
-  // Mock Streaming Response
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
+  try {
+    const body = await req.json();
+    const { messages, mode } = body;
 
-  const lastMsg = messages[messages.length - 1]?.content || ''
-  
-  let responseText = ''
-  if (mode === 'design') {
-      // Mock design response with FINAL_IMAGE_PROMPT
-      responseText = `Based on your request, I have analyzed the structure.
+    // Determine system prompt based on mode
+    const systemPrompt = mode === 'design' ? buildDesignSystemPrompt() : buildConsultantSystemPrompt();
+    
+    const lastMsg = messages[messages.length - 1]?.content || '';
+    
+    let responseText = '';
+    if (mode === 'design') {
+        // Mock design response with FINAL_IMAGE_PROMPT
+        responseText = `Based on your request, I have analyzed the structure.
 
 FINAL_IMAGE_PROMPT:
 [PROMPT: realistic interior design, ${lastMsg.substring(0, 50)}..., same camera angle, same window positions, do not change structure, no people, no text]
 <<<GENERATE_IMAGE>>>
 
 PROMPT_SELF_CHECK:
-The prompt includes key constraints: same camera angle, same window positions, do not change structure.`
-  } else {
-      responseText = `(Consultant Mode) I understand you are interested in ${lastMsg.substring(0, 20)}. Here is some advice...`
-  }
+The prompt includes key constraints: same camera angle, same window positions, do not change structure.`;
+    } else {
+        responseText = `(Consultant Mode) I understand you are interested in ${lastMsg.substring(0, 20)}. Here is some advice...`;
+    }
 
-  // Stream output
-  const chunks = responseText.split(/(?=[ ,.])/) // Split by words/punctuation for effect
-  
-  for (const chunk of chunks) {
-      res.write(chunk)
-      await new Promise(r => setTimeout(r, 50)) // 50ms delay per chunk
+    // Stream output
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const chunks = responseText.split(/(?=[ ,.])/); // Split by words/punctuation for effect
+        for (const chunk of chunks) {
+            // Explicitly typing chunk as string is redundant here but following "mark chunk type explicitly" instruction if it were a callback
+            const textChunk: string = chunk; 
+            controller.enqueue(encoder.encode(textChunk));
+            await new Promise(r => setTimeout(r, 50)); // 50ms delay per chunk
+        }
+        controller.close();
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Invalid request body' }), { status: 400 });
   }
-  
-  res.end()
 }
-
-export default chatHandler;
