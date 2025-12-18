@@ -28,12 +28,12 @@ const InputBar: React.FC<InputBarProps> = ({ onSendMessage, onSendImage }) => {
   };
 
   return (
-    <div className="bg-[var(--wa-header)] p-2 px-4 flex items-center gap-2 z-20">
+    <div className="bg-[var(--wa-header)] p-3 px-4 flex items-center gap-3 z-20">
       <button
         onClick={() => fileInputRef.current?.click()}
         className="p-2 text-[var(--wa-text-secondary)] hover:text-[var(--wa-text-main)] transition-colors"
       >
-        <Image size={24} />
+        <Image size={26} />
       </button>
       <input
         type="file"
@@ -48,14 +48,14 @@ const InputBar: React.FC<InputBarProps> = ({ onSendMessage, onSendImage }) => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="輸入訊息..."
-          className="flex-1 bg-[#2a3942] text-[var(--wa-text-main)] rounded-lg px-4 py-2 focus:outline-none focus:ring-1 focus:ring-[var(--wa-accent)]"
+          className="flex-1 bg-[#2a3942] text-[var(--wa-text-main)] rounded-xl px-4 py-3 text-[16px] placeholder:text-[15px] placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--wa-accent)]"
         />
         <button
           type="submit"
           disabled={!input.trim()}
           className="p-2 text-[var(--wa-accent)] disabled:opacity-50 hover:bg-[#2a3942] rounded-full transition-colors"
         >
-          <Send size={24} />
+          <Send size={26} />
         </button>
       </form>
     </div>

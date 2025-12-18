@@ -91,24 +91,16 @@ export async function* chatWithDeepseekStream(params: {
   messages: ChatMessage[];
   visionSummary?: string;
 }): AsyncGenerator<string, void, unknown> {
-  const { mode, text, messages, visionSummary } = params;
+  const { mode, text, messages } = params;
 
-  // Prepare messages
   const apiMessages: ChatMessage[] = [...messages];
   apiMessages.push({ role: 'user', content: text });
 
   try {
     const response = await fetch('/api/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        mode,
-        messages: apiMessages,
-        // visionSummary is ignored here as per previous thought, logic is handled by caller constructing messages or this function if needed.
-        // Assuming messages already contain necessary context.
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, messages: apiMessages }),
     });
 
     if (!response.ok) {
@@ -127,25 +119,18 @@ export async function* chatWithDeepseekStream(params: {
         throw new Error(data.message || data.error || 'Unknown error');
     }
 
-    if (data.debug) {
-        console.debug('[Chat Client] Debug Info:', data.debug);
-    }
-
     const fullContent = data.content || "";
     
-    // Simulate streaming (Typewriter effect)
-    // Regex to split by sentence endings (. ! ?) or newlines, keeping delimiters
-    const segments = fullContent.split(/([。！？.!?\n]+)/).filter(Boolean);
+    // Optimized Split: Split by comma, period, newline, but keep delimiters.
+    // This makes chunks smaller and "stream" smoother.
+    const segments = fullContent.split(/([,，。！？.!?\n]+)/).filter(Boolean);
     
     for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
-        
-        // Yield the segment
         yield segment;
-
-        // Delay based on length or fixed?
-        // "Every 80~150ms append a segment"
-        const delay = Math.floor(Math.random() * (150 - 80 + 1) + 80);
+        
+        // Fast Typewriter: 30-70ms delay
+        const delay = Math.floor(Math.random() * (70 - 30 + 1) + 30);
         await new Promise(resolve => setTimeout(resolve, delay));
     }
 
