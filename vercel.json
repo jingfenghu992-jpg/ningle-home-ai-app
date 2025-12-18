@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/**/*": {
+      "includeFiles": "knowledge/**"
+    }
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" }
   ]
