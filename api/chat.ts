@@ -4,6 +4,9 @@ import { getEnv } from './_env';
 //   runtime: 'edge',
 // };
 
+// Debug flag: Set to true to bypass upstream API and return mock response if key exists
+const DEBUG_MODE = true;
+
 // D) 拆分 chat / design 职责
 function buildDesignSystemPrompt() {
     return `You are a professional Interior Design Assistant.
@@ -57,6 +60,39 @@ export default async function handler(req: Request) {
 
     // 2. Call DeepSeek API
     // Using standard OpenAI-compatible endpoint for DeepSeek
+    if (DEBUG_MODE) {
+        console.log('[DEBUG] Key exists, returning mock response');
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            start(controller) {
+                const text = "（DEBUG模式：Key已檢測到，正在回覆）你好！我係寧樂家居助手。雖然現在使用的是測試模式，但證明系統已經成功讀取到 API Key 了。";
+                const chunks = text.split('');
+                let i = 0;
+                function push() {
+                    if (i >= chunks.length) {
+                        controller.close();
+                        return;
+                    }
+                    controller.enqueue(encoder.encode(chunks[i]));
+                    i++;
+                    setTimeout(push, 50);
+                }
+                push();
+            }
+        });
+
+        return new Response(stream, {
+            headers: {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Request-Id': crypto.randomUUID(),
+                'X-Mode': mode,
+                'X-Used-Key': 'DEEPSEEK_API_KEY'
+            }
+        });
+    }
+
     const response = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {

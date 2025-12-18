@@ -365,7 +365,7 @@ const App: React.FC = () => {
       } else if (error.message?.includes('401') || error.message?.includes('429')) {
           errMsg = '【AI 服務提示】DeepSeek 服務繁忙或額度不足 (401/429)，請稍後再試。';
       } else if (error.message) {
-          errMsg = `系統錯誤：${error.message}`;
+          errMsg = `系統錯誤 (Detail)：${error.message}`;
       }
 
       setMessages((prev) => {
