@@ -75,3 +75,5 @@ The prompt includes key constraints: same camera angle, same window positions, d
   
   res.end()
 }
+
+export default chatHandler;

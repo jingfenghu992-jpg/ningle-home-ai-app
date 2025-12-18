@@ -54,3 +54,5 @@ export const visionHandler = async (req: IncomingMessage, res: ServerResponse) =
     }
   }))
 }
+
+export default visionHandler;

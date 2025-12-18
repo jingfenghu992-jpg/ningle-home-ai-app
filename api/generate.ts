@@ -46,3 +46,5 @@ export const generateHandler = async (req: IncomingMessage, res: ServerResponse)
     b64_json: b64_json
   }))
 }
+
+export default generateHandler;
