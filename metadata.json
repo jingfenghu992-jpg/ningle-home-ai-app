@@ -1,0 +1,8 @@
+{
+  "name": "宁乐家居智能助手 V2",
+  "description": "A WhatsApp-style smart home assistant for Hong Kong residents, focusing on interior design and storage solutions.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* New Palette Definition - COPIED FROM INDEX.HTML */
+  --wa-bg: #14171C;          /* Chat Background Base */
+  --wa-surface: #1B1F26;     /* Header/Input Bar */
+  --wa-divider: rgba(255,255,255,0.06);
+  
+  --wa-text: #E9EDF1;        /* Main Text */
+  --wa-text-dim: rgba(233,237,241,0.65); /* Secondary/Time */
+  --wa-icon: #FFFFFF;        /* Icons */
+  
+  --wa-user: #0A5C4B;        /* User Bubble (Right) */
+  --wa-bot: #2A2F36;         /* Bot Bubble (Left) */
+
+  --wa-shadow: 0 1px 0.5px rgba(0,0,0,0.13); 
+  --wa-radius: 12px;
+  --wa-font: 16px;
+  --wa-line: 1.45;
+}
+
+/* Custom scrollbar for Webkit */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+body {
+  background-color: var(--wa-bg);
+  color: var(--wa-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden; 
+}
+
+/* Chat Background with Uploaded WhatsApp Doodle Image */
+.chat-bg-container {
+  position: relative;
+  background-color: var(--wa-bg); /* Dark base color */
+  /* Using the uploaded image file */
+  background-image: url('/wa-bg.jpg'); 
+  background-repeat: repeat;
+  background-position: center top;
+  background-size: 400px auto; /* Natural size for doodle pattern */
+  z-index: 0;
+}
+
+/* Overlay Layer to Dim the Background Image */
+.chat-bg-container::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* Dark overlay to ensure text contrast */
+  background-color: rgba(0, 0, 0, 0.35); 
+  pointer-events: none;
+  z-index: 1; /* Above background image, below message content (z-10) */
+}
+
+/* Unified WhatsApp Icon Style */
+.wa-icon {
+  color: var(--wa-icon) !important;
+  opacity: 0.95;
+  transition: opacity 0.2s;
+}
+.wa-icon:active {
+  opacity: 0.7;
+}
+.wa-icon:disabled {
+  opacity: 0.5;
+}
+
+/* Force all svg inside wa-icon to inherit color */
+.wa-icon svg {
+  stroke: var(--wa-icon);
+  fill: none;
+}
+
+/* Shadows */
+.wa-header-shadow {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  background-color: var(--wa-surface) !important;
+}
+.wa-input-shadow {
+  box-shadow: 0 -1px 3px rgba(0,0,0,0.15);
+  /* Border-top removed for unified look */
+  background-color: var(--wa-surface) !important;
+}
