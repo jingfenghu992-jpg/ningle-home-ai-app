@@ -1,4 +1,9 @@
-import { chatAPIStream, ChatMessage } from '../api/chat';
+import { fetchJSON } from './utils';
+
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
 
 // ---- Design Prompt Logic (Fix D: Split responsibilities) ----
 
@@ -6,7 +11,7 @@ export function parseDesignImageInstruction(text: string): { finalPrompt: string
   const full = text || '';
   let finalPrompt: string | null = null;
 
-  // 优先命中包含 FINAL_IMAGE_PROMPT 區塊嘅情況
+  // 優先命中包含 FINAL_IMAGE_PROMPT 區塊嘅情況
   const finalIdx = full.indexOf('FINAL_IMAGE_PROMPT:');
   if (finalIdx !== -1) {
     const selfIdx = full.indexOf('PROMPT_SELF_CHECK:', finalIdx);
@@ -50,7 +55,6 @@ export function validateImagePrompt(promptText: string, fullText: string): boole
   if (!promptText || promptText.trim().length < 20) return false; // Relaxed length check
   const lower = (promptText + '\n' + fullText).toLowerCase();
 
-  // Hard conditions only
   const hasCamera =
     lower.includes('same camera angle') || lower.includes('same viewpoint') || lower.includes('same view');
   const hasWindow =
@@ -62,14 +66,6 @@ export function validateImagePrompt(promptText: string, fullText: string): boole
   // Relaxed negative constraints
   const hasNoPeople = lower.includes('no people');
   const hasNoText = lower.includes('no text');
-  // const hasNoWatermark = lower.includes('no watermark'); // Can be implicit or less strict
-
-  // if (!hasCamera || !hasWindow || !hasDoNotChange || !hasNoPeople || !hasNoText) {
-  //   return false;
-  // }
-  
-  // Keep it simpler as per instructions:
-  // "same camera angle / same viewpoint", "same window positions", "do not change", "no people / no text / no watermark"
   
   const missing = [];
   if (!hasCamera) missing.push('camera');
@@ -86,6 +82,26 @@ export function validateImagePrompt(promptText: string, fullText: string): boole
   return true;
 }
 
+async function chatAPIStream(payload: { 
+  messages: ChatMessage[]; 
+  mode: string;
+  stream?: boolean; 
+}): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`Chat API error: ${response.statusText}`);
+  }
+
+  return response.body.getReader();
+}
+
 export async function* chatWithDeepseekStream(params: {
   mode: string;
   text: string;
@@ -96,26 +112,7 @@ export async function* chatWithDeepseekStream(params: {
 
   // Construct final messages array
   const apiMessages: ChatMessage[] = [...messages];
-  
-  // Add current user message if not already in history (handled by App usually, but ensuring)
-  // Actually App.tsx passes 'messages' which is the history. The 'text' is the current prompt or user input.
-  // In App.tsx: chatHistory does NOT include the current text for the API call usually, or it constructs it.
-  // Looking at App.tsx: 
-  // const chatHistory = messages.filter(...).map(...)
-  // chatWithDeepseekStream({ mode, text, messages: chatHistory })
-  
-  // So we need to append the new user message
   apiMessages.push({ role: 'user', content: text });
-
-  // Add system prompt based on mode (D: Split responsibilities)
-  // Since we are mocking backend logic here or preparing for it:
-  if (mode === 'design') {
-     // System prompt for design is handled by the prompt construction in App.tsx (designSummary)
-     // which is passed as 'text'.
-     // But we can add a specific system instruction if needed.
-  } else {
-     // Consultant mode
-  }
 
   const reader = await chatAPIStream({ messages: apiMessages, mode });
   const decoder = new TextDecoder();
