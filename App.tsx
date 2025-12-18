@@ -6,7 +6,7 @@ import MessageBubble from './components/MessageBubble';
 import { Message, AppMode } from './types';
 import { INITIAL_MESSAGE } from './constants';
 import { analyzeImage } from './services/visionClient';
-import { chatWithDeepseekStream } from './services/chatClient';
+import { chatWithDeepseekStream, parseDesignImageInstruction, validateImagePrompt } from './services/chatClient';
 import { generateImage } from './services/generateClient';
 
 const DESIGN_INITIAL_MESSAGE: Message = {
@@ -74,6 +74,9 @@ const App: React.FC = () => {
   const [designImageDataUrl, setDesignImageDataUrl] = useState<string | null>(null);
   // 保存首次 Vision 生成的結構鎖文本（只設一次，之後所有 revision 都沿用）
   const [designStructureLock, setDesignStructureLock] = useState<string | null>(null);
+  
+  // 流程鎖：防止重複觸發
+  const isProcessingRef = useRef(false);
   const generatingRef = useRef(false);
 
   // Scroll to bottom whenever messages change
@@ -96,6 +99,8 @@ const App: React.FC = () => {
   }, [mode, designStep]);
 
   const handleSendMessage = async (text: string) => {
+    if (isProcessingRef.current) return;
+
     // 顧問模式：如客戶明確表示想睇效果圖 / 出圖，切換到智能設計模式
     if (mode === 'consultant' && !awaitingSpace) {
       const trimmed = text.trim();
@@ -180,8 +185,7 @@ const App: React.FC = () => {
     // 顧問模式：圖片已上載並等待空間確認
     if (mode === 'consultant' && awaitingSpace && pendingImageDataUrl) {
       console.debug('[App] Consultant mode: User replied space:', text);
-      console.debug('[App] pendingImageDataUrl exists:', !!pendingImageDataUrl);
-      console.debug('[App] awaitingSpace:', awaitingSpace);
+      isProcessingRef.current = true;
       
       // Clear awaiting state
       setAwaitingSpace(false);
@@ -215,12 +219,6 @@ const App: React.FC = () => {
           mode: 'consultant' 
         });
         
-        console.debug('[App] Vision API response:', {
-          ok: vision.ok,
-          hasSummary: !!vision.vision_summary,
-          summaryLength: vision.vision_summary?.length || 0
-        });
-
         if (!vision.ok || !vision.vision_summary) {
           console.debug('[App] Vision API failed or missing summary');
           setMessages((prev) => {
@@ -250,8 +248,6 @@ const App: React.FC = () => {
 
         // Construct chat text: user text + space answer
         const chatText = `用戶上傳了${text}的相片，請根據視覺分析給出專業建議。`;
-        
-        console.debug('[App] Calling /api/chat with vision summary...');
         
         // Convert messages to chat history format (exclude current messages)
         const chatHistory = messages
@@ -302,11 +298,14 @@ const App: React.FC = () => {
           return updated;
         });
         setPendingImageDataUrl(null);
+      } finally {
+        isProcessingRef.current = false;
       }
       return;
     }
 
     // Normal text message flow (non-consultant or no pending image)
+    isProcessingRef.current = true;
     const newMessage: Message = {
       id: Date.now().toString(),
       type: 'text',
@@ -369,10 +368,14 @@ const App: React.FC = () => {
         }
         return updated;
       });
+    } finally {
+      isProcessingRef.current = false;
     }
   };
 
   const handleSendImage = (file: File) => {
+    if (isProcessingRef.current) return;
+    
     const reader = new FileReader();
     reader.onload = async (e) => {
       if (e.target?.result && typeof e.target.result === 'string') {
@@ -434,6 +437,7 @@ const App: React.FC = () => {
 
           // Save image（原始相片）供之後所有 revision 循環沿用
           setDesignImageDataUrl(dataUrl);
+          isProcessingRef.current = true;
           setDesignStep('analyze_image');
 
           const aiMessageId = (Date.now() + 1).toString();
@@ -522,57 +526,14 @@ const App: React.FC = () => {
             });
             setDesignStep('request_image'); // Reset to allow retry
             return;
+          } finally {
+            isProcessingRef.current = false;
           }
         }
       }
     };
     reader.readAsDataURL(file);
   };
-
-  // ---- 設計模式文生圖解析 + 校驗與保底組裝 ----
-  function parseDesignImageInstruction(text: string): { finalPrompt: string | null; safeUserText: string } {
-    const full = text || '';
-    let finalPrompt: string | null = null;
-
-    // 優先命中包含 FINAL_IMAGE_PROMPT 區塊嘅情況
-    const finalIdx = full.indexOf('FINAL_IMAGE_PROMPT:');
-    if (finalIdx !== -1) {
-      const selfIdx = full.indexOf('PROMPT_SELF_CHECK:', finalIdx);
-      const endIdx = selfIdx !== -1 ? selfIdx : full.length;
-      const finalBlock = full.slice(finalIdx, endIdx);
-
-      let m = finalBlock.match(/\[PROMPT:\s*([\s\S]*?)\]/i);
-      if (!m) {
-        // 兼容只有 "PROMPT:" 行而無方括號嘅寫法
-        m = finalBlock.match(/PROMPT:\s*([^\n]+)/i);
-      }
-      if (m && m[1]) {
-        finalPrompt = m[1].trim();
-      }
-    }
-
-    // 後備：只根據 <<<GENERATE_IMAGE>>> + PROMPT 行做解析
-    if (!finalPrompt && full.includes('<<<GENERATE_IMAGE>>>')) {
-      let m = full.match(/\[PROMPT:\s*([\s\S]*?)\]/i);
-      if (!m) {
-        m = full.match(/PROMPT:\s*([^\n]+)/i);
-      }
-      if (m && m[1]) {
-        finalPrompt = m[1].trim();
-      }
-    }
-
-    // safeUserText：移除 FINAL_IMAGE_PROMPT / PROMPT_SELF_CHECK / PROMPT 行 / 生成標記
-    let safe = full;
-    safe = safe.replace(/FINAL_IMAGE_PROMPT:[\s\S]*?(PROMPT_SELF_CHECK:|$)/i, '$1');
-    safe = safe.replace(/PROMPT_SELF_CHECK:[\s\S]*$/i, '');
-    safe = safe.replace(/\[PROMPT:[\s\S]*?]/i, '');
-    safe = safe.replace(/PROMPT:\s*[^\n]+/i, '');
-    safe = safe.replace(/<<<GENERATE_IMAGE>>>/g, '');
-    safe = safe.trim();
-
-    return { finalPrompt, safeUserText: safe };
-  }
 
   // 將 Vision extraction 正規化為單一 STRUCTURE_LOCK 文本，供 DeepSeek / 文生圖使用
   function normalizeDesignStructureLock(
@@ -667,40 +628,6 @@ const App: React.FC = () => {
     return lines.join('\n');
   }
 
-  // 設計模式 prompt 校驗
-  function validateImagePrompt(promptText: string, fullText: string): boolean {
-    if (!promptText || promptText.trim().length < 60) return false;
-    const lower = (promptText + '\n' + fullText).toLowerCase();
-
-    const hasCamera =
-      lower.includes('same camera angle') || lower.includes('same viewpoint') || lower.includes('same view');
-    const hasWindow =
-      lower.includes('same window positions') ||
-      lower.includes('same window') ||
-      lower.includes('keep all windows') ||
-      lower.includes('keep all window');
-    const hasDoNotChange = lower.includes('do not change');
-    const hasNoPeople = lower.includes('no people');
-    const hasNoText = lower.includes('no text');
-    const hasNoWatermark = lower.includes('no watermark');
-    const hasProportion =
-      lower.includes('room proportions') ||
-      lower.includes('same proportions') ||
-      lower.includes('room shape') ||
-      lower.includes('do not change the room');
-    const hasLight =
-      lower.includes('same lighting direction') ||
-      (lower.includes('lighting') && lower.includes('shadow'));
-
-    if (!hasCamera || !hasWindow || !hasDoNotChange || !hasNoPeople || !hasNoText || !hasNoWatermark) {
-      return false;
-    }
-    if (!hasProportion || !hasLight) {
-      return false;
-    }
-    return true;
-  }
-
   // 設計模式保底英文 prompt（DeepSeek 輸出無效時使用）
   function buildFallbackPrompt(structureLockText: string, data: typeof designData): string {
     const space = data.space || 'room';
@@ -741,6 +668,7 @@ const App: React.FC = () => {
     structureLockText: string,
     revisionDelta?: string,
   ) => {
+    isProcessingRef.current = true;
     setDesignStep('generate_design');
 
     const aiMessageId = Date.now().toString();
@@ -808,15 +736,23 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
         }));
 
       let fullContent = '';
+      let promptGenerated = false;
+
+      // Fix A: Buffer chunks until <<<GENERATE_IMAGE>>> detected or stream ends
       for await (const chunk of chatWithDeepseekStream({
         mode: 'design',
         text: designSummary,
         messages: chatHistory,
       })) {
         fullContent += chunk;
-        // 檢查是否包含出圖指令，觸發解析與 /api/generate
-        if (fullContent.includes('<<<GENERATE_IMAGE>>>') && !generatingRef.current) {
+        // Do NOT parse inside the loop to avoid incomplete prompt issues
+        // Just update UI to show progress (excluding internal blocks if we want, but here we just hide specific markers)
+      }
+
+      // Stream ended, now process the full content
+      if (fullContent.includes('<<<GENERATE_IMAGE>>>')) {
           generatingRef.current = true;
+          promptGenerated = true;
 
           // 解析 DeepSeek 回覆：抽出英文 prompt + 安全展示給客戶嘅中文說明
           const { finalPrompt, safeUserText } = parseDesignImageInstruction(fullContent);
@@ -836,7 +772,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
               ? `${safeUserText}\n\n（我會跟住呢個方向幫你出一張貼近現場結構嘅效果圖，請稍等～）`
               : '我根據你啱啱嘅選擇同張相，幫你整合咗一個設計方向，依家出緊效果圖，請稍等～';
 
-          // 更新訊息，只顯示安全中文說明，不顯示 FINAL_IMAGE_PROMPT / PROMPT_SELF_CHECK 等內部內容
+          // 更新訊息
           setMessages((prev) => {
             const updated = [...prev];
             const index = updated.findIndex((m) => m.id === aiMessageId);
@@ -946,17 +882,11 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
               }
             }
           }
-
           generatingRef.current = false;
-          return;
-        }
-
-        // 串流過程中暫時唔更新內容，避免客人見到內部 FINAL_IMAGE_PROMPT / PROMPT_SELF_CHECK
-        // 只保留開頭「整合資料、準備出圖」嘅提示文案
       }
 
       // 如果 DeepSeek 串流結束都冇出 <<<GENERATE_IMAGE>>>，使用保底 prompt 直接出圖
-      if (!generatingRef.current) {
+      if (!promptGenerated) {
         console.warn('[App] DeepSeek stream ended without GENERATE_IMAGE marker, using fallback prompt directly.');
         console.debug('[App] Stream content length:', fullContent.length, 'contains FINAL_IMAGE_PROMPT:', fullContent.includes('FINAL_IMAGE_PROMPT'));
         generatingRef.current = true;
@@ -1067,7 +997,6 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
             }
           }
         }
-
         generatingRef.current = false;
       }
     } catch (error) {
@@ -1086,6 +1015,8 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
       // 重置到可重試狀態
       setDesignStep('request_image');
       generatingRef.current = false;
+    } finally {
+        isProcessingRef.current = false;
     }
   };
 
@@ -1358,6 +1289,8 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
   };
 
   const handleOptionClick = (option: string) => {
+    if (isProcessingRef.current) return;
+
     if (
       mode === 'design' &&
       designStep !== 'request_image' &&
@@ -1384,6 +1317,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
       <ModeSwitcher
         currentMode={mode}
         onModeChange={(newMode) => {
+          if (isProcessingRef.current) return;
           if (newMode === 'design' && designStep !== 'q1_space') {
             // 重新開始智能設計 6 條單選流程
             setDesignStep('q1_space');
