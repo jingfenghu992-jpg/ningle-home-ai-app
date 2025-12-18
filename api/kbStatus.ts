@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { IncomingMessage, ServerResponse } from 'http'
 
 export const kbStatusHandler = (req: IncomingMessage, res: ServerResponse) => {
