@@ -356,15 +356,25 @@ const App: React.FC = () => {
           return updated;
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat Error:", error);
+      
+      let errMsg = '系統繁忙，請稍後再試。';
+      if (error.message?.includes('MISSING_KEY')) {
+          errMsg = '【系統配置錯誤】伺服器缺少 DEEPSEEK_API_KEY，請通知管理員檢查 Vercel 環境變數。';
+      } else if (error.message?.includes('401') || error.message?.includes('429')) {
+          errMsg = '【AI 服務提示】DeepSeek 服務繁忙或額度不足 (401/429)，請稍後再試。';
+      } else if (error.message) {
+          errMsg = `系統錯誤：${error.message}`;
+      }
+
       setMessages((prev) => {
         const updated = [...prev];
         const index = updated.findIndex((m) => m.id === aiMessageId);
         if (index !== -1) {
           updated[index] = {
             ...updated[index],
-            content: '系統繁忙，請稍後再試。',
+            content: errMsg,
           };
         }
         return updated;

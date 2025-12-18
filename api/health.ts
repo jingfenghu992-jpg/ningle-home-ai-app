@@ -1,8 +1,8 @@
 import { getOptionalEnv } from './_env';
 
-export const config = {
-  runtime: 'edge',
-};
+// export const config = {
+//   runtime: 'edge',
+// };
 
 export default function handler(req: Request) {
   const hasKey = !!getOptionalEnv('DEEPSEEK_API_KEY');

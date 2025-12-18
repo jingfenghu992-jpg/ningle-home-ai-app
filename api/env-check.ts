@@ -1,8 +1,8 @@
 import { getOptionalEnv } from './_env';
 
-export const config = {
-  runtime: 'edge',
-};
+// export const config = {
+//   runtime: 'edge',
+// };
 
 export default async function handler(req: Request) {
   if (req.method !== 'GET') {
@@ -15,6 +15,8 @@ export default async function handler(req: Request) {
     'STEPFUN_VISION_API_KEY',
     'STEPFUN_VISION_API_KEY_2'
   ];
+  
+  console.log('[Env Check] Verifying keys in Runtime:', process.env.NODE_ENV || 'unknown');
 
   const result: Record<string, boolean> = {};
   const missing: string[] = [];

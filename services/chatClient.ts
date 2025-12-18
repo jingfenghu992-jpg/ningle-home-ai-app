@@ -88,8 +88,20 @@ async function chatAPIStream(payload: {
     body: JSON.stringify(payload),
   });
 
-  if (!response.ok || !response.body) {
-    throw new Error(`Chat API error: ${response.statusText}`);
+  if (!response.ok) {
+    let errorDetail = response.statusText;
+    try {
+        const errJson = await response.json();
+        if (errJson.error) errorDetail = errJson.error;
+        if (errJson.errorCode) errorDetail = `${errorDetail} (${errJson.errorCode})`;
+    } catch (e) {
+        // ignore JSON parse error
+    }
+    throw new Error(errorDetail || `Chat API error: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error('No response body');
   }
 
   return response.body.getReader();

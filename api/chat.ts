@@ -1,8 +1,8 @@
 import { getEnv } from './_env';
 
-export const config = {
-  runtime: 'edge',
-};
+// export const config = {
+//   runtime: 'edge',
+// };
 
 // D) 拆分 chat / design 职责
 function buildDesignSystemPrompt() {

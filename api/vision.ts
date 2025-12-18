@@ -1,8 +1,8 @@
 import { getEnv, getOptionalEnv } from './_env';
 
-export const config = {
-  runtime: 'edge',
-};
+// export const config = {
+//   runtime: 'edge',
+// };
 
 async function callStepFunVision(apiKey: string, imageBase64: string) {
     // Hypothetical StepFun Vision Endpoint (OpenAI Compatible usually)
