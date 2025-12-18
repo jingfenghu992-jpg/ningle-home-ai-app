@@ -1,3 +1,5 @@
+import { HK_CONSULTANT_SYSTEM, HK_DESIGN_SYSTEM } from './prompts/hk.js';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method Not Allowed' });
@@ -10,7 +12,8 @@ export default async function handler(req, res) {
     console.error('Missing DEEPSEEK_API_KEY');
     res.status(500).json({ 
         error: 'Configuration Error', 
-        message: 'Missing DEEPSEEK_API_KEY on server' 
+        message: 'Missing DEEPSEEK_API_KEY on server',
+        errorCode: 'MISSING_KEY'
     });
     return;
   }
@@ -18,7 +21,22 @@ export default async function handler(req, res) {
   try {
     const { messages, mode } = req.body;
 
-    console.log('[API] Sending request to DeepSeek...');
+    // Select System Prompt based on mode
+    let systemPrompt = HK_CONSULTANT_SYSTEM;
+    let appliedPromptName = "HK_CONSULTANT";
+    
+    if (mode === 'design') {
+        systemPrompt = HK_DESIGN_SYSTEM;
+        appliedPromptName = "HK_DESIGN";
+    }
+
+    console.log(`[API] Sending request to DeepSeek (Mode: ${mode})...`);
+
+    // Prepare messages: Prepend System Prompt
+    const apiMessages = [
+        { role: "system", content: systemPrompt },
+        ...messages
+    ];
 
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
@@ -28,11 +46,8 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'deepseek-chat',
-        messages: [
-            { role: "system", content: "You are a helpful assistant." },
-            ...messages
-        ],
-        stream: false // Disable stream for initial connection test to avoid buffering issues
+        messages: apiMessages,
+        stream: false // We use full response then stream on frontend
       })
     });
 
@@ -41,7 +56,8 @@ export default async function handler(req, res) {
       console.error('[API] DeepSeek Error:', response.status, errorText);
       res.status(response.status).json({ 
           error: 'Upstream API Error', 
-          details: errorText 
+          details: errorText,
+          requestId: response.headers.get('x-request-id') 
       });
       return;
     }
@@ -49,13 +65,16 @@ export default async function handler(req, res) {
     const data = await response.json();
     const reply = data.choices[0]?.message?.content || "";
     
-    // Mimic stream format for frontend compatibility (fake stream)
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    
-    res.write(reply);
-    res.end();
+    // Return standard JSON with debug info
+    res.status(200).json({
+        ok: true,
+        content: reply,
+        debug: {
+            usedKey: "DEEPSEEK_API_KEY",
+            appliedPrompt: appliedPromptName,
+            requestId: data.id || response.headers.get('x-request-id')
+        }
+    });
 
   } catch (error) {
     console.error('[API] Handler Exception:', error);

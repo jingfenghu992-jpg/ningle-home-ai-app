@@ -5,6 +5,16 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ChatResponse {
+  ok: boolean;
+  content?: string;
+  error?: string;
+  message?: string;
+  errorCode?: string;
+  details?: string;
+  debug?: any;
+}
+
 export function parseDesignImageInstruction(text: string): { finalPrompt: string | null; safeUserText: string } {
   const full = text || '';
   let finalPrompt: string | null = null;
@@ -75,38 +85,6 @@ export function validateImagePrompt(promptText: string, fullText: string): boole
   return true;
 }
 
-async function chatAPIStream(payload: { 
-  messages: ChatMessage[]; 
-  mode: string;
-  stream?: boolean; 
-}): Promise<ReadableStreamDefaultReader<Uint8Array>> {
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    let errorDetail = response.statusText;
-    try {
-        const errJson = await response.json();
-        if (errJson.error) errorDetail = errJson.error;
-        if (errJson.errorCode) errorDetail = `${errorDetail} (${errJson.errorCode})`;
-    } catch (e) {
-        // ignore JSON parse error
-    }
-    throw new Error(errorDetail || `Chat API error: ${response.status}`);
-  }
-
-  if (!response.body) {
-    throw new Error('No response body');
-  }
-
-  return response.body.getReader();
-}
-
 export async function* chatWithDeepseekStream(params: {
   mode: string;
   text: string;
@@ -115,16 +93,64 @@ export async function* chatWithDeepseekStream(params: {
 }): AsyncGenerator<string, void, unknown> {
   const { mode, text, messages, visionSummary } = params;
 
+  // Prepare messages
   const apiMessages: ChatMessage[] = [...messages];
   apiMessages.push({ role: 'user', content: text });
 
-  const reader = await chatAPIStream({ messages: apiMessages, mode });
-  const decoder = new TextDecoder();
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mode,
+        messages: apiMessages,
+        // visionSummary is ignored here as per previous thought, logic is handled by caller constructing messages or this function if needed.
+        // Assuming messages already contain necessary context.
+      }),
+    });
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const chunk = decoder.decode(value, { stream: true });
-    yield chunk;
+    if (!response.ok) {
+        let errorMsg = `HTTP ${response.status}`;
+        try {
+            const errData = await response.json();
+            if (errData.error) errorMsg = errData.error;
+            if (errData.details) errorMsg += `: ${errData.details}`;
+        } catch (e) { }
+        throw new Error(errorMsg);
+    }
+
+    const data: ChatResponse = await response.json();
+
+    if (!data.ok) {
+        throw new Error(data.message || data.error || 'Unknown error');
+    }
+
+    if (data.debug) {
+        console.debug('[Chat Client] Debug Info:', data.debug);
+    }
+
+    const fullContent = data.content || "";
+    
+    // Simulate streaming (Typewriter effect)
+    // Regex to split by sentence endings (. ! ?) or newlines, keeping delimiters
+    const segments = fullContent.split(/([。！？.!?\n]+)/).filter(Boolean);
+    
+    for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        
+        // Yield the segment
+        yield segment;
+
+        // Delay based on length or fixed?
+        // "Every 80~150ms append a segment"
+        const delay = Math.floor(Math.random() * (150 - 80 + 1) + 80);
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+  } catch (error: any) {
+    console.error('[Chat Client] Error:', error);
+    throw error;
   }
 }
