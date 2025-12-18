@@ -17,6 +17,6 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["."],
-  "exclude": ["vite.config.ts", "node_modules", "__BACKUP__", "api", "scripts", "services/kb.ts"],
+  "exclude": ["vite.config.ts", "node_modules", "dist", "__BACKUP__", "api", "scripts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
