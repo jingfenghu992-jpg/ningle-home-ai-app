@@ -1,16 +1,12 @@
+import { IncomingMessage, ServerResponse } from 'http';
 import { getOptionalEnv } from './_env';
+import { sendJson } from './_utils';
 
-// export const config = {
-//   runtime: 'edge',
-// };
-
-export default function handler(req: Request) {
+export default function handler(req: IncomingMessage, res: ServerResponse) {
   const hasKey = !!getOptionalEnv('DEEPSEEK_API_KEY');
-  return new Response(JSON.stringify({ 
+  sendJson(res, { 
       status: 'ok', 
       timestamp: Date.now(),
       envOk: hasKey
-  }), {
-    headers: { 'Content-Type': 'application/json' }
   });
 }

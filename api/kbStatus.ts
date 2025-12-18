@@ -1,14 +1,10 @@
-// export const config = {
-//   runtime: 'edge',
-// };
+import { IncomingMessage, ServerResponse } from 'http';
+import { sendJson } from './_utils';
 
-export default function handler(req: Request) {
-  // Assuming no specific key needed for status, or add if needed
-  return new Response(JSON.stringify({ 
+export default function handler(req: IncomingMessage, res: ServerResponse) {
+  sendJson(res, { 
       status: 'ready', 
       docs_count: 0,
       envOk: true 
-  }), {
-    headers: { 'Content-Type': 'application/json' }
   });
 }

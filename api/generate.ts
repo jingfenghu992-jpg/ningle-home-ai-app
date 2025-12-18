@@ -1,12 +1,12 @@
+import { IncomingMessage, ServerResponse } from 'http';
 import { getEnv } from './_env';
+import { readJsonBody, sendJson, sendError } from './_utils';
 
-// export const config = {
-//   runtime: 'edge',
-// };
-
-export default async function handler(req: Request) {
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
+    res.statusCode = 405;
+    res.end('Method Not Allowed');
+    return;
   }
 
   const requestId = crypto.randomUUID();
@@ -15,29 +15,18 @@ export default async function handler(req: Request) {
   try {
     apiKey = getEnv('STEPFUN_IMAGE_API_KEY');
   } catch (e: any) {
-    return new Response(JSON.stringify({ 
-      ok: false, 
-      message: 'Missing API Key',
-      errorCode: 'MISSING_KEY'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return sendError(res, 'Missing API Key', 500, 'MISSING_KEY');
   }
 
   try {
-    const body = await req.json();
+    const body: any = await readJsonBody(req);
     const { prompt } = body;
 
     if (!prompt) {
-      return new Response(JSON.stringify({ ok: false, message: 'Missing prompt' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return sendError(res, 'Missing prompt', 400);
     }
 
     // Call StepFun Image Generation API
-    // Using generic OpenAI DALL-E compatible endpoint or StepFun specific
     const response = await fetch('https://api.stepfun.com/v1/images/generations', {
         method: 'POST',
         headers: {
@@ -46,7 +35,7 @@ export default async function handler(req: Request) {
         },
         body: JSON.stringify({
             prompt: prompt,
-            model: 'step-1x-medium', // Example model
+            model: 'step-1x-medium',
             n: 1,
             size: '1024x1024',
             response_format: 'b64_json'
@@ -58,27 +47,21 @@ export default async function handler(req: Request) {
     }
 
     const data = await response.json();
-    // Assuming OpenAI format: { data: [{ b64_json: "..." }] }
     const b64_json = data.data?.[0]?.b64_json;
 
     if (!b64_json) {
         throw new Error('Invalid upstream response format');
     }
 
-    return new Response(JSON.stringify({
+    return sendJson(res, {
       ok: true,
       b64_json: `data:image/png;base64,${b64_json}`,
       requestId,
       mode: 'generate',
       usedKey: 'STEPFUN_IMAGE_API_KEY'
-    }), {
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (error: any) {
-    return new Response(JSON.stringify({ 
-        ok: false, 
-        message: error.message || 'Generation Failed' 
-    }), { status: 500 });
+    return sendError(res, error.message || 'Generation Failed', 500);
   }
 }

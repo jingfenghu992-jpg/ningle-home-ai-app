@@ -1,12 +1,12 @@
+import { IncomingMessage, ServerResponse } from 'http';
 import { getOptionalEnv } from './_env';
+import { sendJson, sendError } from './_utils';
 
-// export const config = {
-//   runtime: 'edge',
-// };
-
-export default async function handler(req: Request) {
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'GET') {
-    return new Response('Method Not Allowed', { status: 405 });
+    res.statusCode = 405;
+    res.end('Method Not Allowed');
+    return;
   }
 
   const keysToCheck = [
@@ -31,23 +31,12 @@ export default async function handler(req: Request) {
   }
 
   if (missing.length > 0) {
-    return new Response(JSON.stringify({
-      ok: false,
-      errorCode: 'MISSING_KEY',
-      missing,
-      runtime: 'vercel-edge' // indicater
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return sendError(res, 'Missing Keys', 500, 'MISSING_KEY');
   }
 
-  return new Response(JSON.stringify({
+  return sendJson(res, {
     ok: true,
-    runtime: 'vercel-edge',
+    runtime: 'vercel-node',
     has: result
-  }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' }
   });
 }

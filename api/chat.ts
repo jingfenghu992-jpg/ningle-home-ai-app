@@ -1,11 +1,9 @@
+import { IncomingMessage, ServerResponse } from 'http';
 import { getEnv } from './_env';
-
-// export const config = {
-//   runtime: 'edge',
-// };
+import { readJsonBody, sendError } from './_utils';
 
 // Debug flag: Set to true to bypass upstream API and return mock response if key exists
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 // D) 拆分 chat / design 职责
 function buildDesignSystemPrompt() {
@@ -26,9 +24,11 @@ Answer the user's questions about interior design, renovation, and materials.
 Be professional, friendly, and concise.`;
 }
 
-export default async function handler(req: Request) {
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
+    res.statusCode = 405;
+    res.end('Method Not Allowed');
+    return;
   }
 
   // 1. Get Key (throw if missing)
@@ -36,18 +36,11 @@ export default async function handler(req: Request) {
   try {
     apiKey = getEnv('DEEPSEEK_API_KEY');
   } catch (e: any) {
-    return new Response(JSON.stringify({ 
-      error: 'Missing API Key', 
-      errorCode: 'MISSING_KEY',
-      details: e.message 
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return sendError(res, 'Missing API Key', 500, 'MISSING_KEY');
   }
 
   try {
-    const body = await req.json();
+    const body: any = await readJsonBody(req);
     const { messages, mode } = body;
 
     const systemPrompt = mode === 'design' ? buildDesignSystemPrompt() : buildConsultantSystemPrompt();
@@ -62,35 +55,22 @@ export default async function handler(req: Request) {
     // Using standard OpenAI-compatible endpoint for DeepSeek
     if (DEBUG_MODE) {
         console.log('[DEBUG] Key exists, returning mock response');
-        const encoder = new TextEncoder();
-        const stream = new ReadableStream({
-            start(controller) {
-                const text = "（DEBUG模式：Key已檢測到，正在回覆）你好！我係寧樂家居助手。雖然現在使用的是測試模式，但證明系統已經成功讀取到 API Key 了。";
-                const chunks = text.split('');
-                let i = 0;
-                function push() {
-                    if (i >= chunks.length) {
-                        controller.close();
-                        return;
-                    }
-                    controller.enqueue(encoder.encode(chunks[i]));
-                    i++;
-                    setTimeout(push, 50);
-                }
-                push();
-            }
-        });
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Request-Id', crypto.randomUUID());
+        res.setHeader('X-Mode', mode);
+        res.setHeader('X-Used-Key', 'DEEPSEEK_API_KEY');
 
-        return new Response(stream, {
-            headers: {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'X-Request-Id': crypto.randomUUID(),
-                'X-Mode': mode,
-                'X-Used-Key': 'DEEPSEEK_API_KEY'
-            }
-        });
+        const text = "（DEBUG模式：Key已檢測到，正在回覆）你好！我係寧樂家居助手。雖然現在使用的是測試模式，但證明系統已經成功讀取到 API Key 了。";
+        const chunks = text.split('');
+        
+        for (const char of chunks) {
+            res.write(char);
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        res.end();
+        return;
     }
 
     const response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -110,68 +90,38 @@ export default async function handler(req: Request) {
     if (!response.ok) {
         const errText = await response.text();
         console.error('DeepSeek API Error:', response.status, errText);
-        return new Response(JSON.stringify({ 
-            error: 'Upstream API Error', 
-            upstreamStatus: response.status 
-        }), { 
-            status: response.status === 401 ? 401 : 500,
-            headers: { 'Content-Type': 'application/json' }
-        });
+        return sendError(res, 'Upstream API Error', response.status === 401 ? 401 : 500);
     }
 
     // 3. Proxy the stream
-    // We want to inject metadata at the start, but SSE is tricky to mix with direct binary stream proxying.
-    // For simplicity and robustness with Vercel AI SDK or simple clients, we usually just pipe.
-    // However, the requirement asks to return `usedKey` and `requestId`. 
-    // Since this is a stream, we can't easily add JSON metadata *before* the stream without a custom protocol.
-    // BUT: The client expects a stream of text.
-    // For strict compliance with the prompt "return ... usedKey", typically implies a JSON response, 
-    // but this is a *chat* endpoint which is usually streamed.
-    // COMPROMISE: We will stream the content. The `usedKey` requirement might be better suited for headers or a non-streaming mode.
-    // Checking prompt again: "Successful return must include requestId, mode, usedKey".
-    // If it's a stream, we can send these as custom headers! 
-    
-    const stream = new ReadableStream({
-        async start(controller) {
-            if (!response.body) return;
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            const encoder = new TextEncoder();
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Request-Id', crypto.randomUUID());
+    res.setHeader('X-Mode', mode);
+    res.setHeader('X-Used-Key', 'DEEPSEEK_API_KEY');
 
-            try {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    const chunk = decoder.decode(value);
-                    // Parse OpenAI stream format "data: {...}" if needed, or just pass through.
-                    // Since the client likely expects the text content, we might need to parse.
-                    // However, if the client handles OpenAI format, we pass through.
-                    // Let's assume pass-through for now as it's safest for "proxy".
-                    controller.enqueue(value); 
-                }
-            } catch (e) {
-                console.error('Stream Error', e);
-                controller.error(e);
-            } finally {
-                controller.close();
-            }
+    if (response.body) {
+        // Node.js fetch response body is a ReadableStream (web standard) in Node 18+
+        // But we need to pipe it to res (Node stream)
+        // We can use a reader
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            // Direct pass through for now, assuming client handles it
+            res.write(chunk);
         }
-    });
-
-    return new Response(response.body, { // Direct proxy is better for performance
-        headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'X-Request-Id': crypto.randomUUID(),
-            'X-Mode': mode,
-            'X-Used-Key': 'DEEPSEEK_API_KEY' // Requirement met via Header for stream
-        }
-    });
+        res.end();
+    } else {
+        res.end();
+    }
 
   } catch (error: any) {
     console.error('Handler Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 400 });
+    sendError(res, error.message || 'Internal Error', 400);
   }
 }
