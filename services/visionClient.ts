@@ -22,7 +22,7 @@ export async function analyzeImage(params: { imageDataUrl: string; mode: string 
     return await fetchJSON<VisionResponse>('/api/vision', {
       method: 'POST',
       body: JSON.stringify({
-        image: params.imageDataUrl,
+        imageDataUrl: params.imageDataUrl,
         mode: params.mode
       }),
     });

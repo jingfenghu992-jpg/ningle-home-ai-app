@@ -4,7 +4,8 @@ export default async function handler(req, res) {
         return;
     }
 
-    const { imageDataUrl, mode } = req.body;
+    // Support both parameter names for robustness
+    const imageDataUrl = req.body.imageDataUrl || req.body.image;
 
     if (!imageDataUrl) {
         res.status(400).json({ error: 'Missing imageDataUrl' });
@@ -67,23 +68,18 @@ export default async function handler(req, res) {
                     continue;
                 }
                 
-                // Other errors, throw to stop (or maybe continue? safest is continue)
                 lastError = { status: response.status, message: errText };
                 continue;
             }
 
             const data = await response.json();
             const content = data.choices[0]?.message?.content || "";
-
-            // Simple extraction logic (mocked extraction for now based on content, or just return content)
-            // In a real app, we might ask LLM to output JSON. 
-            // Here we return the text summary and a basic extraction object.
             
             res.status(200).json({
                 ok: true,
                 vision_summary: content,
                 extraction: { 
-                    roomTypeGuess: "Detected Room", // Simplified for now
+                    roomTypeGuess: "Detected Room", 
                     rawAnalysis: content
                 },
                 debug: {
@@ -99,7 +95,6 @@ export default async function handler(req, res) {
         }
     }
 
-    // If all keys failed
     res.status(502).json({
         ok: false,
         errorCode: 'UPSTREAM_FAILED',
