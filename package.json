@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "kb:build": "node scripts/build_kb.js",
+    "build": "npm run kb:build && tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
