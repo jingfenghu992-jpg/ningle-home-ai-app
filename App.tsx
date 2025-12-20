@@ -223,7 +223,7 @@ const App: React.FC = () => {
       try {
         const vision = await analyzeImage({ 
           imageDataUrl: pendingImageDataUrl,
-          imageUrl: pendingImageBlobUrl, // Use blob url if available
+          imageUrl: pendingImageBlobUrl || undefined, // Use blob url if available
           mode: 'consultant' 
         });
         
@@ -547,7 +547,7 @@ const App: React.FC = () => {
           try {
             const vision = await analyzeImage({ 
                 imageDataUrl: dataUrl, 
-                imageUrl: blobUrl, // Use blob url
+                imageUrl: blobUrl || undefined, // Use blob url
                 mode: 'design' 
             });
 
