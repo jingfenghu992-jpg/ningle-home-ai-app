@@ -275,10 +275,13 @@ const App: React.FC = () => {
         
         let fullContent = '';
         let isFirstChunk = true;
+        
+        // FIX: Explicitly pass vision.vision_summary to ensure the very first turn has context
+        // regardless of state update race conditions.
         for await (const chunk of chatWithDeepseekStream({ 
           mode: 'consultant',
           text: chatText,
-          visionSummary: vision.vision_summary, // Explicitly pass current summary
+          visionSummary: vision.vision_summary, 
           messages: chatHistory
         })) {
           if (isFirstChunk) {
@@ -839,14 +842,21 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
                   return updated;
                 });
               } else {
-                const finalErrorMsg = (error.message?.includes('MISSING_KEY') || error.message?.includes('401') || error.message?.includes('429')) ? errorMessage : '今次出圖好似有啲問題，你可以再試一次上傳相片（JPG/PNG），或者點右上角 WhatsApp，發張相同講下你嘅要求，我哋設計師可以一對一幫你再睇清楚。';
+                const finalErrorMsg = (error.message?.includes('MISSING_KEY') || error.message?.includes('401') || error.message?.includes('429')) ? errorMessage : '今次出圖好似有啲問題，你可以再試一次生成，或者重新上傳相片。';
                 setMessages((prev) => {
                   const updated = [...prev];
                   const index = updated.findIndex((m) => m.id === aiMessageId);
-                  if (index !== -1) updated[index] = { ...updated[index], content: finalErrorMsg };
+                  if (index !== -1) {
+                      updated[index] = { 
+                          ...updated[index], 
+                          content: finalErrorMsg,
+                          options: ['重試生成', '重新上傳']
+                      };
+                  }
                   return updated;
                 });
-                setDesignStep('request_image');
+                // Do not reset to request_image yet, wait for user choice
+                // setDesignStep('request_image'); 
               }
             }
           }
@@ -919,10 +929,16 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
               setMessages((prev) => {
                 const updated = [...prev];
                 const index = updated.findIndex((m) => m.id === aiMessageId);
-                if (index !== -1) updated[index] = { ...updated[index], content: '今次出圖好似有啲問題，你可以再試一次上傳相片（JPG/PNG），或者點右上角 WhatsApp，發張相同講下你嘅要求，我哋設計師可以一對一幫你再睇清楚。' };
+                if (index !== -1) {
+                    updated[index] = { 
+                        ...updated[index], 
+                        content: '今次出圖好似有啲問題，你可以再試一次生成，或者重新上傳相片。',
+                        options: ['重試生成', '重新上傳']
+                    };
+                }
                 return updated;
               });
-              setDesignStep('request_image');
+              // setDesignStep('request_image');
             }
           }
         }
@@ -933,10 +949,16 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
       setMessages(prev => {
         const updated = [...prev];
         const index = updated.findIndex((m) => m.id === aiMessageId);
-        if (index !== -1) updated[index] = { ...updated[index], content: '我而家出圖好似卡咗一下，你可以再試一次上傳相片（JPG/PNG），或者點右上角 WhatsApp 慢慢傾。' };
+        if (index !== -1) {
+            updated[index] = { 
+                ...updated[index], 
+                content: '我而家出圖好似卡咗一下，你可以再試一次生成，或者重新上傳相片。',
+                options: ['重試生成', '重新上傳']
+            };
+        }
         return updated;
       });
-      setDesignStep('request_image');
+      // setDesignStep('request_image');
       generatingRef.current = false;
     }
   };
@@ -1067,6 +1089,41 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
   };
 
   const handleOptionClick = (option: string) => {
+    // Design Mode Image Generation Retry Logic
+    if (mode === 'design' && (option === '重試生成' || option === '重新上傳')) {
+        if (option === '重新上傳') {
+            setDesignStep('request_image');
+            setDesignImageDataUrl(null);
+            setDesignStructureLock(null);
+            const msg: Message = { 
+                id: Date.now().toString(), 
+                type: 'text', 
+                content: DESIGN_STEPS.request_image.question, 
+                sender: 'ai', 
+                timestamp: Date.now(), 
+            };
+            setMessages((prev) => [...prev, msg]);
+            return;
+        }
+        if (option === '重試生成') {
+            if (!designImageDataUrl || !designStructureLock) {
+                // If data lost, force re-upload
+                const errorMsg: Message = {
+                  id: Date.now().toString(),
+                  type: 'text',
+                  content: '資料似乎過期咗，請重新上傳相片。',
+                  sender: 'ai',
+                  timestamp: Date.now(),
+                };
+                setMessages((prev) => [...prev, errorMsg]);
+                setDesignStep('request_image');
+                return;
+            }
+            triggerDesignImageGeneration(designImageDataUrl, designStructureLock);
+            return;
+        }
+    }
+
     if (mode === 'design' && designStep !== 'request_image' && designStep !== 'analyze_image' && designStep !== 'generate_design' && designStep !== 'present_result' && designStep !== 'completed') {
       processDesignFlow(option);
       return;
