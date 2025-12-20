@@ -21,6 +21,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOptionClick })
         {message.type === 'image' ? (
           <div className="max-w-xs md:max-w-sm rounded overflow-hidden">
             <img src={message.content} alt="Upload" className="w-full h-auto object-cover" />
+            {message.visionSummary && (
+              <div className="mt-2 pt-1 border-t border-white/20 text-[12px] opacity-90 font-normal flex items-center gap-1">
+                <span>✅</span> 圖片已分析，可直接針對畫面提問
+              </div>
+            )}
           </div>
         ) : (
           <div className="whitespace-pre-wrap">{message.content}</div>

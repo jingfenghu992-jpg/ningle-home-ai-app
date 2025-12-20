@@ -41,6 +41,7 @@ const App: React.FC = () => {
   
   // Consultant mode: pending image state
   const [pendingImageDataUrl, setPendingImageDataUrl] = useState<string | null>(null);
+  const [pendingImageMsgId, setPendingImageMsgId] = useState<string | null>(null);
   const [awaitingSpace, setAwaitingSpace] = useState(false);
 
   // Design mode state
@@ -236,10 +237,32 @@ const App: React.FC = () => {
             return updated;
           });
           setPendingImageDataUrl(null);
+          setPendingImageMsgId(null);
           return;
         }
 
+        // UPDATE: Persist vision summary to the original image message
+        if (pendingImageMsgId) {
+            setMessages(prev => {
+                const updated = [...prev];
+                const imgIdx = updated.findIndex(m => m.id === pendingImageMsgId);
+                if (imgIdx !== -1) {
+                    updated[imgIdx] = {
+                        ...updated[imgIdx],
+                        visionSummary: vision.vision_summary
+                    };
+                }
+                return updated;
+            });
+        }
+
         const chatText = `用戶上傳了${text}的相片，請根據視覺分析給出專業建議。`;
+        
+        // Pass CURRENT messages including the newly updated vision summary
+        // Note: 'messages' here is stale from closure, but we can construct logically.
+        // Actually, we should pass the vision summary explicitly in the request for this turn,
+        // but also rely on chat history reconstruction for future turns.
+        // For this immediate turn, we manually inject.
         
         const chatHistory = messages
           .filter(msg => msg.id !== aiMessageId && msg.id !== userMessage.id)
@@ -255,7 +278,7 @@ const App: React.FC = () => {
         for await (const chunk of chatWithDeepseekStream({ 
           mode: 'consultant',
           text: chatText,
-          visionSummary: vision.vision_summary,
+          visionSummary: vision.vision_summary, // Explicitly pass current summary
           messages: chatHistory
         })) {
           if (isFirstChunk) {
@@ -280,6 +303,7 @@ const App: React.FC = () => {
           });
         }
         setPendingImageDataUrl(null);
+        setPendingImageMsgId(null);
 
       } catch (error) {
         clearTimeout(timer3s);
@@ -297,6 +321,7 @@ const App: React.FC = () => {
           return updated;
         });
         setPendingImageDataUrl(null);
+        setPendingImageMsgId(null);
       }
       return;
     }
@@ -430,6 +455,7 @@ const App: React.FC = () => {
 
         if (mode === 'consultant') {
           setPendingImageDataUrl(dataUrl);
+          setPendingImageMsgId(userImageMessage.id); // SAVE ID
           setAwaitingSpace(true);
           
           const spaceOptions = ['客廳', '餐廳', '睡房', '廚房', '浴室', '玄關', '書房', '全屋'];
@@ -542,11 +568,6 @@ const App: React.FC = () => {
     };
     reader.readAsDataURL(file);
   };
-
-  // ... (keeping other helper functions like parseDesignImageInstruction, normalizeDesignStructureLock, etc.)
-  // Note: I will just include the rest of the file content as is, assuming I didn't break the closure.
-  // Actually, to be safe, I should use the previous read content and only replace the relevant functions or write the whole file carefully.
-  // The logic for helpers is at the bottom of the previous file. I'll re-include them.
 
   function parseDesignImageInstruction(text: string): { finalPrompt: string | null; safeUserText: string } {
     const full = text || '';

@@ -45,7 +45,15 @@ export default async function handler(req, res) {
                     messages: [
                         {
                             role: "system",
-                            content: "你是一個專業的室內設計視覺分析師。請仔細分析圖片中的空間結構、材質、光線和佈局。"
+                            content: `你是一位專業的室內設計視覺分析師。請分析圖片並返回以下 JSON 格式（不要使用 Markdown 代碼塊，直接返回 JSON）：
+{
+  "perspective": "視角與鏡頭高度（例如：平視、俯視、透視感）",
+  "structure": "空間結構、主要物件（窗、門、樑柱）及其位置",
+  "lighting": "光線來源、色溫（例如：暖黃、白光）及陰影",
+  "materials": "主要材質與質感（例如：木地板、乳膠漆牆、玻璃）",
+  "notes": "任何模糊或被遮擋的不確定區域"
+}
+如果無法返回 JSON，請用列點方式詳細描述上述內容。`
                         },
                         {
                             role: "user",
@@ -75,13 +83,29 @@ export default async function handler(req, res) {
             const data = await response.json();
             const content = data.choices[0]?.message?.content || "";
             
+            // Try to parse JSON, fallback to raw text
+            let parsed = null;
+            try {
+                // Remove markdown code blocks if present
+                const cleanContent = content.replace(/```json/g, '').replace(/```/g, '').trim();
+                parsed = JSON.parse(cleanContent);
+            } catch (e) {
+                console.warn("[Vision API] JSON parse failed, using raw text", e);
+            }
+
+            const formattedSummary = parsed 
+                ? `【視覺分析報告】
+- 視角：${parsed.perspective}
+- 結構：${parsed.structure}
+- 光線：${parsed.lighting}
+- 材質：${parsed.materials}
+- 備註：${parsed.notes}`
+                : content;
+
             res.status(200).json({
                 ok: true,
-                vision_summary: content,
-                extraction: { 
-                    roomTypeGuess: "Detected Room", 
-                    rawAnalysis: content
-                },
+                vision_summary: formattedSummary,
+                extraction: parsed || { rawAnalysis: content },
                 debug: {
                     usedKey: usedKey,
                     requestId: data.id
