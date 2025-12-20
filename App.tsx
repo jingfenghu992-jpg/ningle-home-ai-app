@@ -7,7 +7,7 @@ import { Message, AppMode } from './types';
 import { INITIAL_MESSAGE } from './constants';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateImage } from './services/generateClient';
+import { generateDesignImage, uploadImage } from './services/generateClient';
 
 const DESIGN_INITIAL_MESSAGE: Message = {
   id: 'init-design',
@@ -71,6 +71,7 @@ const App: React.FC = () => {
     doorType?: string;
   }>({});
   const [designImageDataUrl, setDesignImageDataUrl] = useState<string | null>(null);
+  const [designImageBlobUrl, setDesignImageBlobUrl] = useState<string | null>(null);
   const [designStructureLock, setDesignStructureLock] = useState<string | null>(null);
   const generatingRef = useRef(false);
 
@@ -111,6 +112,7 @@ const App: React.FC = () => {
         setDesignStep('q1_space');
         setDesignData({});
         setDesignImageDataUrl(null);
+        setDesignImageBlobUrl(null);
         setMode('design');
         setChatHistory((prev) => ({
           ...prev,
@@ -136,7 +138,7 @@ const App: React.FC = () => {
 
     // 設計模式：Revision
     if (mode === 'design' && (designStep === 'revision_waiting' || designStep === 'completed')) {
-      if (!designImageDataUrl || !designStructureLock) {
+      if (!designImageDataUrl || !designStructureLock || !designImageBlobUrl) {
         const errorMsg: Message = {
           id: Date.now().toString(),
           type: 'text',
@@ -164,6 +166,7 @@ const App: React.FC = () => {
       await triggerDesignImageGeneration(
         designImageDataUrl,
         designStructureLock,
+        designImageBlobUrl,
         text,
       );
       return;
@@ -488,6 +491,7 @@ const App: React.FC = () => {
           }
 
           setDesignImageDataUrl(dataUrl);
+          setDesignImageBlobUrl(null); // Reset blob url
           setDesignStep('analyze_image');
 
           const aiMessageId = (Date.now() + 1).toString();
@@ -544,9 +548,43 @@ const App: React.FC = () => {
             const structLock = normalizeDesignStructureLock(vision.extraction || {}, vision.vision_summary || '');
             setDesignStructureLock((prev) => prev || structLock);
 
+            // Upload to Blob in parallel (or sequential before trigger)
+            let blobUrl = null;
+            try {
+                // We need the file object or convert dataUrl back to blob. 
+                // Since we have the file object in the closure, wait, we are in reader.onload. 
+                // The 'file' variable is available from handleSendImage scope!
+                const uploadRes = await uploadImage(file);
+                if (uploadRes && uploadRes.url) {
+                    blobUrl = uploadRes.url;
+                    setDesignImageBlobUrl(blobUrl);
+                } else {
+                    console.error('[App] Failed to upload image to blob');
+                    // We might want to stop here or try to continue? 
+                    // Instruction says: Base image 必須使用用戶上傳並存入 Blob 的圖片
+                    throw new Error('Image upload failed');
+                }
+            } catch (uploadError) {
+                console.error('[App] Upload error:', uploadError);
+                 setMessages((prev) => {
+                  const updated = [...prev];
+                  const index = updated.findIndex((m) => m.id === aiMessageId);
+                  if (index !== -1) {
+                    updated[index] = {
+                      ...updated[index],
+                      content: '上傳圖片時出咗少少問題，請再試一次。',
+                    };
+                  }
+                  return updated;
+                });
+                setDesignStep('request_image');
+                return;
+            }
+
             await triggerDesignImageGeneration(
               dataUrl,
               structLock,
+              blobUrl,
               undefined,
             );
             return;
@@ -708,7 +746,7 @@ const App: React.FC = () => {
     ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
   }
 
-  const triggerDesignImageGeneration = async (imageDataUrl: string, structureLockText: string, revisionDelta?: string) => {
+  const triggerDesignImageGeneration = async (imageDataUrl: string, structureLockText: string, blobUrl: string, revisionDelta?: string) => {
     setDesignStep('generate_design');
     const aiMessageId = Date.now().toString();
     const generatingMsg: Message = {
@@ -785,18 +823,18 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
           let success = false;
           while (attempt < 2 && !success) {
             try {
-              const generateResult = await generateImage({
+              const generateResult = await generateDesignImage({
                 prompt: promptText,
+                baseImageBlobUrl: blobUrl,
                 size: '1024x1024',
-                response_format: 'b64_json',
               });
-              if (generateResult.ok && generateResult.b64_json) {
+              if (generateResult.ok && generateResult.resultBlobUrl) {
                 success = true;
                 setDesignStep('present_result');
                 const imgMsg: Message = {
                   id: (Date.now() + 1).toString(),
                   type: 'image',
-                  content: generateResult.b64_json,
+                  content: generateResult.resultBlobUrl, // Use the new blob url
                   sender: 'ai',
                   timestamp: Date.now(),
                 };
@@ -878,18 +916,18 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
         let success = false;
         while (attempt < 2 && !success) {
           try {
-            const generateResult = await generateImage({
+            const generateResult = await generateDesignImage({
               prompt: promptText,
+              baseImageBlobUrl: blobUrl,
               size: '1024x1024',
-              response_format: 'b64_json',
             });
-            if (generateResult.ok && generateResult.b64_json) {
+            if (generateResult.ok && generateResult.resultBlobUrl) {
               success = true;
               setDesignStep('present_result');
               const imgMsg: Message = {
                 id: (Date.now() + 1).toString(),
                 type: 'image',
-                content: generateResult.b64_json,
+                content: generateResult.resultBlobUrl,
                 sender: 'ai',
                 timestamp: Date.now(),
               };
@@ -1094,6 +1132,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
         if (option === '重新上傳') {
             setDesignStep('request_image');
             setDesignImageDataUrl(null);
+            setDesignImageBlobUrl(null);
             setDesignStructureLock(null);
             const msg: Message = { 
                 id: Date.now().toString(), 
@@ -1106,7 +1145,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
             return;
         }
         if (option === '重試生成') {
-            if (!designImageDataUrl || !designStructureLock) {
+            if (!designImageDataUrl || !designStructureLock || !designImageBlobUrl) {
                 // If data lost, force re-upload
                 const errorMsg: Message = {
                   id: Date.now().toString(),
@@ -1119,7 +1158,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
                 setDesignStep('request_image');
                 return;
             }
-            triggerDesignImageGeneration(designImageDataUrl, designStructureLock);
+            triggerDesignImageGeneration(designImageDataUrl, designStructureLock, designImageBlobUrl);
             return;
         }
     }
@@ -1142,6 +1181,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
             setDesignStep('q1_space');
             setDesignData({});
             setDesignImageDataUrl(null);
+            setDesignImageBlobUrl(null);
             setChatHistory((prev) => ({ ...prev, design: [DESIGN_INITIAL_MESSAGE] }));
           }
           // Switching TO Consultant Mode
