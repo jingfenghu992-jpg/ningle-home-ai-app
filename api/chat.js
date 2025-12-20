@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { messages, mode } = req.body;
+    const { messages, mode, visionSummary } = req.body;
     const lastUserMessage = messages.slice().reverse().find(m => m.role === 'user');
     const userText = lastUserMessage ? lastUserMessage.content : "";
 
@@ -31,8 +31,7 @@ export default async function handler(req, res) {
             if (sources.length > 0) appliedDocName = sources.join(', ');
         } catch (e) {
             console.error("[Chat API] KB Search Failed:", e);
-            // Fallback: Continue without strict context, or add a generic prompt?
-            // We'll let it proceed but maybe add a system note to be generic if KB failed.
+            // Fallback: Continue without strict context
         }
     }
 
@@ -46,10 +45,16 @@ export default async function handler(req, res) {
 2. **絕對唔可以** 講粗口或攻擊性語言。
 3. **絕對唔可以** 亂作資料。`;
 
+    // Handle Vision Summary (Inject if present)
+    let visionContext = "";
+    if (visionSummary) {
+        visionContext = `\n\n【重要：視覺分析資料】\n用戶剛上傳了圖片，以下是 AI 視覺分析報告，請必須引用此內容回答用戶問題（例如「見到你張相...」）：\n${visionSummary}\n`;
+    }
+
     let systemPrompt = "";
 
     if (isStrictKB && contextExcerpt) {
-        systemPrompt = `${CORE_PERSONA}
+        systemPrompt = `${CORE_PERSONA}${visionContext}
 
 【重要任務：業務查詢解答】
 客人問緊關鍵業務問題（板材/報價/流程/公司資料等）。你必須**優先參考**以下公司內部資料回答：
@@ -68,7 +73,7 @@ ${contextExcerpt}
 4. **語氣包裝**：用「我哋一般」、「通常做法」代替「資料顯示」。`;
     } else if (isStrictKB && !contextExcerpt) {
         // Hit keywords but KB failed or empty
-        systemPrompt = `${CORE_PERSONA}
+        systemPrompt = `${CORE_PERSONA}${visionContext}
 
 【任務：業務查詢（資料暫缺）】
 客人問緊業務問題，但暫時未能讀取詳細資料。
@@ -78,14 +83,15 @@ ${contextExcerpt}
 - 強調「如果你有圖則或者具體要求，我可以幫你再準確啲分析」。`;
     } else {
         // General Design Chat
-        systemPrompt = `${CORE_PERSONA}
+        systemPrompt = `${CORE_PERSONA}${visionContext}
 
 【任務：一般設計閒聊】
 解答設計風格、空間感問題。
 原則：
 1. **極速回覆**：重點清晰，唔好長篇大論。
 2. **結構鎖**：如涉及出圖，絕不改動原圖結構。
-3. **禮貌引導**：適時引導客人講出具體需求（例如戶型、預算）。`;
+3. **禮貌引導**：適時引導客人講出具體需求（例如戶型、預算）。
+4. **視覺引用**：如上方有視覺分析資料，請自然地融入對話中。`;
     }
 
     const apiMessages = [
@@ -124,7 +130,8 @@ ${contextExcerpt}
         debug: {
             usedKey: "DEEPSEEK_API_KEY",
             mode: isStrictKB ? "STRICT_KB" : "GENERAL",
-            appliedDoc: appliedDocName
+            appliedDoc: appliedDocName,
+            hasVision: !!visionSummary
         }
     });
 
