@@ -2,9 +2,7 @@ import { put } from '@vercel/blob';
 
 export const config = {
     api: {
-        bodyParser: {
-            sizeLimit: '10mb',
-        },
+        bodyParser: false,
     },
 };
 
@@ -21,8 +19,8 @@ export default async function handler(req, res) {
 
     const filename = req.headers['x-vercel-filename'] || 'image.jpg';
     
-    // Upload to Vercel Blob
-    const blob = await put(`ningle-temp-images/${Date.now()}-${filename}`, req.body, {
+    // Upload to Vercel Blob - Pass `req` directly for streaming
+    const blob = await put(`ningle-temp-images/${Date.now()}-${filename}`, req, {
       access: 'public',
     });
 
