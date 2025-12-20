@@ -4,7 +4,7 @@
 
 :root {
   /* New Palette Definition - COPIED FROM INDEX.HTML */
-  --wa-bg: #0B141A;          /* Chat Background Base - Dark Grey */
+  --wa-bg: #111B21;          /* Chat Background Base - Updated to lighter dark grey */
   --wa-surface: #1B1F26;     /* Header/Input Bar */
   --wa-divider: rgba(255,255,255,0.06);
   
@@ -13,7 +13,7 @@
   --wa-icon: #FFFFFF;        /* Icons */
   
   --wa-user: #005C4B;        /* User Bubble (Right) - WhatsApp Dark Green */
-  --wa-bot: #FFFFFF;         /* Bot Bubble (Left) - White */
+  --wa-bot: #E9EDEF;         /* Bot Bubble (Left) - Softer Off-White */
   
   --wa-text-user: #E9EDF1;   /* Text on User Bubble */
   --wa-text-bot: #111B21;    /* Text on Bot Bubble */
