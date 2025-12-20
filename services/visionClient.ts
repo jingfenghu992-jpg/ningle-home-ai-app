@@ -38,10 +38,29 @@ export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: s
       body.imageDataUrl = params.imageDataUrl;
     }
 
-    return await fetchJSON<VisionResponse>('/api/vision', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    // Increase client timeout to 300s to match Vercel Pro potential or just to be safe
+    // Since we are using Vercel Hobby (60s limit), this client timeout is just a safety net.
+    // But StepFun analysis can be slow.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 300s timeout
+
+    try {
+        const response = await fetchJSON<VisionResponse>('/api/vision', {
+            method: 'POST',
+            body: JSON.stringify(body),
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error: any) {
+        clearTimeout(timeoutId);
+        console.error('[Vision Client] Error:', error);
+        return {
+            ok: false,
+            message: error.message || 'Network error',
+            errorCode: error.code || 'NETWORK_ERROR'
+        };
+    }
   } catch (error: any) {
     console.error('[Vision Client] Error:', error);
     return {
