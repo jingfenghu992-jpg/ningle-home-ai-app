@@ -42,6 +42,10 @@ export default async function handler(req, res) {
             usedKey = key === process.env.STEPFUN_VISION_API_KEY ? 'KEY_1' : 'KEY_2';
             console.log(`[Vision API] Trying with ${usedKey}...`);
 
+            // Setup controller for upstream timeout (50s to avoid Vercel gateway timeout)
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 50000);
+
             const response = await fetch('https://api.stepfun.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -71,8 +75,11 @@ export default async function handler(req, res) {
                             ]
                         }
                     ]
-                })
+                }),
+                signal: controller.signal
             });
+            
+            clearTimeout(timeout);
 
             if (!response.ok) {
                 const errText = await response.text();
@@ -122,8 +129,16 @@ export default async function handler(req, res) {
             return;
 
         } catch (error) {
+            clearTimeout(timeout);
             console.error(`[Vision API] Error with ${usedKey}:`, error);
-            lastError = { message: error.message };
+            
+            if (error.name === 'AbortError') {
+                lastError = { message: 'Upstream Vision API timed out (50s)' };
+                // Specific behavior: if timed out, try next key? 
+                // Usually timeout means model is slow or image is too large, changing key might not help but worth a try.
+            } else {
+                lastError = { message: error.message };
+            }
         }
     }
 
