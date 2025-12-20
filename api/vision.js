@@ -49,14 +49,26 @@ export default async function handler(req, res) {
             // If imageUrl is present (Blob URL), we need to fetch it and convert to base64
             // because passing the URL directly to StepFun might fail if they can't access Vercel Blobs.
             let finalImageUrl = imageUrl;
+            
+            // Optimization: If StepFun supports Vercel Blob URLs directly, we should skip this fetch.
+            // However, based on logs, StepFun seems to have trouble accessing them (perhaps due to anti-bot headers or geo-blocking).
+            // So we fetch it server-side.
             if (imageUrl && imageUrl.startsWith('http')) {
                 try {
-                    console.log(`[Vision API] Fetching image from URL for conversion: ${imageUrl}`);
+                    // Check if it's a Vercel Blob URL to add potential optimization or logging
+                    const isVercelBlob = imageUrl.includes('public.blob.vercel-storage.com');
+                    console.log(`[Vision API] Fetching image from URL (Vercel Blob: ${isVercelBlob}): ${imageUrl}`);
+                    
                     const imgRes = await fetch(imageUrl);
                     if (imgRes.ok) {
                         const arrayBuffer = await imgRes.arrayBuffer();
                         const base64 = Buffer.from(arrayBuffer).toString('base64');
                         const mime = imgRes.headers.get('content-type') || 'image/jpeg';
+                        // Keep payload small if possible? No, for analysis we need full res usually.
+                        // But we can check size here. If > 10MB, we might still fail on StepFun side or fetch timeout.
+                        if (base64.length > 10 * 1024 * 1024 * 1.33) {
+                             console.warn('[Vision API] Image might be too large for StepFun');
+                        }
                         finalImageUrl = `data:${mime};base64,${base64}`;
                     } else {
                         console.warn(`[Vision API] Failed to fetch image from URL: ${imgRes.status}, falling back to original URL.`);

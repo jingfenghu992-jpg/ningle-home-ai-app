@@ -29,6 +29,12 @@ export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: s
     if (params.imageUrl) {
       body.imageUrl = params.imageUrl;
     } else {
+      // Fallback: If no remote URL, we MUST send base64, but we try to compress or warn?
+      // Actually with Vercel Blob, we should almost always have imageUrl.
+      // If we don't, it means upload failed.
+      if (!params.imageDataUrl) {
+          return { ok: false, message: 'Image upload failed, please retry.', errorCode: 'UPLOAD_FAILED' };
+      }
       body.imageDataUrl = params.imageDataUrl;
     }
 

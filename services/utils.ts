@@ -27,10 +27,24 @@ export async function fetchJSON<T>(url: string, options: RequestInit = {}): Prom
       try {
         const errorBody = await response.json();
         errorMessage = errorBody.message || errorMessage;
-        errorCode = errorBody.errorCode || errorBody.code; // support errorCode prop
+        errorCode = errorBody.errorCode || errorBody.code;
+        // Special handling for Vercel 500s which might be HTML
       } catch (e) {
-        // ignore json parse error
+        // If JSON parse fails, it might be Vercel's raw 500 HTML page
+        // Try to get text to see if it contains useful info
+        try {
+            // We already consumed body in response.json(), but if it failed, 
+            // actually we can't read it again easily unless we clone.
+            // But usually response.json() fails because it is empty or HTML.
+            errorMessage = `Server Error (${response.status}). Please try a smaller image or retry later.`;
+        } catch (e2) {}
       }
+      
+      if (response.status === 504) {
+          errorMessage = 'Gateway Timeout: The analysis took too long.';
+          errorCode = 'TIMEOUT';
+      }
+      
       throw new APIError(response.status, errorMessage, errorCode);
     }
 
