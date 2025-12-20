@@ -8,8 +8,9 @@ export interface VisionResponse {
   errorCode?: string;
 }
 
-export async function analyzeImage(params: { imageDataUrl: string; mode: string }): Promise<VisionResponse> {
-  if (!params.imageDataUrl || !params.imageDataUrl.startsWith('data:image/')) {
+export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: string; mode: string }): Promise<VisionResponse> {
+  const payloadUrl = params.imageUrl || params.imageDataUrl;
+  if (!payloadUrl) {
     console.error('[Vision Client] Invalid image payload');
     return {
       ok: false,
@@ -22,7 +23,8 @@ export async function analyzeImage(params: { imageDataUrl: string; mode: string 
     return await fetchJSON<VisionResponse>('/api/vision', {
       method: 'POST',
       body: JSON.stringify({
-        imageDataUrl: params.imageDataUrl,
+        imageUrl: params.imageUrl, // Prioritize remote URL
+        imageDataUrl: params.imageDataUrl, // Fallback to base64
         mode: params.mode
       }),
     });

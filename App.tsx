@@ -42,6 +42,7 @@ const App: React.FC = () => {
   // Consultant mode: pending image state
   const [pendingImageDataUrl, setPendingImageDataUrl] = useState<string | null>(null);
   const [pendingImageMsgId, setPendingImageMsgId] = useState<string | null>(null);
+  const [pendingImageBlobUrl, setPendingImageBlobUrl] = useState<string | null>(null); // NEW
   const [awaitingSpace, setAwaitingSpace] = useState(false);
 
   // Design mode state
@@ -221,7 +222,8 @@ const App: React.FC = () => {
 
       try {
         const vision = await analyzeImage({ 
-          imageDataUrl: pendingImageDataUrl, 
+          imageDataUrl: pendingImageDataUrl,
+          imageUrl: pendingImageBlobUrl, // Use blob url if available
           mode: 'consultant' 
         });
         
@@ -465,6 +467,14 @@ const App: React.FC = () => {
           setPendingImageMsgId(userImageMessage.id); // SAVE ID
           setAwaitingSpace(true);
           
+          // Background Upload for Consultant Mode
+          uploadImage(file).then(res => {
+            if (res && res.url) {
+                console.log('[App] Consultant Image uploaded:', res.url);
+                setPendingImageBlobUrl(res.url);
+            }
+          }).catch(err => console.error('[App] Consultant Upload Failed:', err));
+
           const spaceOptions = ['客廳', '餐廳', '睡房', '廚房', '浴室', '玄關', '書房', '全屋'];
           const spaceQuestion: Message = {
             id: (Date.now() + 1).toString(),
@@ -505,8 +515,41 @@ const App: React.FC = () => {
           };
           setMessages((prev) => [...prev, aiPlaceholder]);
 
+          // Upload first, then analyze
+          setMessages((prev) => {
+              const updated = [...prev];
+              const idx = updated.findIndex(m => m.id === aiMessageId);
+              if (idx !== -1) updated[idx] = { ...updated[idx], content: '收到圖片，正在上傳備份...' };
+              return updated;
+          });
+
+          let blobUrl: string | null = null;
           try {
-            const vision = await analyzeImage({ imageDataUrl: dataUrl, mode: 'design' });
+              const uploadRes = await uploadImage(file);
+              if (uploadRes && uploadRes.url) {
+                  blobUrl = uploadRes.url;
+                  setDesignImageBlobUrl(blobUrl);
+              } else {
+                  throw new Error('Upload failed');
+              }
+          } catch (err) {
+              console.error('[App] Design Upload Failed:', err);
+              // Fallback to analyze using base64 if upload fails, but warn user
+          }
+          
+          setMessages((prev) => {
+              const updated = [...prev];
+              const idx = updated.findIndex(m => m.id === aiMessageId);
+              if (idx !== -1) updated[idx] = { ...updated[idx], content: '圖片備份成功，正在分析結構...' };
+              return updated;
+          });
+
+          try {
+            const vision = await analyzeImage({ 
+                imageDataUrl: dataUrl, 
+                imageUrl: blobUrl, // Use blob url
+                mode: 'design' 
+            });
 
             if (!vision.ok || !vision.vision_summary) {
               let errorContent = vision.message || '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？';
@@ -549,66 +592,12 @@ const App: React.FC = () => {
             const structLock = normalizeDesignStructureLock(vision.extraction || {}, vision.vision_summary || '');
             setDesignStructureLock((prev) => prev || structLock);
 
-            // Upload to Blob in parallel (or sequential before trigger)
-            let blobUrl = null;
-            try {
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const index = updated.findIndex((m) => m.id === aiMessageId);
-                  if (index !== -1) {
-                    updated[index] = {
-                      ...updated[index],
-                      content: '收到圖片，正在上傳備份...',
-                    };
-                  }
-                  return updated;
-                });
-
-                // We need the file object or convert dataUrl back to blob. 
-                // Since we have the file object in the closure, wait, we are in reader.onload. 
-                // The 'file' variable is available from handleSendImage scope!
-                const uploadRes = await uploadImage(file);
-                if (uploadRes && uploadRes.url) {
-                    blobUrl = uploadRes.url;
-                    setDesignImageBlobUrl(blobUrl);
-                    setMessages((prev) => {
-                      const updated = [...prev];
-                      const index = updated.findIndex((m) => m.id === aiMessageId);
-                      if (index !== -1) {
-                        updated[index] = {
-                          ...updated[index],
-                          content: '圖片備份成功，正在分析結構...',
-                        };
-                      }
-                      return updated;
-                    });
-                } else {
-                    console.error('[App] Failed to upload image to blob');
-                    // We might want to stop here or try to continue? 
-                    // Instruction says: Base image 必須使用用戶上傳並存入 Blob 的圖片
-                    throw new Error('Image upload failed');
-                }
-            } catch (uploadError) {
-                console.error('[App] Upload error:', uploadError);
-                 setMessages((prev) => {
-                  const updated = [...prev];
-                  const index = updated.findIndex((m) => m.id === aiMessageId);
-                  if (index !== -1) {
-                    updated[index] = {
-                      ...updated[index],
-                      content: '上傳圖片時出咗少少問題，請再試一次。',
-                    };
-                  }
-                  return updated;
-                });
-                setDesignStep('request_image');
-                return;
-            }
-
+            // Upload already done above
+            
             await triggerDesignImageGeneration(
               dataUrl,
               structLock,
-              blobUrl,
+              blobUrl || '', // use the blobUrl from top scope
               undefined,
             );
             return;
@@ -1213,6 +1202,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
              // Reset pending image state to avoid "stuck" uploads
              setPendingImageDataUrl(null);
              setPendingImageMsgId(null);
+             setPendingImageBlobUrl(null);
              setAwaitingSpace(false);
           }
           setMode(newMode);
