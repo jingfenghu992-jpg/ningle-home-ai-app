@@ -551,6 +551,18 @@ const App: React.FC = () => {
             // Upload to Blob in parallel (or sequential before trigger)
             let blobUrl = null;
             try {
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  const index = updated.findIndex((m) => m.id === aiMessageId);
+                  if (index !== -1) {
+                    updated[index] = {
+                      ...updated[index],
+                      content: '收到圖片，正在上傳備份...',
+                    };
+                  }
+                  return updated;
+                });
+
                 // We need the file object or convert dataUrl back to blob. 
                 // Since we have the file object in the closure, wait, we are in reader.onload. 
                 // The 'file' variable is available from handleSendImage scope!
@@ -558,6 +570,17 @@ const App: React.FC = () => {
                 if (uploadRes && uploadRes.url) {
                     blobUrl = uploadRes.url;
                     setDesignImageBlobUrl(blobUrl);
+                    setMessages((prev) => {
+                      const updated = [...prev];
+                      const index = updated.findIndex((m) => m.id === aiMessageId);
+                      if (index !== -1) {
+                        updated[index] = {
+                          ...updated[index],
+                          content: '圖片備份成功，正在分析結構...',
+                        };
+                      }
+                      return updated;
+                    });
                 } else {
                     console.error('[App] Failed to upload image to blob');
                     // We might want to stop here or try to continue? 
