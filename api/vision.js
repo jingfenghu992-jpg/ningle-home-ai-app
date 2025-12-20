@@ -13,10 +13,10 @@ export default async function handler(req, res) {
     }
 
     // Support both parameter names for robustness
-    const imageDataUrl = req.body.imageDataUrl || req.body.image;
+    const imageUrl = req.body.imageUrl || req.body.imageDataUrl || req.body.image;
 
-    if (!imageDataUrl) {
-        res.status(400).json({ error: 'Missing imageDataUrl' });
+    if (!imageUrl) {
+        res.status(400).json({ error: 'Missing imageUrl or imageDataUrl' });
         return;
     }
 
@@ -67,7 +67,7 @@ export default async function handler(req, res) {
                             role: "user",
                             content: [
                                 { type: "text", text: "請分析這張室內圖片。" },
-                                { type: "image_url", image_url: { url: imageDataUrl } }
+                                { type: "image_url", image_url: { url: imageUrl } }
                             ]
                         }
                     ]
