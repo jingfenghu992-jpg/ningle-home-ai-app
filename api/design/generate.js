@@ -34,7 +34,15 @@ export default async function handler(req, res) {
 
   try {
     // 1. Fetch the base image from Blob
-    // ... code ...
+    // Need to fetch because 'dataUrl' in source_url might be undefined in the broken code below
+    console.log(`[Design Gen] Fetching base image from: ${baseImageBlobUrl}`);
+    const imageRes = await fetch(baseImageBlobUrl);
+    if (!imageRes.ok) {
+      throw new Error(`Failed to fetch base image: ${imageRes.statusText}`);
+    }
+    const arrayBuffer = await imageRes.arrayBuffer();
+    const base64Image = Buffer.from(arrayBuffer).toString('base64');
+    const dataUrl = `data:${imageRes.headers.get('content-type') || 'image/jpeg'};base64,${base64Image}`;
     
     // 2. Call StepFun Image-to-Image API
     console.log('[Design Gen] Calling StepFun image2image...');

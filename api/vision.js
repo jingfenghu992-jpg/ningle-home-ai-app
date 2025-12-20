@@ -46,6 +46,26 @@ export default async function handler(req, res) {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 50000);
 
+            // If imageUrl is present (Blob URL), we need to fetch it and convert to base64
+            // because passing the URL directly to StepFun might fail if they can't access Vercel Blobs.
+            let finalImageUrl = imageUrl;
+            if (imageUrl && imageUrl.startsWith('http')) {
+                try {
+                    console.log(`[Vision API] Fetching image from URL for conversion: ${imageUrl}`);
+                    const imgRes = await fetch(imageUrl);
+                    if (imgRes.ok) {
+                        const arrayBuffer = await imgRes.arrayBuffer();
+                        const base64 = Buffer.from(arrayBuffer).toString('base64');
+                        const mime = imgRes.headers.get('content-type') || 'image/jpeg';
+                        finalImageUrl = `data:${mime};base64,${base64}`;
+                    } else {
+                        console.warn(`[Vision API] Failed to fetch image from URL: ${imgRes.status}, falling back to original URL.`);
+                    }
+                } catch (fetchErr) {
+                    console.warn(`[Vision API] Error fetching image for conversion:`, fetchErr);
+                }
+            }
+
             const response = await fetch('https://api.stepfun.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -72,7 +92,7 @@ export default async function handler(req, res) {
                             role: "user",
                             content: [
                                 { type: "text", text: "請分析這張室內圖片。" },
-                                { type: "image_url", image_url: { url: imageUrl } }
+                                { type: "image_url", image_url: { url: finalImageUrl } }
                             ]
                         }
                     ]
