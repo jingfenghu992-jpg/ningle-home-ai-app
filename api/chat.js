@@ -99,8 +99,8 @@ ${contextExcerpt}
         ...messages
     ];
 
-    // Call DeepSeek
-    const response = await fetch('https://api.deepseek.com/chat/completions', {
+    // Call DeepSeek with streaming enabled
+    const deepSeekResponse = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -109,34 +109,50 @@ ${contextExcerpt}
       body: JSON.stringify({
         model: 'deepseek-chat',
         messages: apiMessages,
-        stream: false,
-        max_tokens: 600, // Slightly more for detailed answers
+        stream: true, // ENABLE STREAMING
+        max_tokens: 600,
         temperature: 0.7
       })
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      res.status(response.status).json({ error: 'Upstream API Error', details: errorText });
-      return;
+    if (!deepSeekResponse.ok) {
+        const errorText = await deepSeekResponse.text();
+        res.status(deepSeekResponse.status).json({ error: 'Upstream API Error', details: errorText });
+        return;
     }
 
-    const data = await response.json();
-    const reply = data.choices[0]?.message?.content || "";
-    
-    res.status(200).json({
-        ok: true,
-        content: reply,
-        debug: {
-            usedKey: "DEEPSEEK_API_KEY",
-            mode: isStrictKB ? "STRICT_KB" : "GENERAL",
-            appliedDoc: appliedDocName,
-            hasVision: !!visionSummary
-        }
-    });
+    // Set headers for streaming response
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
 
+    // Pipe the DeepSeek stream directly to the client
+    // Note: Vercel serverless functions support streaming via web streams or node streams depending on runtime.
+    // For standard Node.js runtime in Vercel, we can iterate and flush.
+    
+    // We need to parse the SSE from DeepSeek and forward just the content or raw SSE.
+    // Simplest is to forward the raw stream but we might want to filter.
+    // For now, let's implement a pass-through reader.
+    
+    if (deepSeekResponse.body) {
+        // @ts-ignore
+        for await (const chunk of deepSeekResponse.body) {
+            // chunk is Buffer (Node) or Uint8Array (Web)
+            // DeepSeek sends SSE format: data: {...}
+            // We can just forward it if the client expects SSE, 
+            // OR we can parse it and send raw text chunks if we want a simpler client.
+            // Let's assume we forward the SSE chunks directly so the client parses them.
+            res.write(chunk);
+        }
+    }
+    
+    res.end();
   } catch (error) {
     console.error("API Error:", error);
-    res.status(500).json({ error: 'Internal Server Error', message: error.message });
+    if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal Server Error', message: error.message });
+    } else {
+        res.end();
+    }
   }
 }

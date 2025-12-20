@@ -96,37 +96,74 @@ export async function* chatWithDeepseekStream(params: {
   const apiMessages: ChatMessage[] = [...messages];
   apiMessages.push({ role: 'user', content: text });
 
+  // Use AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s timeout
+
   try {
-    const data = await fetchJSON<ChatResponse>('/api/chat', {
+    const response = await fetch('/api/chat', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         mode, 
         messages: apiMessages,
-        visionSummary // Explicitly sending this
+        visionSummary 
       }),
+      signal: controller.signal
     });
 
-    if (!data.ok) {
-        throw new Error(data.message || data.error || 'Unknown error');
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+        let errorMsg = `HTTP ${response.status}`;
+        try {
+            const errData = await response.json();
+            if (errData.error) errorMsg = errData.error;
+            if (errData.details) errorMsg += `: ${errData.details}`;
+        } catch (e) { }
+        throw new Error(errorMsg);
     }
 
-    const fullContent = data.content || "";
-    
-    // Optimized Split: Split by comma, period, newline, but keep delimiters.
-    // This makes chunks smaller and "stream" smoother.
-    const segments = fullContent.split(/([,，。！？.!?\n]+)/).filter(Boolean);
-    
-    for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i];
-        yield segment;
+    if (!response.body) throw new Error('No response body');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const chunk = decoder.decode(value, { stream: true });
+      buffer += chunk;
+      
+      // Process SSE lines
+      const lines = buffer.split('\n');
+      // Keep the last partial line in buffer
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
         
-        // Fast Typewriter: 30-70ms delay
-        const delay = Math.floor(Math.random() * (70 - 30 + 1) + 30);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const jsonStr = trimmed.slice(6);
+            const data = JSON.parse(jsonStr);
+            const content = data.choices?.[0]?.delta?.content || '';
+            if (content) yield content;
+          } catch (e) {
+            // ignore parse error for partial chunks
+          }
+        }
+      }
     }
-
   } catch (error: any) {
+    clearTimeout(timeoutId);
     console.error('[Chat Client] Error:', error);
+    if (error.name === 'AbortError') {
+       throw new Error('伺服器響應超時，請稍後再試');
+    }
     throw error;
   }
 }
