@@ -20,13 +20,21 @@ export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: s
   }
 
   try {
+    // Optimization: If we have a remote URL, DO NOT send the base64 data.
+    // This prevents hitting Vercel's 4.5MB request body limit and reduces latency.
+    const body: any = {
+      mode: params.mode
+    };
+
+    if (params.imageUrl) {
+      body.imageUrl = params.imageUrl;
+    } else {
+      body.imageDataUrl = params.imageDataUrl;
+    }
+
     return await fetchJSON<VisionResponse>('/api/vision', {
       method: 'POST',
-      body: JSON.stringify({
-        imageUrl: params.imageUrl, // Prioritize remote URL
-        imageDataUrl: params.imageDataUrl, // Fallback to base64
-        mode: params.mode
-      }),
+      body: JSON.stringify(body),
     });
   } catch (error: any) {
     console.error('[Vision Client] Error:', error);
