@@ -62,11 +62,20 @@ export default async function handler(req, res) {
                     const imgRes = await fetch(imageUrl);
                     if (imgRes.ok) {
                         const arrayBuffer = await imgRes.arrayBuffer();
-                        const base64 = Buffer.from(arrayBuffer).toString('base64');
+                        const buffer = Buffer.from(arrayBuffer);
+                        const base64 = buffer.toString('base64');
                         const mime = imgRes.headers.get('content-type') || 'image/jpeg';
-                        // Keep payload small if possible? No, for analysis we need full res usually.
-                        // But we can check size here. If > 10MB, we might still fail on StepFun side or fetch timeout.
-                        if (base64.length > 10 * 1024 * 1024 * 1.33) {
+                        
+                        // Check size here. If > 4MB (safe margin for Vercel 1024MB RAM), we might still fail.
+                        // Vercel Hobby has 1024MB RAM. A 10MB JPEG can decompress to 100MB+ bitmap in memory depending on libs,
+                        // but here we just hold base64 string which is ~1.33x size.
+                        // 10MB image -> 13MB string. This is fine for memory.
+                        // The issue might be request body size to StepFun? StepFun limit?
+                        // Let's just log size.
+                        const sizeMB = base64.length / 1024 / 1024;
+                        console.log(`[Vision API] Converted image size: ${sizeMB.toFixed(2)} MB`);
+
+                        if (sizeMB > 8) {
                              console.warn('[Vision API] Image might be too large for StepFun');
                         }
                         finalImageUrl = `data:${mime};base64,${base64}`;
