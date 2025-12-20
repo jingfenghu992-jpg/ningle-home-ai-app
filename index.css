@@ -18,6 +18,12 @@
   --wa-text-user: #E9EDF1;   /* Text on User Bubble */
   --wa-text-bot: #111B21;    /* Text on Bot Bubble */
 
+  /* Aliases & Missing Vars */
+  --wa-header: var(--wa-surface);
+  --wa-text-main: var(--wa-text);
+  --wa-text-secondary: var(--wa-text-dim);
+  --wa-accent: #00a884;      /* WhatsApp Accent Green */
+
   --wa-shadow: 0 1px 0.5px rgba(0,0,0,0.13); 
   --wa-radius: 16px;         /* Increased radius */
   --wa-font: 16px;
