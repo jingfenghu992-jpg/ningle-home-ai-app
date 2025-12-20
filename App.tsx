@@ -8,6 +8,7 @@ import { INITIAL_MESSAGE } from './constants';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
 import { generateDesignImage, uploadImage } from './services/generateClient';
+import { compressImage } from './services/utils';
 
 const DESIGN_INITIAL_MESSAGE: Message = {
   id: 'init-design',
@@ -467,183 +468,193 @@ const App: React.FC = () => {
   };
 
   const handleSendImage = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      if (e.target?.result && typeof e.target.result === 'string') {
-        const dataUrl = e.target.result;
-        const mimeMatch = /^data:(image\/[a-zA-Z0-9.+-]+);base64,/.exec(dataUrl);
-        const imageMime = mimeMatch ? mimeMatch[1] : 'unknown';
-
-        const userImageMessage: Message = {
-          id: Date.now().toString(),
-          type: 'image',
-          content: dataUrl,
-          sender: 'user',
-          timestamp: Date.now(),
-        };
-        setMessages((prev) => [...prev, userImageMessage]);
-
-        if (mode === 'consultant') {
-          setPendingImageDataUrl(dataUrl);
-          setPendingImageMsgId(userImageMessage.id); // SAVE ID
-          setAwaitingSpace(true);
-          
-          // Background Upload for Consultant Mode
-          uploadImage(file).then(res => {
-            if (res && res.url) {
-                console.log('[App] Consultant Image uploaded:', res.url);
-                setPendingImageBlobUrl(res.url);
-            }
-          }).catch(err => console.error('[App] Consultant Upload Failed:', err));
-
-          const spaceOptions = ['客廳', '餐廳', '睡房', '廚房', '浴室', '玄關', '書房', '全屋'];
-          const spaceQuestion: Message = {
-            id: (Date.now() + 1).toString(),
-            type: 'text',
-            content: '我收到你張相啦～想確認一下，呢個係邊個空間先？🙂',
-            sender: 'ai',
-            timestamp: Date.now(),
-            options: spaceOptions
-          };
-          setMessages((prev) => [...prev, spaceQuestion]);
-          return;
-        }
-
-        if (mode === 'design') {
-          if (designStep !== 'request_image') {
-            const errorMsg: Message = {
+    // 1. Compress Image immediately
+    compressImage(file, 1536, 0.8).then((compressedBlob) => {
+        const compressedFile = new File([compressedBlob], file.name, { type: 'image/jpeg' });
+        
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          if (e.target?.result && typeof e.target.result === 'string') {
+            const dataUrl = e.target.result;
+            // ... Rest of the logic uses dataUrl (which is now compressed)
+            
+            const userImageMessage: Message = {
               id: Date.now().toString(),
-              type: 'text',
-              content: '請先完成上面嘅資料收集，我先可以幫你分析相片 🙏',
-              sender: 'ai',
+              type: 'image',
+              content: dataUrl,
+              sender: 'user',
               timestamp: Date.now(),
             };
-            setMessages((prev) => [...prev, errorMsg]);
-            return;
-          }
+            setMessages((prev) => [...prev, userImageMessage]);
 
-          setDesignImageDataUrl(dataUrl);
-          setDesignImageBlobUrl(null); // Reset blob url
-          setDesignStep('analyze_image');
-
-          const aiMessageId = (Date.now() + 1).toString();
-          const aiPlaceholder: Message = {
-            id: aiMessageId,
-            type: 'text',
-            content: '收到相片啦，我分析緊～請稍等一陣 😊',
-            sender: 'ai',
-            timestamp: Date.now(),
-          };
-          setMessages((prev) => [...prev, aiPlaceholder]);
-
-          // Upload first, then analyze
-          setMessages((prev) => {
-              const updated = [...prev];
-              const idx = updated.findIndex(m => m.id === aiMessageId);
-              if (idx !== -1) updated[idx] = { ...updated[idx], content: '收到圖片，正在上傳備份...' };
-              return updated;
-          });
-
-          let blobUrl: string | null = null;
-          try {
-              const uploadRes = await uploadImage(file);
-              if (uploadRes && uploadRes.url) {
-                  blobUrl = uploadRes.url;
-                  setDesignImageBlobUrl(blobUrl);
-              } else {
-                  throw new Error('Upload failed');
-              }
-          } catch (err) {
-              console.error('[App] Design Upload Failed:', err);
-              // Fallback to analyze using base64 if upload fails, but warn user
-          }
-          
-          setMessages((prev) => {
-              const updated = [...prev];
-              const idx = updated.findIndex(m => m.id === aiMessageId);
-              if (idx !== -1) updated[idx] = { ...updated[idx], content: '圖片備份成功，正在分析結構...' };
-              return updated;
-          });
-
-          try {
-            const vision = await analyzeImage({ 
-                imageDataUrl: dataUrl, 
-                imageUrl: blobUrl || undefined, // Use blob url
-                mode: 'design' 
-            });
-
-            if (!vision.ok || !vision.vision_summary) {
-              let errorContent = vision.message || '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？';
+            if (mode === 'consultant') {
+              setPendingImageDataUrl(dataUrl);
+              setPendingImageMsgId(userImageMessage.id); // SAVE ID
+              setAwaitingSpace(true);
               
-              if (vision.errorCode === 'MISSING_KEY') {
-                  errorContent = '【系統提示】伺服器未配置 STEPFUN_VISION_API_KEY，無法分析圖片。請通知管理員檢查 Vercel 環境變數。';
-              } else if (vision.errorCode === 'INVALID_PAYLOAD') {
-                  errorContent = '圖片格式有問題，請試下重新上載 JPG 或 PNG。';
-              } else if (vision.message?.includes('401') || vision.message?.includes('429')) {
-                   errorContent = '【系統提示】AI 視覺服務目前繁忙或配額已滿 (401/429)，請稍後再試。';
-              }
-
-              setMessages(prev => {
-                const updated = [...prev];
-                const index = updated.findIndex((m) => m.id === aiMessageId);
-                if (index !== -1) {
-                  updated[index] = {
-                    ...updated[index],
-                    content: errorContent,
-                  };
+              // Background Upload for Consultant Mode (Upload the COMPRESSED file)
+              uploadImage(compressedFile).then(res => {
+                if (res && res.url) {
+                    console.log('[App] Consultant Image uploaded (compressed):', res.url);
+                    setPendingImageBlobUrl(res.url);
                 }
-                return updated;
-              });
-              setDesignStep('request_image');
+              }).catch(err => console.error('[App] Consultant Upload Failed:', err));
+
+              const spaceOptions = ['客廳', '餐廳', '睡房', '廚房', '浴室', '玄關', '書房', '全屋'];
+              const spaceQuestion: Message = {
+                id: (Date.now() + 1).toString(),
+                type: 'text',
+                content: '我收到你張相啦～想確認一下，呢個係邊個空間先？🙂',
+                sender: 'ai',
+                timestamp: Date.now(),
+                options: spaceOptions
+              };
+              setMessages((prev) => [...prev, spaceQuestion]);
               return;
             }
 
-            setMessages((prev) => {
-              const updated = [...prev];
-              const index = updated.findIndex((m) => m.id === userImageMessage.id);
-              if (index !== -1) {
-                updated[index] = {
-                  ...updated[index],
-                  visionSummary: vision.vision_summary
+            if (mode === 'design') {
+              if (designStep !== 'request_image') {
+                const errorMsg: Message = {
+                  id: Date.now().toString(),
+                  type: 'text',
+                  content: '請先完成上面嘅資料收集，我先可以幫你分析相片 🙏',
+                  sender: 'ai',
+                  timestamp: Date.now(),
                 };
+                setMessages((prev) => [...prev, errorMsg]);
+                return;
               }
-              return updated;
-            });
 
-            const structLock = normalizeDesignStructureLock(vision.extraction || {}, vision.vision_summary || '');
-            setDesignStructureLock((prev) => prev || structLock);
+              setDesignImageDataUrl(dataUrl);
+              setDesignImageBlobUrl(null); // Reset blob url
+              setDesignStep('analyze_image');
 
-            // Upload already done above
-            
-            await triggerDesignImageGeneration(
-              dataUrl,
-              structLock,
-              blobUrl || '', // use the blobUrl from top scope
-              undefined,
-            );
-            return;
-          } catch (error: any) {
-            console.error('[App] Design image vision error:', error);
-            setMessages((prev) => {
-              const updated = [...prev];
-              const index = updated.findIndex((m) => m.id === aiMessageId);
-              if (index !== -1) {
-                updated[index] = {
-                  ...updated[index],
-                  content: (error.message && (error.message.includes('超時') || error.code === 'TIMEOUT'))
-                    ? '圖片分析超時，請稍後再試或嘗試較細嘅圖片。'
-                    : '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？',
-                };
+              const aiMessageId = (Date.now() + 1).toString();
+              const aiPlaceholder: Message = {
+                id: aiMessageId,
+                type: 'text',
+                content: '收到相片啦，我分析緊～請稍等一陣 😊',
+                sender: 'ai',
+                timestamp: Date.now(),
+              };
+              setMessages((prev) => [...prev, aiPlaceholder]);
+
+              // Upload first, then analyze
+              setMessages((prev) => {
+                  const updated = [...prev];
+                  const idx = updated.findIndex(m => m.id === aiMessageId);
+                  if (idx !== -1) updated[idx] = { ...updated[idx], content: '收到圖片，正在上傳備份...' };
+                  return updated;
+              });
+
+              let blobUrl: string | null = null;
+              try {
+                  // Upload the COMPRESSED file
+                  const uploadRes = await uploadImage(compressedFile);
+                  if (uploadRes && uploadRes.url) {
+                      blobUrl = uploadRes.url;
+                      setDesignImageBlobUrl(blobUrl);
+                  } else {
+                      throw new Error('Upload failed');
+                  }
+              } catch (err) {
+                  console.error('[App] Design Upload Failed:', err);
+                  // Fallback to analyze using base64 if upload fails, but warn user
               }
-              return updated;
-            });
-            setDesignStep('request_image');
-            return;
+              
+              setMessages((prev) => {
+                  const updated = [...prev];
+                  const idx = updated.findIndex(m => m.id === aiMessageId);
+                  if (idx !== -1) updated[idx] = { ...updated[idx], content: '圖片備份成功，正在分析結構...' };
+                  return updated;
+              });
+
+              try {
+                const vision = await analyzeImage({ 
+                    imageDataUrl: dataUrl, 
+                    imageUrl: blobUrl || undefined, // Use blob url
+                    mode: 'design' 
+                });
+                
+                // ... (rest of the logic remains same)
+                if (!vision.ok || !vision.vision_summary) {
+                  // ... error handling
+                  let errorContent = vision.message || '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？';
+                  if (vision.errorCode === 'MISSING_KEY') {
+                      errorContent = '【系統提示】伺服器未配置 STEPFUN_VISION_API_KEY，無法分析圖片。請通知管理員檢查 Vercel 環境變數。';
+                  } else if (vision.errorCode === 'INVALID_PAYLOAD') {
+                      errorContent = '圖片格式有問題，請試下重新上載 JPG 或 PNG。';
+                  } else if (vision.message?.includes('401') || vision.message?.includes('429')) {
+                       errorContent = '【系統提示】AI 視覺服務目前繁忙或配額已滿 (401/429)，請稍後再試。';
+                  }
+
+                  setMessages(prev => {
+                    const updated = [...prev];
+                    const index = updated.findIndex((m) => m.id === aiMessageId);
+                    if (index !== -1) {
+                      updated[index] = {
+                        ...updated[index],
+                        content: errorContent,
+                      };
+                    }
+                    return updated;
+                  });
+                  setDesignStep('request_image');
+                  return;
+                }
+
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  const index = updated.findIndex((m) => m.id === userImageMessage.id);
+                  if (index !== -1) {
+                    updated[index] = {
+                      ...updated[index],
+                      visionSummary: vision.vision_summary
+                    };
+                  }
+                  return updated;
+                });
+
+                const structLock = normalizeDesignStructureLock(vision.extraction || {}, vision.vision_summary || '');
+                setDesignStructureLock((prev) => prev || structLock);
+
+                await triggerDesignImageGeneration(
+                  dataUrl,
+                  structLock,
+                  blobUrl || '', // use the blobUrl from top scope
+                  undefined,
+                );
+                return;
+              } catch (error: any) {
+                console.error('[App] Design image vision error:', error);
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  const index = updated.findIndex((m) => m.id === aiMessageId);
+                  if (index !== -1) {
+                    updated[index] = {
+                      ...updated[index],
+                      content: (error.message && (error.message.includes('超時') || error.code === 'TIMEOUT'))
+                        ? '圖片分析超時，請稍後再試或嘗試較細嘅圖片。'
+                        : '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？',
+                    };
+                  }
+                  return updated;
+                });
+                setDesignStep('request_image');
+                return;
+              }
+            }
           }
-        }
-      }
-    };
-    reader.readAsDataURL(file);
+        };
+        reader.readAsDataURL(compressedBlob);
+    }).catch(err => {
+        console.error('Image compression failed:', err);
+        // Fallback to original file if compression fails? Or alert user?
+        // Let's try to proceed with original file as fallback, but it might fail upload.
+        // For now, simpler to just log and alert.
+        alert('圖片處理失敗，請試下另一張圖片。');
+    });
   };
 
   function parseDesignImageInstruction(text: string): { finalPrompt: string | null; safeUserText: string } {

@@ -8,12 +8,13 @@ export interface GenerateResponse {
   errorCode?: string;
 }
 
-export async function uploadImage(file: File): Promise<{ url: string } | null> {
+export async function uploadImage(file: File | Blob): Promise<{ url: string } | null> {
   try {
+    const filename = (file as File).name || 'image.jpg';
     const response = await fetch('/api/upload', {
       method: 'POST',
       headers: {
-        'x-vercel-filename': file.name,
+        'x-vercel-filename': filename,
       },
       body: file,
     });
