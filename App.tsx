@@ -418,11 +418,11 @@ const App: React.FC = () => {
       
       let errMsg = '系統繁忙，請稍後再試。';
       if (error.message?.includes('MISSING_KEY')) {
-          errMsg = '【系統配置錯誤】伺服器缺少 DEEPSEEK_API_KEY，請通知管理員檢查 Vercel 環境變數。';
+          errMsg = '【系統提示】伺服器未配置 DEEPSEEK_API_KEY。';
       } else if (error.message?.includes('401') || error.message?.includes('429')) {
-          errMsg = '【AI 服務提示】DeepSeek 服務繁忙或額度不足 (401/429)，請稍後再試。';
+          errMsg = '【AI 服務提示】服務繁忙或額度不足 (401/429)，請稍後再試。';
       } else if (error.message) {
-          errMsg = `系統錯誤 (Detail)：${error.message}`;
+          errMsg = `系統錯誤：${error.message}`;
       }
 
       setMessages((prev) => {
@@ -1137,11 +1137,19 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
       <ModeSwitcher
         currentMode={mode}
         onModeChange={(newMode) => {
+          // Switching TO Design Mode
           if (newMode === 'design' && designStep !== 'q1_space') {
             setDesignStep('q1_space');
             setDesignData({});
             setDesignImageDataUrl(null);
             setChatHistory((prev) => ({ ...prev, design: [DESIGN_INITIAL_MESSAGE] }));
+          }
+          // Switching TO Consultant Mode
+          if (newMode === 'consultant') {
+             // Reset pending image state to avoid "stuck" uploads
+             setPendingImageDataUrl(null);
+             setPendingImageMsgId(null);
+             setAwaitingSpace(false);
           }
           setMode(newMode);
         }}
