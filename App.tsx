@@ -228,6 +228,7 @@ const App: React.FC = () => {
         if (!vision.ok || !vision.vision_summary) {
           clearTimeout(timer3s);
           clearTimeout(timer8s);
+          // Set to specific error message directly
           setMessages((prev) => {
             const updated = [...prev];
             const index = updated.findIndex((m) => m.id === aiMessageId);
@@ -508,7 +509,7 @@ const App: React.FC = () => {
             const vision = await analyzeImage({ imageDataUrl: dataUrl, mode: 'design' });
 
             if (!vision.ok || !vision.vision_summary) {
-              let errorContent = '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？';
+              let errorContent = vision.message || '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？';
               
               if (vision.errorCode === 'MISSING_KEY') {
                   errorContent = '【系統提示】伺服器未配置 STEPFUN_VISION_API_KEY，無法分析圖片。請通知管理員檢查 Vercel 環境變數。';
