@@ -7,7 +7,7 @@ export class APIError extends Error {
 
 export async function fetchJSON<T>(url: string, options: RequestInit = {}): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s timeout
 
   try {
     const response = await fetch(url, {

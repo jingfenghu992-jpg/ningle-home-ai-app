@@ -97,27 +97,14 @@ export async function* chatWithDeepseekStream(params: {
   apiMessages.push({ role: 'user', content: text });
 
   try {
-    const response = await fetch('/api/chat', {
+    const data = await fetchJSON<ChatResponse>('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         mode, 
         messages: apiMessages,
         visionSummary // Explicitly sending this
       }),
     });
-
-    if (!response.ok) {
-        let errorMsg = `HTTP ${response.status}`;
-        try {
-            const errData = await response.json();
-            if (errData.error) errorMsg = errData.error;
-            if (errData.details) errorMsg += `: ${errData.details}`;
-        } catch (e) { }
-        throw new Error(errorMsg);
-    }
-
-    const data: ChatResponse = await response.json();
 
     if (!data.ok) {
         throw new Error(data.message || data.error || 'Unknown error');

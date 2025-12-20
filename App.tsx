@@ -314,7 +314,7 @@ const App: React.FC = () => {
         setPendingImageDataUrl(null);
         setPendingImageMsgId(null);
 
-      } catch (error) {
+      } catch (error: any) {
         clearTimeout(timer3s);
         clearTimeout(timer8s);
         console.error('[App] Consultant image flow error:', error);
@@ -324,7 +324,9 @@ const App: React.FC = () => {
           if (index !== -1) {
             updated[index] = {
               ...updated[index],
-              content: '我收到你張相片，但而家暫時分析唔到。你可唔可以再發一次清晰啲嘅相片？（或者講咗空間先）',
+              content: (error.message && (error.message.includes('超時') || error.code === 'TIMEOUT'))
+                ? '伺服器響應超時（可能圖片太大或網絡繁忙），請稍後再試。'
+                : '我收到你張相片，但而家暫時分析唔到。你可唔可以再發一次清晰啲嘅相片？（或者講咗空間先）',
             };
           }
           return updated;
@@ -601,7 +603,7 @@ const App: React.FC = () => {
               undefined,
             );
             return;
-          } catch (error) {
+          } catch (error: any) {
             console.error('[App] Design image vision error:', error);
             setMessages((prev) => {
               const updated = [...prev];
@@ -609,7 +611,9 @@ const App: React.FC = () => {
               if (index !== -1) {
                 updated[index] = {
                   ...updated[index],
-                  content: '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？',
+                  content: (error.message && (error.message.includes('超時') || error.code === 'TIMEOUT'))
+                    ? '圖片分析超時，請稍後再試或嘗試較細嘅圖片。'
+                    : '我好似未成功讀到張相，你可唔可以再上傳一次（JPG/PNG）？',
                 };
               }
               return updated;
