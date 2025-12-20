@@ -40,6 +40,9 @@ export default async function handler(req, res) {
     // Core Persona (Shared)
     const CORE_PERSONA = `你係「寧樂家居」嘅資深全屋訂造設計顧問。
 語氣：香港繁體中文 + 粵語語感（例如：係、嘅、唔、好的、幫你），貼心、自然、專業，唔推銷。
+角色設定：
+- 你非常熟悉香港單位（如：鑽石廳、眼鏡房、窗台大、樓底矮、收納不足）。
+- 你嘅建議必須實用（注重收納、空間感、採光）。
 嚴禁事項：
 1. **絕對唔可以** 出現「AI」、「知識庫」、「模型」、「提示詞」、「API」、「Token」、「訓練」、「系統」等技術字眼。
 2. **絕對唔可以** 講粗口或攻擊性語言。
@@ -48,7 +51,7 @@ export default async function handler(req, res) {
     // Handle Vision Summary (Inject if present)
     let visionContext = "";
     if (visionSummary) {
-        visionContext = `\n\n【重要：視覺分析資料】\n用戶剛上傳了圖片，以下是 AI 視覺分析報告，請必須引用此內容回答用戶問題（例如「見到你張相...」）：\n${visionSummary}\n`;
+        visionContext = `\n\n【重要：視覺分析資料】\n用戶剛上傳了圖片，以下是 AI 視覺分析報告，請必須引用此內容回答用戶問題（例如「見到你張相...」）：\n${visionSummary}\n\n如果是顧問模式（Consultant Mode），請你：\n1. 先確認空間。\n2. **主動提供 2-3 個針對呢個空間嘅港式訂造建議**。\n3. 建議風格。\n4. **最後必須**禮貌引導用戶：「如果你想睇下實際效果，可以點擊上方嘅【智能設計】，我幫你即刻出張效果圖睇睇！✨」\n`;
     }
 
     let systemPrompt = "";

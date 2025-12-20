@@ -42,8 +42,24 @@ const App: React.FC = () => {
   // Consultant mode: pending image state
   const [pendingImageDataUrl, setPendingImageDataUrl] = useState<string | null>(null);
   const [pendingImageMsgId, setPendingImageMsgId] = useState<string | null>(null);
-  const [pendingImageBlobUrl, setPendingImageBlobUrl] = useState<string | null>(null); // NEW
+  const [pendingImageBlobUrl, setPendingImageBlobUrl] = useState<string | null>(null);
   const [awaitingSpace, setAwaitingSpace] = useState(false);
+  
+  // Usage Limit (Local Persistence)
+  const [generationCount, setGenerationCount] = useState<number>(0);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('ningle_gen_count');
+    if (saved) {
+      setGenerationCount(parseInt(saved, 10));
+    }
+  }, []);
+
+  const incrementGenerationCount = () => {
+    const newVal = generationCount + 1;
+    setGenerationCount(newVal);
+    localStorage.setItem('ningle_gen_count', newVal.toString());
+  };
 
   // Design mode state
   const [designStep, setDesignStep] = useState<
@@ -170,6 +186,9 @@ const App: React.FC = () => {
         designImageBlobUrl,
         text,
       );
+      // Revisions also count towards the limit, or we can be generous?
+      // Let's count them to prevent abuse.
+      // However, triggerDesignImageGeneration will handle the check.
       return;
     }
 
@@ -764,6 +783,20 @@ const App: React.FC = () => {
   }
 
   const triggerDesignImageGeneration = async (imageDataUrl: string, structureLockText: string, blobUrl: string, revisionDelta?: string) => {
+    // 1. Check Usage Limit
+    if (generationCount >= 10) {
+        const limitMsg: Message = {
+            id: Date.now().toString(),
+            type: 'text',
+            content: '不好意思，您的免費智能出圖額度（10次）已用完。如需更多設計建議或想深入了解方案，歡迎點擊右上角 WhatsApp 聯絡我們的專業顧問，我們可以為您提供一對一免費諮詢服務！😊',
+            sender: 'ai',
+            timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, limitMsg]);
+        // Don't change step, just show message
+        return;
+    }
+
     setDesignStep('generate_design');
     const aiMessageId = Date.now().toString();
     const generatingMsg: Message = {
@@ -847,6 +880,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
               });
               if (generateResult.ok && generateResult.resultBlobUrl) {
                 success = true;
+                incrementGenerationCount(); // Increment usage count on success
                 setDesignStep('present_result');
                 const imgMsg: Message = {
                   id: (Date.now() + 1).toString(),
@@ -859,7 +893,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
                 const explanationMsg: Message = {
                   id: (Date.now() + 2).toString(),
                   type: 'text',
-                  content: `呢個係根據你啱啱揀嘅方向，加上你張相嘅實際結構，幫你出嘅參考效果圖 👇\n\n1）櫃體會沿住${cabinet} 所在牆位去做，盡量唔阻窗門同行走動線。\n2）整體以${style}路線配合${color}，保持空間感，同時有足夠收納。\n3）門板會用${door} 呢類做法，兼顧易打理同耐用度。\n4）收納分區會按「${focus}」去安排，上下層分明，常用同儲物位清楚分開。\n5）如果你仲想微調，例如加燈帶、改門款或者加強某啲位置收納，都可以再同我講，我可以幫你再修一修方向。`,
+                  content: `呢個係根據你啱啱揀嘅方向，加上你張相嘅實際結構，幫你出嘅參考效果圖 👇\n\n1）櫃體會沿住${cabinet} 所在牆位去做，盡量唔阻窗門同行走動線。\n2）整體以${style}路線配合${color}，保持空間感，同時有足夠收納。\n3）門板會用${door} 呢類做法，兼顧易打理同耐用度。\n4）收納分區會按「${focus}」去安排，上下層分明，常用同儲物位清楚分開。\n\n💡 **小提示**：如果你想試下其他顏色或者微調設計（例如「轉做深色少少」、「加番組吊櫃」），可以直接喺度打字話我知，我會即刻幫你再出過張圖！😉`,
                   sender: 'ai',
                   timestamp: Date.now(),
                 };
@@ -940,6 +974,7 @@ ${revisionText}（如上有 revision_delta，代表客戶只希望在同一個�
             });
             if (generateResult.ok && generateResult.resultBlobUrl) {
               success = true;
+              incrementGenerationCount(); // Increment usage count on success
               setDesignStep('present_result');
               const imgMsg: Message = {
                 id: (Date.now() + 1).toString(),
