@@ -91,7 +91,7 @@ export async function* chatWithDeepseekStream(params: {
   messages: ChatMessage[];
   visionSummary?: string;
 }): AsyncGenerator<string, void, unknown> {
-  const { mode, text, messages } = params;
+  const { mode, text, messages, visionSummary } = params;
 
   const apiMessages: ChatMessage[] = [...messages];
   apiMessages.push({ role: 'user', content: text });
@@ -100,7 +100,11 @@ export async function* chatWithDeepseekStream(params: {
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, messages: apiMessages }),
+      body: JSON.stringify({ 
+        mode, 
+        messages: apiMessages,
+        visionSummary // Explicitly sending this
+      }),
     });
 
     if (!response.ok) {
