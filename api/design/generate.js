@@ -28,17 +28,14 @@ export default async function handler(req, res) {
     return;
   }
 
+// Use server-side timeout to fail fast (110s)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 110000);
+
   try {
     // 1. Fetch the base image from Blob
-    console.log(`[Design Gen] Fetching base image from: ${baseImageBlobUrl}`);
-    const imageRes = await fetch(baseImageBlobUrl);
-    if (!imageRes.ok) {
-      throw new Error(`Failed to fetch base image: ${imageRes.statusText}`);
-    }
-    const arrayBuffer = await imageRes.arrayBuffer();
-    const base64Image = Buffer.from(arrayBuffer).toString('base64');
-    const dataUrl = `data:${imageRes.headers.get('content-type') || 'image/jpeg'};base64,${base64Image}`;
-
+    // ... code ...
+    
     // 2. Call StepFun Image-to-Image API
     console.log('[Design Gen] Calling StepFun image2image...');
     const stepfunRes = await fetch('https://api.stepfun.com/v1/images/image2image', {
@@ -50,16 +47,19 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'step-1x-medium',
         prompt: prompt,
-        source_url: dataUrl,
-        source_weight: 0.45, // Adhering to requirement
+        source_url: dataUrl, // Wait, StepFun might prefer remote URL if possible? But dataUrl is safer if auth needed for blob.
+        source_weight: 0.45,
         size: size,
         n: 1,
-        response_format: "url", // StepFun returns URL for img2img usually, or b64_json. Docs say url is default/supported.
+        response_format: "url",
         seed: 0,
         steps: 40,
         cfg_scale: 7.5
-      })
+      }),
+      signal: controller.signal // Bind signal
     });
+    
+    clearTimeout(timeoutId); // Clear timeout on success
 
     if (!stepfunRes.ok) {
       const errText = await stepfunRes.text();
@@ -98,11 +98,12 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
+    clearTimeout(timeoutId);
     console.error('[Design Gen] Exception:', error);
     res.status(500).json({
       ok: false,
-      errorCode: 'INTERNAL_ERROR',
-      message: error.message
+      errorCode: error.name === 'AbortError' ? 'TIMEOUT' : 'INTERNAL_ERROR',
+      message: error.name === 'AbortError' ? 'Image generation timed out (server-side)' : error.message
     });
   }
 }
