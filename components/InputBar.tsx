@@ -47,7 +47,7 @@ const InputBar: React.FC<InputBarProps> = ({ onSendMessage, onSendImage }) => {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="輸入訊息..."
+          placeholder="輸入你嘅問題…（例如：想做衣櫃收納）"
           className="flex-1 bg-[#2a3942] text-[var(--wa-text-main)] rounded-xl px-4 py-3 text-[16px] placeholder:text-[15px] placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--wa-accent)]"
         />
         <button

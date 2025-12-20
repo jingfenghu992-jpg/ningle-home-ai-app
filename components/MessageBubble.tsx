@@ -14,8 +14,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOptionClick })
       <div
         className={`px-4 py-3 rounded-xl relative break-words shadow-sm text-[17px] leading-[1.6] font-medium ${
           isUser
-            ? 'bg-[var(--wa-bubble-user)] text-[var(--wa-text-main)] rounded-tr-none'
-            : 'bg-[var(--wa-bubble-ai)] text-[var(--wa-text-main)] rounded-tl-none'
+            ? 'bg-[var(--wa-user)] text-[var(--wa-text-user)] rounded-tr-none'
+            : 'bg-[var(--wa-bot)] text-[var(--wa-text-bot)] rounded-tl-none'
         }`}
       >
         {message.type === 'image' ? (

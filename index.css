@@ -4,7 +4,7 @@
 
 :root {
   /* New Palette Definition - COPIED FROM INDEX.HTML */
-  --wa-bg: #14171C;          /* Chat Background Base */
+  --wa-bg: #0B141A;          /* Chat Background Base - Dark Grey */
   --wa-surface: #1B1F26;     /* Header/Input Bar */
   --wa-divider: rgba(255,255,255,0.06);
   
@@ -12,13 +12,16 @@
   --wa-text-dim: rgba(233,237,241,0.65); /* Secondary/Time */
   --wa-icon: #FFFFFF;        /* Icons */
   
-  --wa-user: #0A5C4B;        /* User Bubble (Right) */
-  --wa-bot: #2A2F36;         /* Bot Bubble (Left) */
+  --wa-user: #005C4B;        /* User Bubble (Right) - WhatsApp Dark Green */
+  --wa-bot: #FFFFFF;         /* Bot Bubble (Left) - White */
+  
+  --wa-text-user: #E9EDF1;   /* Text on User Bubble */
+  --wa-text-bot: #111B21;    /* Text on Bot Bubble */
 
   --wa-shadow: 0 1px 0.5px rgba(0,0,0,0.13); 
-  --wa-radius: 12px;
+  --wa-radius: 16px;         /* Increased radius */
   --wa-font: 16px;
-  --wa-line: 1.45;
+  --wa-line: 1.5;
 }
 
 /* Custom scrollbar for Webkit */

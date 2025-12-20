@@ -4,10 +4,11 @@ export const INITIAL_MESSAGE: Message = {
   id: 'init-1',
   type: 'text',
   content: `你好 👋  
-我係寧樂家居智能助手。  
-可以幫你分析空间设计、收納規劃、板材五金知识、整理效果圖與報價預算、全程免费体验。
+我係寧樂家居智能助手。
 
-你可以直接打字、講語音，或者影相俾我睇 😊`,
+你可以直接打字問我，
+或者上傳你屋企／房間嘅相片，
+我可以幫你分析同提供設計建議 🙂`,
   sender: 'ai',
   timestamp: Date.now(),
 };
