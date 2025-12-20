@@ -28,9 +28,9 @@ export default async function handler(req, res) {
     return;
   }
 
-// Use server-side timeout to fail fast (110s)
+// Use server-side timeout to fail fast (55s to avoid Vercel 60s limit)
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 110000);
+  const timeoutId = setTimeout(() => controller.abort(), 55000);
 
   try {
     // 1. Fetch the base image from Blob
@@ -42,6 +42,7 @@ export default async function handler(req, res) {
     }
     const arrayBuffer = await imageRes.arrayBuffer();
     const base64Image = Buffer.from(arrayBuffer).toString('base64');
+    console.log(`[Design Gen] Image converted. Size: ${(base64Image.length / 1024 / 1024).toFixed(2)} MB`);
     const dataUrl = `data:${imageRes.headers.get('content-type') || 'image/jpeg'};base64,${base64Image}`;
     
     // 2. Call StepFun Image-to-Image API
