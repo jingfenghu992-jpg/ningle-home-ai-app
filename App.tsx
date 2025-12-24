@@ -9,67 +9,10 @@ import { chatWithDeepseekStream } from './services/chatClient';
 import { generateDesignImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 
-// Helper: Parse render intent from user message
 function hasRenderIntent(text: string): boolean {
   const keywords = ['效果圖', '效果图', '出圖', '出图', '渲染', '設計圖', '设计图', '3d圖', '3d图', '想睇下', '想看一下'];
   return keywords.some(k => text.includes(k));
 }
-
-// Typewriter Component for smoother streaming
-const TypewriterEffect = ({ text, onComplete }: { text: string, onComplete?: () => void }) => {
-    const [displayedText, setDisplayedText] = useState('');
-    const indexRef = useRef(0);
-
-    useEffect(() => {
-        // Reset if text changes drastically (new message) - simple heuristic
-        if (!text.startsWith(displayedText.substring(0, 10)) && displayedText.length > 0) {
-             setDisplayedText('');
-             indexRef.current = 0;
-        }
-    }, [text]);
-
-    useEffect(() => {
-        if (indexRef.current < text.length) {
-            const timeoutId = setTimeout(() => {
-                setDisplayedText((prev) => prev + text.charAt(indexRef.current));
-                indexRef.current += 1;
-            }, 20); // 20ms delay for typewriter effect
-            return () => clearTimeout(timeoutId);
-        } else if (onComplete && indexRef.current === text.length) {
-            onComplete();
-        }
-    }, [text, displayedText, onComplete]);
-
-    // Force sync if streaming is way ahead to prevent lagging too much behind
-    useEffect(() => {
-        if (text.length - displayedText.length > 50) {
-            setDisplayedText(text);
-            indexRef.current = text.length;
-        }
-    }, [text]);
-
-    return <span style={{ whiteSpace: 'pre-wrap' }}>{displayedText}</span>;
-};
-
-// Wrap MessageBubble to use Typewriter for AI messages
-const SmartMessageBubble = ({ message, onOptionClick }: { message: Message, onOptionClick: (opt: string) => void }) => {
-    // Only apply typewriter to AI text messages that are "streaming" (we can guess by id or context, or just apply to all recent AI messages)
-    // For simplicity, we just render normally. The "streaming" effect is handled by state updates in App.
-    // However, to enforce "typewriter" even if chunks are big, we can use a custom renderer.
-    // Given the requirement is "User Interface must show typewriter", and `chatWithDeepseekStream` yields chunks.
-    // If the chunks are small, it looks like typing.
-    // Let's rely on the natural streaming rate of StepFun first. If it's too blocky, we'd need a buffer in App.tsx.
-    
-    // Actually, the user requirement is strict: "回覆要有「逐字輸出」效果... 唔可以一下子整段跳出".
-    // I will implement a visual smoothing in App.tsx state update or here.
-    // Let's stick to the App.tsx state update method for simplicity in code structure unless we want a dedicated component.
-    // Actually, `TypewriterEffect` above is better used inside `MessageBubble`. 
-    // But since I cannot edit `MessageBubble.tsx` easily without reading it (I only read App.tsx), 
-    // I will simulate the typewriter effect in `App.tsx` by throttling the state update.
-    
-    return <MessageBubble message={message} onOptionClick={onOptionClick} />;
-};
-
 
 const App: React.FC = () => {
   // Chat History
@@ -86,7 +29,7 @@ const App: React.FC = () => {
     style?: string;
     color?: string;
     requirements?: string;
-    step: 'style' | 'color' | 'requirements' | 'ready'; // Sub-step for intake
+    step: 'style' | 'color' | 'requirements' | 'ready'; 
   }>({ step: 'style' });
   
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
@@ -101,39 +44,42 @@ const App: React.FC = () => {
   }, [messages]);
 
   // Typewriter Buffer Queue
-  // We use a separate effect to "drain" a buffer into the message state to create smooth typing
-  const [streamBuffer, setStreamBuffer] = useState<{msgId: string, fullText: string, displayedLength: number} | null>(null);
+  const [typewriterBuffer, setTypewriterBuffer] = useState<{msgId: string, queue: string[]} | null>(null);
 
+  // Effect to drain the typewriter buffer
   useEffect(() => {
-      if (streamBuffer) {
-          if (streamBuffer.displayedLength < streamBuffer.fullText.length) {
-              const timeout = setTimeout(() => {
-                  setMessages(prev => prev.map(m => {
-                      if (m.id === streamBuffer.msgId) {
-                          // Append one char
-                          const nextChar = streamBuffer.fullText[streamBuffer.displayedLength];
-                          return { ...m, content: m.content + nextChar };
-                      }
-                      return m;
-                  }));
-                  setStreamBuffer(prev => prev ? { ...prev, displayedLength: prev.displayedLength + 1 } : null);
-              }, 20); // 20ms per char ~ 3000 chars/min
-              return () => clearTimeout(timeout);
+      if (!typewriterBuffer || typewriterBuffer.queue.length === 0) return;
+
+      const timer = setInterval(() => {
+          setTypewriterBuffer(prev => {
+              if (!prev || prev.queue.length === 0) return null;
+              
+              const nextChar = prev.queue[0];
+              const remaining = prev.queue.slice(1);
+              
+              setMessages(currentMessages => currentMessages.map(m => {
+                  if (m.id === prev.msgId) {
+                      return { ...m, content: m.content + nextChar };
+                  }
+                  return m;
+              }));
+
+              return { ...prev, queue: remaining };
+          });
+      }, 15); // Fast typing speed
+
+      return () => clearInterval(timer);
+  }, [typewriterBuffer]);
+
+  const streamToTypewriter = (msgId: string, chunk: string) => {
+      setTypewriterBuffer(prev => {
+          const chars = chunk.split('');
+          if (prev && prev.msgId === msgId) {
+              return { ...prev, queue: [...prev.queue, ...chars] };
           }
-      }
-  }, [streamBuffer]);
-
-  // Helper to add message with typewriter effect
-  const updateAiMessage = (msgId: string, chunk: string) => {
-      // Direct update for now to avoid complex buffer logic bugs in this turn.
-      // The user wants "not whole block". StepFun usually streams small tokens.
-      // If StepFun streams fast, it might look like blocks.
-      // Let's stick to direct state update first, as React batching might smooth it out.
-      // If needed, we can throttle.
-      
-      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: m.content + chunk } : m));
+          return { msgId, queue: chars };
+      });
   };
-
 
   // Main Handler
   const handleSendMessage = async (text: string) => {
@@ -152,13 +98,11 @@ const App: React.FC = () => {
     // STATE: WAITING_FOR_SPACE
     if (appState === 'WAITING_FOR_SPACE') {
         if (pendingImage) {
-            // Proceed to Analysis
             setAppState('ANALYZING');
             await performAnalysisAndSuggestions(pendingImage.dataUrl, pendingImage.blobUrl, text); // text is space name
             setAppState('IDLE');
             return;
         } else {
-            // Weird state, reset
             setAppState('IDLE');
         }
     }
@@ -179,7 +123,6 @@ const App: React.FC = () => {
 
     // TRIGGER: RENDER INTAKE
     if (hasRenderIntent(text)) {
-        // Check if we have a base image
         const lastImageMsg = messages.slice().reverse().find(m => m.type === 'image');
         const baseBlobUrl = pendingImage?.blobUrl || (lastImageMsg?.content?.startsWith('http') ? lastImageMsg.content : undefined);
 
@@ -195,15 +138,13 @@ const App: React.FC = () => {
              return;
         }
 
-        // If we found an image in history but not in pendingImage, restore it
         if (!pendingImage && baseBlobUrl) {
-            setPendingImage({ dataUrl: baseBlobUrl, blobUrl: baseBlobUrl }); // DataURL might be missing, assume blobUrl is sufficient for generation
+            setPendingImage({ dataUrl: baseBlobUrl, blobUrl: baseBlobUrl });
         }
 
         setAppState('RENDER_INTAKE');
-        setRenderData({ step: 'style' }); // Reset steps
+        setRenderData({ step: 'style' }); 
         
-        // First Question
         const reply: Message = {
             id: Date.now().toString() + 'q1',
             type: 'text',
@@ -220,13 +161,12 @@ const App: React.FC = () => {
     await performNormalChat(text);
   };
 
-
   const performNormalChat = async (text: string) => {
       const aiMsgId = Date.now().toString() + 'ai';
       setMessages(prev => [...prev, {
           id: aiMsgId,
           type: 'text',
-          content: '', // Start empty for streaming
+          content: '',
           sender: 'ai',
           timestamp: Date.now()
       }]);
@@ -243,7 +183,7 @@ const App: React.FC = () => {
             text: text,
             messages: history
         })) {
-            updateAiMessage(aiMsgId, chunk);
+            streamToTypewriter(aiMsgId, chunk);
         }
       } catch (e) {
           console.error(e);
@@ -257,7 +197,7 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, {
           id: aiMsgId,
           type: 'text',
-          content: '收到，正在分析空間結構… 🔍', // Initial Loading Text
+          content: '收到，正在分析空間結構… 🔍', 
           sender: 'ai',
           timestamp: Date.now()
       }]);
@@ -267,23 +207,21 @@ const App: React.FC = () => {
               imageDataUrl: imageDataUrl,
               imageUrl: imageBlobUrl,
               mode: 'consultant',
-              spaceType: spaceType // Pass space hint
+              spaceType: spaceType
           } as any);
 
           if (visionRes.ok && visionRes.vision_summary) {
-              // Clear "Analyzing" message and start streaming suggestions
                setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, content: '' } : m));
                
-               // Stream Chat Response based on Vision
                const prompt = `用戶上傳了圖片，空間是「${spaceType}」。視覺分析結果：${visionRes.vision_summary}。請針對此空間提供 3-4 個針對香港細單位的具體全屋訂造/收納建議。請用精簡 Point Form。`;
                
                for await (const chunk of chatWithDeepseekStream({
                    mode: 'consultant',
                    text: prompt,
-                   messages: [], // Context is built in backend via visionSummary usually, but here we pass explicit prompt
+                   messages: [],
                    visionSummary: visionRes.vision_summary
                })) {
-                   updateAiMessage(aiMsgId, chunk);
+                   streamToTypewriter(aiMsgId, chunk);
                }
 
           } else {
@@ -342,26 +280,15 @@ const App: React.FC = () => {
       }]);
 
       try {
-          // Use explicit renderIntake payload
           const payload = {
-              prompt: '', // Backend builds prompt now
-              renderIntake: { ...data }, // Pass raw data
+              prompt: '', 
+              renderIntake: { ...data }, 
               baseImageBlobUrl: lastUrl || baseBlobUrl,
               size: '1024x1024'
           };
           
-          if (revision) {
-              // Logic for revision: modify requirements in intake or let backend handle revision prompt
-              // For simplicity, we assume backend appends revision if prompt is built there? 
-              // Actually backend code we just wrote uses `renderIntake` OR `prompt`.
-              // We should update payload to support revision intent.
-              // Let's pass revision in `renderIntake.requirements` or `prompt`.
-              // Since we shifted logic to backend, we can just pass prompt for revision? 
-              // Wait, the backend logic: `if (renderIntake) finalPrompt = ...`.
-              // So for revision, we can just update `requirements` in renderIntake with the new revision text.
-              if (payload.renderIntake) {
-                  payload.renderIntake.requirements += ` Modification: ${revision}`;
-              }
+          if (revision && payload.renderIntake) {
+              payload.renderIntake.requirements += ` Modification: ${revision}`;
           }
 
           const res = await generateDesignImage(payload as any);
@@ -369,7 +296,7 @@ const App: React.FC = () => {
           if (res.ok && (res.resultBlobUrl || res.b64_json)) {
               const resultUrl = res.resultBlobUrl || (res.b64_json ? `data:image/jpeg;base64,${res.b64_json}` : null);
               
-              setMessages(prev => prev.filter(m => m.id !== aiMsgId)); // Remove loading
+              setMessages(prev => prev.filter(m => m.id !== aiMsgId)); 
               
               setMessages(prev => [...prev, {
                   id: Date.now().toString(),
@@ -406,7 +333,6 @@ const App: React.FC = () => {
           reader.onload = async (e) => {
               const dataUrl = e.target?.result as string;
               
-              // 1. Show User Image
               setMessages(prev => [...prev, {
                   id: Date.now().toString(),
                   type: 'image',
@@ -415,7 +341,6 @@ const App: React.FC = () => {
                   timestamp: Date.now()
               }]);
 
-              // 2. Background Upload
               let blobUrl = '';
               try {
                   const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
@@ -425,11 +350,9 @@ const App: React.FC = () => {
                   console.error('Upload fail', err);
               }
 
-              // 3. Set Pending State & Enter WAITING_FOR_SPACE
               setPendingImage({ dataUrl, blobUrl });
               setAppState('WAITING_FOR_SPACE');
 
-              // 4. Ask Question (No buttons, pure text)
               setMessages(prev => [...prev, {
                   id: Date.now().toString() + 'ask',
                   type: 'text',

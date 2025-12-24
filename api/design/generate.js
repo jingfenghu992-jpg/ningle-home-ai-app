@@ -46,39 +46,64 @@ export default async function handler(req, res) {
          return;
     }
 
-    let dataUrl = baseImageBlobUrl;
-    // Ensure we have data URL for StepFun
-    if (!baseImageBlobUrl.startsWith('data:')) {
-        const imageRes = await fetch(baseImageBlobUrl);
-        if (imageRes.ok) {
-            const ab = await imageRes.arrayBuffer();
-            const b64 = Buffer.from(ab).toString('base64');
-            dataUrl = `data:${imageRes.headers.get('content-type')||'image/jpeg'};base64,${b64}`;
+    // --- STRATEGY A: Try Blob URL directly ---
+    let sourceUrl = baseImageBlobUrl;
+    let usedFallback = false;
+
+    const callStepFun = async (urlToUse) => {
+        console.log(`[Design Gen] Calling StepFun image2image with ${urlToUse.slice(0, 50)}...`);
+        return await fetch('https://api.stepfun.com/v1/images/image2image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: 'step-1x-medium',
+            prompt: finalPrompt,
+            source_url: urlToUse,
+            source_weight: 0.55,
+            size: size,
+            n: 1,
+            response_format: "url",
+            steps: 50,
+            cfg_scale: 7.5
+          })
+        });
+    };
+
+    let stepfunRes = await callStepFun(sourceUrl);
+
+    // --- STRATEGY B: Fallback to Base64 if URL fails ---
+    if (!stepfunRes.ok) {
+        const errText = await stepfunRes.text();
+        console.warn(`[Design Gen] Strategy A failed (${stepfunRes.status}): ${errText}`);
+        
+        // If it's not a data URL already, try to fetch and convert
+        if (!baseImageBlobUrl.startsWith('data:')) {
+            console.log('[Design Gen] Strategy B: Fallback to Base64...');
+            try {
+                const imageRes = await fetch(baseImageBlobUrl);
+                if (imageRes.ok) {
+                    const ab = await imageRes.arrayBuffer();
+                    const b64 = Buffer.from(ab).toString('base64');
+                    const mime = imageRes.headers.get('content-type') || 'image/jpeg';
+                    sourceUrl = `data:${mime};base64,${b64}`;
+                    usedFallback = true;
+                    
+                    // Retry with Base64
+                    stepfunRes = await callStepFun(sourceUrl);
+                } else {
+                    console.error('[Design Gen] Failed to fetch image for fallback');
+                }
+            } catch (e) {
+                console.error('[Design Gen] Error preparing fallback:', e);
+            }
         }
     }
 
-    console.log('[Design Gen] Calling StepFun image2image...');
-    const stepfunRes = await fetch('https://api.stepfun.com/v1/images/image2image', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'step-1x-medium',
-        prompt: finalPrompt,
-        source_url: dataUrl,
-        source_weight: 0.55,
-        size: size,
-        n: 1,
-        response_format: "url",
-        steps: 40,
-        cfg_scale: 7.5
-      })
-    });
-
     if (!stepfunRes.ok) {
-      throw new Error(`StepFun API Error: ${stepfunRes.status} ${await stepfunRes.text()}`);
+        throw new Error(`StepFun API Error: ${stepfunRes.status} ${await stepfunRes.text()}`);
     }
 
     const data = await stepfunRes.json();
@@ -106,7 +131,7 @@ export default async function handler(req, res) {
       ok: true,
       resultBlobUrl: finalBlobUrl || resultUrl,
       isTemporaryUrl: !finalBlobUrl,
-      finalPromptUsed: finalPrompt // Return for debug if needed
+      debug: { usedFallback }
     });
 
   } catch (error) {
