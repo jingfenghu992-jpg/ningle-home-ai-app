@@ -9,21 +9,20 @@ export const AppBar: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-[#2E2C29] border-b border-white/5 shrink-0 z-20">
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-[#8A8F79] rounded-lg flex items-center justify-center text-white font-bold">
-          N
+    <div className="shrink-0 z-20 px-4 pt-4">
+      <div className="relative w-full rounded-full border border-white/10 bg-white/10 backdrop-blur-xl shadow-[0_12px_30px_rgba(0,0,0,0.35)]">
+        <div className="grid grid-cols-[1fr_auto] items-center px-4 py-2">
+          <div className="justify-self-center col-start-1 col-end-3 text-[#F4EFE6] font-semibold text-lg tracking-wide">
+            寧樂家居助手
+          </div>
+          <button
+            onClick={handleWhatsApp}
+            className="justify-self-end col-start-2 col-end-3 flex items-center gap-2 bg-[#8A8F79] hover:bg-[#6B705C] text-white px-4 py-2 rounded-full text-sm font-semibold transition-colors shadow-lg shadow-black/20"
+          >
+            <MessageCircle size={16} />
+            <span>免費跟進</span>
+          </button>
         </div>
-        <span className="text-[#EBE8E3] font-medium text-lg">寧樂家居助手</span>
-      </div>
-      <div className="flex items-center gap-3">
-        <button 
-          onClick={handleWhatsApp}
-          className="flex items-center gap-1.5 bg-[#8A8F79] hover:bg-[#6B705C] text-white px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
-        >
-          <MessageCircle size={16} />
-          <span>免費跟進</span>
-        </button>
       </div>
     </div>
   );
