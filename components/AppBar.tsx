@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, MessageCircle } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 
 export const AppBar: React.FC = () => {
   const handleWhatsApp = () => {
@@ -23,9 +23,6 @@ export const AppBar: React.FC = () => {
         >
           <MessageCircle size={16} />
           <span>免費跟進</span>
-        </button>
-        <button className="text-white/60 hover:text-white transition-colors">
-          <HelpCircle size={22} />
         </button>
       </div>
     </div>

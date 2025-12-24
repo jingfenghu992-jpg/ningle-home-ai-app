@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Upload, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { Image as ImageIcon, Upload, ArrowUpRight } from 'lucide-react';
 
 interface StartScreenProps {
   onUpload: (file: File) => void;
@@ -8,6 +8,7 @@ interface StartScreenProps {
 
 export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [heroOk, setHeroOk] = React.useState(true);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -29,11 +30,23 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
         
         {/* Image Placeholder */}
         <div className="w-full aspect-[4/3] bg-[#EBE8E3] rounded-[24px] mb-6 overflow-hidden relative shadow-inner">
-           {/* Placeholder content - can be replaced with actual image later */}
-           <div className="absolute inset-0 flex items-center justify-center text-[#8A8F79]/20">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-           </div>
-           {/* If we had an image asset, it would go here: <img src="..." className="w-full h-full object-cover" /> */}
+          {heroOk ? (
+            <img
+              src="/hero.jpg"
+              alt="主視覺"
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={() => setHeroOk(false)}
+              loading="eager"
+              decoding="async"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="bg-black/35 text-white/90 px-4 py-2 rounded-full flex items-center gap-2 backdrop-blur-sm">
+                <ImageIcon size={18} />
+                <span className="text-sm font-medium">等待換上主視覺圖片</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Title & Subtitle */}
