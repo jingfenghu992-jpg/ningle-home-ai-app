@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Upload, ArrowRight } from 'lucide-react';
+import { Camera, Upload, ArrowRight, ArrowUpRight } from 'lucide-react';
 
 interface StartScreenProps {
   onUpload: (file: File) => void;
@@ -15,50 +15,65 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
     }
   };
 
+  const handleWhatsApp = () => {
+    const text = encodeURIComponent('你好，我想了解全屋訂造/室內設計方案，想免費跟進一下。');
+    const waLink = `https://wa.me/85256273817?text=${text}`;
+    window.open(waLink, '_blank', 'noopener,noreferrer');
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 pb-20 animate-in fade-in duration-700">
-      <div className="w-20 h-20 bg-[#8A8F79]/10 rounded-3xl flex items-center justify-center mb-8 shadow-sm">
-        <span className="text-4xl">🏡</span>
-      </div>
+    <div className="flex flex-col items-center justify-center h-full px-4 pb-12 animate-in fade-in duration-700">
       
-      <h1 className="text-3xl font-bold text-[#4A453C] mb-3 text-center tracking-tight">
-        上傳你屋企相片
-      </h1>
-      
-      <p className="text-[#4A453C]/70 text-center mb-10 text-[17px] leading-relaxed max-w-[280px]">
-        我會先做智能分析，再一步步幫你規劃訂造方案
-      </p>
-
-      <div className="w-full max-w-xs space-y-4">
-        <button 
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full bg-[#8A8F79] hover:bg-[#6B705C] text-white py-4 rounded-[20px] font-bold text-lg shadow-xl shadow-[#8A8F79]/20 flex items-center justify-center gap-2 transition-transform active:scale-95"
-        >
-          <Upload size={22} />
-          上傳相片
-        </button>
+      {/* Main Card */}
+      <div className="w-full max-w-sm bg-[#F3F0EA] rounded-[32px] p-6 shadow-xl border border-white/20 flex flex-col items-center">
         
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          accept="image/*" 
-          className="hidden" 
-          onChange={handleFileChange}
-        />
+        {/* Image Placeholder */}
+        <div className="w-full aspect-[4/3] bg-[#EBE8E3] rounded-[24px] mb-6 overflow-hidden relative shadow-inner">
+           {/* Placeholder content - can be replaced with actual image later */}
+           <div className="absolute inset-0 flex items-center justify-center text-[#8A8F79]/20">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+           </div>
+           {/* If we had an image asset, it would go here: <img src="..." className="w-full h-full object-cover" /> */}
+        </div>
 
-        <button 
-          onClick={() => fileInputRef.current?.click()} // Camera usually handled by file input on mobile
-          className="w-full bg-white border border-[#EBE8E3] text-[#4A453C] py-4 rounded-[20px] font-semibold text-lg hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"
-        >
-          <Camera size={22} />
-          拍照
-        </button>
+        {/* Title & Subtitle */}
+        <h1 className="text-[28px] font-bold text-[#4A453C] mb-3 text-center tracking-tight leading-tight">
+          上傳你屋企相片
+        </h1>
+        
+        <p className="text-[#4A453C]/70 text-center mb-8 text-[16px] leading-relaxed max-w-[260px]">
+          我會先幫你分析空間，再一步步幫你規劃訂造方案
+        </p>
+
+        {/* Main Action Button */}
+        <div className="w-full space-y-3">
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full bg-[#8A8F79] hover:bg-[#6B705C] text-white py-4 rounded-[20px] font-bold text-[18px] shadow-lg shadow-[#8A8F79]/25 flex items-center justify-center gap-2.5 transition-all active:scale-95"
+          >
+            <Upload size={22} />
+            開始分析
+          </button>
+          
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            accept="image/*" 
+            capture="environment"
+            className="hidden" 
+            onChange={handleFileChange}
+          />
+        </div>
       </div>
 
-      <div className="mt-12 text-[#4A453C]/40 text-sm flex items-center gap-1">
-        想報價/度尺？右上角『免費跟進』搵我哋
-        <ArrowRight size={14} />
-      </div>
+      {/* Footer Text */}
+      <button 
+        onClick={handleWhatsApp}
+        className="mt-8 text-[#EBE8E3]/60 text-sm flex items-center gap-1.5 hover:text-[#EBE8E3] transition-colors"
+      >
+        <span>想問報價/尺寸？按右上角「免費跟進」</span>
+        <ArrowUpRight size={14} />
+      </button>
     </div>
   );
 };

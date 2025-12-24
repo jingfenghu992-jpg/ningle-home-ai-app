@@ -3,7 +3,9 @@ import { HelpCircle, MessageCircle } from 'lucide-react';
 
 export const AppBar: React.FC = () => {
   const handleWhatsApp = () => {
-    window.open('https://wa.me/85212345678', '_blank'); // Replace with actual number if known, or generic
+    const text = encodeURIComponent('你好，我想了解全屋訂造/室內設計方案，想免費跟進一下。');
+    const waLink = `https://wa.me/85256273817?text=${text}`;
+    window.open(waLink, '_blank', 'noopener,noreferrer');
   };
 
   return (
