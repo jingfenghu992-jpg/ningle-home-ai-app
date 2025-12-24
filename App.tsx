@@ -110,13 +110,13 @@ const App: React.FC = () => {
           const payload = {
               prompt: '', 
               renderIntake: intakeData || {}, 
-              baseImageBlobUrl: lastGeneratedImage || pendingImage?.blobUrl, 
+              baseImageBlobUrl: lastGeneratedImage || pendingImage?.blobUrl || undefined, 
               size: '1024x1024'
           };
           
           // If revision, we assume we use the last generated image as base
           if (revisionText) {
-              payload.baseImageBlobUrl = lastGeneratedImage;
+              payload.baseImageBlobUrl = lastGeneratedImage || undefined;
               payload.renderIntake = { requirements: `Modification: ${revisionText}` } as any; 
           }
 
@@ -175,7 +175,7 @@ const App: React.FC = () => {
                 <NextStepCard text="收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）" />
             )}
 
-            {(appState === 'ANALYSIS_DONE' || appState === 'RENDER_INTAKE' || appState === 'GENERATING' || appState === 'RENDER_DONE') && analysisSummary && (
+            {(appState === 'ANALYSIS_DONE' || appState === 'RENDER_INTAKE' || appState === 'GENERATING' || appState === 'RENDER_DONE') && (
                 <AnalysisCard summary={analysisSummary || ''} />
             )}
 
