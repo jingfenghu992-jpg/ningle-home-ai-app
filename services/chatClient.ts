@@ -10,8 +10,9 @@ export async function* chatWithDeepseekStream(params: {
   text: string;
   messages: ChatMessage[];
   visionSummary?: string;
+  spaceType?: string;
 }): AsyncGenerator<string, void, unknown> {
-  const { mode, text, messages, visionSummary } = params;
+  const { mode, text, messages, visionSummary, spaceType } = params;
 
   // We construct the full payload here, but remember App.tsx also appends the user message locally for UI.
   // The API expects 'messages' array which includes history.
@@ -29,7 +30,8 @@ export async function* chatWithDeepseekStream(params: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         messages, // Pass the full history including current turn
-        visionSummary 
+        visionSummary,
+        spaceType
       }),
       signal: controller.signal
     });

@@ -9,6 +9,7 @@ import { RenderIntakeCard } from './components/RenderIntakeCard';
 import { RenderResultCard } from './components/RenderResultCard';
 import { MessageCard } from './components/MessageCard';
 import { Composer } from './components/Composer';
+import { KnowledgeBaseScreen } from './components/KnowledgeBaseScreen';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
@@ -18,10 +19,12 @@ import { compressImage } from './services/utils';
 const App: React.FC = () => {
   // --- State ---
   const [appState, setAppState] = useState<'START' | 'WAITING_FOR_SPACE' | 'ANALYZING' | 'ANALYSIS_DONE' | 'RENDER_INTAKE' | 'GENERATING' | 'RENDER_DONE'>('START');
+  const [screen, setScreen] = useState<'MAIN' | 'KB'>('MAIN');
   
   const [pendingImage, setPendingImage] = useState<{dataUrl: string, blobUrl?: string} | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
+  const [spaceType, setSpaceType] = useState<string | null>(null);
   
   // Chat history for context, but we display sparingly
   const [messages, setMessages] = useState<Message[]>([]);
@@ -53,12 +56,49 @@ const App: React.FC = () => {
     });
   };
 
+  const addSystemToast = (text: string) => {
+      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'text', content: text, sender: 'ai', timestamp: Date.now() }]);
+  };
+
+  const runChat = async (userText: string, history: Message[]) => {
+    const aiId = `ai-${Date.now()}`;
+    setMessages(prev => [...prev, { id: aiId, type: 'text', content: '', sender: 'ai', timestamp: Date.now() }]);
+
+    const apiMessages = history
+      .filter(m => m.type === 'text')
+      .slice(-12)
+      .map(m => ({
+        role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
+        content: m.content
+      }));
+
+    try {
+      let acc = '';
+      for await (const delta of chatWithDeepseekStream({
+        mode: 'consultant',
+        text: userText,
+        messages: apiMessages,
+        visionSummary: analysisSummary || undefined,
+        spaceType: spaceType || undefined
+      })) {
+        acc += delta;
+        setMessages(prev => prev.map(m => (m.id === aiId ? { ...m, content: acc } : m)));
+      }
+    } catch (e: any) {
+      setMessages(prev =>
+        prev.map(m => (m.id === aiId ? { ...m, content: `（回覆失敗：${e?.message || 'Network error'}）` } : m))
+      );
+    }
+  };
+
   const handleSendMessage = async (text: string) => {
     // Add user message to history
     const userMsg: Message = { id: Date.now().toString(), type: 'text', content: text, sender: 'user', timestamp: Date.now() };
-    setMessages(prev => [...prev, userMsg]);
+    const history = [...messages, userMsg];
+    setMessages(history);
 
     if (appState === 'WAITING_FOR_SPACE') {
+        setSpaceType(text);
         setAppState('ANALYZING');
         // Perform Analysis
         try {
@@ -91,13 +131,12 @@ const App: React.FC = () => {
              triggerGeneration(null, text); // Pass revision text
         } else {
              // Normal chat
-             // addSystemToast("收到。");
+             runChat(text, history);
         }
+    } else {
+        // Normal chat for other states (e.g. ANALYSIS_DONE) - keep UX responsive
+        runChat(text, history);
     }
-  };
-
-  const addSystemToast = (text: string) => {
-      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'text', content: text, sender: 'ai', timestamp: Date.now() }]);
   };
 
   const handleRenderIntakeComplete = (data: any) => {
@@ -146,9 +185,11 @@ const App: React.FC = () => {
 
   return (
     <AppShell>
-      <AppBar />
+      <AppBar onOpenKnowledge={() => setScreen('KB')} />
       
-      {appState === 'START' ? (
+      {screen === 'KB' ? (
+        <KnowledgeBaseScreen onBack={() => setScreen('MAIN')} />
+      ) : appState === 'START' ? (
         <StartScreen 
             onUpload={handleUpload} 
             onCamera={() => {

@@ -1,7 +1,7 @@
 import React from 'react';
-import { HelpCircle, MessageCircle } from 'lucide-react';
+import { BookOpen, HelpCircle, MessageCircle } from 'lucide-react';
 
-export const AppBar: React.FC = () => {
+export const AppBar: React.FC<{ onOpenKnowledge?: () => void }> = ({ onOpenKnowledge }) => {
   const handleWhatsApp = () => {
     const text = encodeURIComponent('你好，我想了解全屋訂造/室內設計方案，想免費跟進一下。');
     const waLink = `https://wa.me/85256273817?text=${text}`;
@@ -17,6 +17,14 @@ export const AppBar: React.FC = () => {
         <span className="text-[#EBE8E3] font-medium text-lg">寧樂家居助手</span>
       </div>
       <div className="flex items-center gap-3">
+        <button
+          onClick={onOpenKnowledge}
+          className="text-white/70 hover:text-white transition-colors"
+          aria-label="Knowledge Base"
+          title="知識庫"
+        >
+          <BookOpen size={20} />
+        </button>
         <button 
           onClick={handleWhatsApp}
           className="flex items-center gap-1.5 bg-[#8A8F79] hover:bg-[#6B705C] text-white px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
