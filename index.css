@@ -13,11 +13,23 @@
   
   --card-radius: 20px;
   --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
+
+  /* WhatsApp Variables Mapped to Warm Theme */
+  --wa-header: var(--app-bg);
+  --wa-bg: var(--app-bg);
+  --wa-user: var(--app-accent);       /* User Bubble -> Olive */
+  --wa-text-user: #FFFFFF;
+  --wa-bot: #3E3C39;                  /* Bot Bubble -> Lighter Dark Gray */
+  --wa-text-bot: var(--app-text-light);
+  --wa-text-main: var(--app-text-light); /* Main text on background */
+  --wa-text-secondary: #9CA3AF;
+  --wa-accent: var(--app-accent);
+  --wa-bubble-ai: #3E3C39;
 }
 
 body {
   background-color: var(--app-bg);
-  color: var(--app-text-main);
+  color: var(--app-text-light);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   overflow: hidden; 
 }

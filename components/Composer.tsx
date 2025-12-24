@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Send, Image as ImageIcon } from 'lucide-react';
+import { Send, Image as ImageIcon, Camera } from 'lucide-react';
 
 interface ComposerProps {
   onSendMessage: (text: string) => void;
@@ -10,6 +10,7 @@ interface ComposerProps {
 export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, disabled }) => {
   const [text, setText] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = () => {
@@ -31,6 +32,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
       onSendImage(e.target.files[0]);
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   // Auto-resize textarea
@@ -51,6 +53,23 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
           className="hidden" 
           onChange={handleFileChange}
         />
+        <input 
+          type="file" 
+          ref={cameraInputRef} 
+          accept="image/*" 
+          capture="environment"
+          className="hidden" 
+          onChange={handleFileChange}
+        />
+        
+        <button 
+          onClick={() => cameraInputRef.current?.click()}
+          disabled={disabled}
+          className="p-3 text-[#EBE8E3]/60 hover:text-[#EBE8E3] hover:bg-white/5 rounded-full transition-colors disabled:opacity-50"
+        >
+          <Camera size={24} />
+        </button>
+
         <button 
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
