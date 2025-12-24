@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, Upload, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { Camera, ArrowUpRight, Image as ImageIcon } from 'lucide-react';
 
 interface StartScreenProps {
   onUpload: (file: File) => void;
@@ -22,36 +22,44 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4 pb-12 animate-in fade-in duration-700">
+    <div className="flex flex-col items-center justify-center h-full px-4 pb-10 animate-in fade-in duration-700">
       
       {/* Main Card */}
-      <div className="w-full max-w-sm bg-[#F3F0EA] rounded-[32px] p-6 shadow-xl border border-white/20 flex flex-col items-center">
+      <div className="w-full max-w-sm bg-[#F3F0EA]/95 rounded-[32px] p-5 shadow-2xl border border-white/15 flex flex-col items-center">
         
-        {/* Image Placeholder */}
-        <div className="w-full aspect-[4/3] bg-[#EBE8E3] rounded-[24px] mb-6 overflow-hidden relative shadow-inner">
-           {/* Placeholder content - can be replaced with actual image later */}
-           <div className="absolute inset-0 flex items-center justify-center text-[#8A8F79]/20">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-           </div>
-           {/* If we had an image asset, it would go here: <img src="..." className="w-full h-full object-cover" /> */}
+        {/* Hero Image (replace with your asset later) */}
+        <div className="w-full aspect-[4/3] rounded-[24px] mb-6 overflow-hidden relative shadow-inner">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#c8b39e] via-[#b79d87] to-[#9a7d68]" />
+          <div className="absolute inset-0 opacity-55" style={{
+            background:
+              "radial-gradient(800px 420px at 50% 30%, rgba(255,255,255,0.45), rgba(255,255,255,0) 55%)"
+          }} />
+          <div className="absolute inset-0 flex items-center justify-center text-white/70">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/20 border border-white/20">
+              <ImageIcon size={18} />
+              <span className="text-sm font-medium">等你換上主視覺圖片</span>
+            </div>
+          </div>
+          {/* 你给我素材后，把上面这个占位替换成：
+              <img src="..." className="absolute inset-0 w-full h-full object-cover" /> */}
         </div>
 
         {/* Title & Subtitle */}
-        <h1 className="text-[28px] font-bold text-[#4A453C] mb-3 text-center tracking-tight leading-tight">
+        <h1 className="text-[30px] font-extrabold text-[#4A453C] mb-2 text-center tracking-tight leading-tight">
           上傳你屋企相片
         </h1>
         
-        <p className="text-[#4A453C]/70 text-center mb-8 text-[16px] leading-relaxed max-w-[260px]">
+        <p className="text-[#4A453C]/70 text-center mb-6 text-[15px] leading-relaxed max-w-[270px]">
           我會先幫你分析空間，再一步步幫你規劃訂造方案
         </p>
 
         {/* Main Action Button */}
-        <div className="w-full space-y-3">
+        <div className="w-full space-y-4">
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="w-full bg-[#8A8F79] hover:bg-[#6B705C] text-white py-4 rounded-[20px] font-bold text-[18px] shadow-lg shadow-[#8A8F79]/25 flex items-center justify-center gap-2.5 transition-all active:scale-95"
+            className="w-full bg-[#8A8F79] hover:bg-[#6B705C] text-white py-4 rounded-[22px] font-bold text-[18px] shadow-lg shadow-black/15 flex items-center justify-center gap-2.5 transition-all active:scale-95"
           >
-            <Upload size={22} />
+            <Camera size={22} />
             開始分析
           </button>
           
@@ -63,17 +71,22 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
             className="hidden" 
             onChange={handleFileChange}
           />
+
+          {/* Tip Bar (inside card like screenshot 2) */}
+          <button
+            onClick={handleWhatsApp}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-[18px] bg-[#2E2C29]/10 border border-black/10 text-[#4A453C]/80 hover:text-[#4A453C] transition-colors"
+          >
+            <div className="w-9 h-9 rounded-xl bg-[#8A8F79]/25 flex items-center justify-center text-[#6B705C]">
+              <span className="text-lg">💬</span>
+            </div>
+            <div className="flex-1 text-left text-[13px] leading-snug">
+              想問報價/尺寸？按右上角「免費跟進」
+            </div>
+            <ArrowUpRight size={16} className="opacity-70" />
+          </button>
         </div>
       </div>
-
-      {/* Footer Text */}
-      <button 
-        onClick={handleWhatsApp}
-        className="mt-8 text-[#EBE8E3]/60 text-sm flex items-center gap-1.5 hover:text-[#EBE8E3] transition-colors"
-      >
-        <span>想問報價/尺寸？按右上角「免費跟進」</span>
-        <ArrowUpRight size={14} />
-      </button>
     </div>
   );
 };
