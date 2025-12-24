@@ -8,10 +8,10 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   return (
     <div className="relative flex flex-col h-[100dvh] w-full max-w-md mx-auto shadow-2xl overflow-hidden">
       {/* Warm grain background (clipped to app container) */}
-      <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,#6b4a3b_0%,#3a2d28_45%,#2b2522_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_35%,rgba(255,214,170,0.25)_0%,rgba(255,214,170,0)_65%)]" />
-      <div className="absolute inset-0 opacity-35 mix-blend-overlay pointer-events-none bg-[url('/grain.svg')] bg-repeat" />
-      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(90%_90%_at_50%_35%,rgba(0,0,0,0)_0%,rgba(0,0,0,0.35)_70%,rgba(0,0,0,0.55)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_0%,#7a4d39_0%,#3b2b25_42%,#241f1d_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(110%_85%_at_50%_32%,rgba(255,228,196,0.22)_0%,rgba(255,228,196,0.06)_42%,rgba(255,228,196,0)_72%)]" />
+      <div className="absolute inset-0 opacity-25 mix-blend-overlay pointer-events-none bg-[url('/grain.svg')] bg-repeat" />
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(90%_90%_at_50%_30%,rgba(0,0,0,0)_0%,rgba(0,0,0,0.28)_68%,rgba(0,0,0,0.55)_100%)]" />
 
       <div className="relative flex flex-col h-full">
         {children}
