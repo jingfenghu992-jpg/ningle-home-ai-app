@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Image, Send } from 'lucide-react';
+import { Image, Send, Camera } from 'lucide-react';
 
 interface InputBarProps {
   onSendMessage: (text: string) => void;
@@ -9,6 +9,7 @@ interface InputBarProps {
 const InputBar: React.FC<InputBarProps> = ({ onSendMessage, onSendImage }) => {
   const [input, setInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,19 +23,28 @@ const InputBar: React.FC<InputBarProps> = ({ onSendMessage, onSendImage }) => {
     if (file) {
       onSendImage(file);
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    // Reset inputs
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   return (
-    <div className="bg-[var(--wa-header)] p-3 px-4 flex items-center gap-3 z-20">
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        className="p-2 text-[var(--wa-text-secondary)] hover:text-[var(--wa-text-main)] transition-colors"
-      >
-        <Image size={26} />
-      </button>
+    <div className="bg-[#2E2C29] p-3 px-4 flex items-center gap-3 z-20 border-t border-white/5">
+      <div className="flex gap-2">
+        <button
+          onClick={() => cameraInputRef.current?.click()}
+          className="p-2 text-[#8A8F79] hover:text-[#F3F0EA] hover:bg-white/10 rounded-full transition-colors"
+        >
+          <Camera size={24} />
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="p-2 text-[#8A8F79] hover:text-[#F3F0EA] hover:bg-white/10 rounded-full transition-colors"
+        >
+          <Image size={24} />
+        </button>
+      </div>
+
       <input
         type="file"
         ref={fileInputRef}
@@ -42,20 +52,29 @@ const InputBar: React.FC<InputBarProps> = ({ onSendMessage, onSendImage }) => {
         accept="image/*"
         className="hidden"
       />
+      <input
+        type="file"
+        ref={cameraInputRef}
+        onChange={handleFileChange}
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+      />
+
       <form onSubmit={handleSubmit} className="flex-1 flex items-center gap-2">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="輸入你嘅問題…（例如：想做衣櫃收納）"
-          className="flex-1 bg-[#2a3942] text-[var(--wa-text-main)] rounded-xl px-4 py-3 text-[16px] placeholder:text-[15px] placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--wa-accent)]"
+          placeholder="輸入你嘅問題…"
+          className="flex-1 bg-[#F3F0EA]/10 text-[#EBE8E3] rounded-xl px-4 py-3 text-[16px] placeholder:text-[#EBE8E3]/40 focus:outline-none focus:ring-1 focus:ring-[#8A8F79] transition-all"
         />
         <button
           type="submit"
           disabled={!input.trim()}
-          className="p-2 text-[var(--wa-accent)] disabled:opacity-50 hover:bg-[#2a3942] rounded-full transition-colors"
+          className="p-2 text-[#8A8F79] disabled:opacity-50 hover:text-[#F3F0EA] hover:bg-white/10 rounded-full transition-colors"
         >
-          <Send size={26} />
+          <Send size={24} />
         </button>
       </form>
     </div>
