@@ -1,6 +1,10 @@
-import { shouldUseKnowledge, searchKnowledge } from '../services/kbFromBlob.js';
+// Remove static import to prevent load-time errors
+// import { shouldUseKnowledge, searchKnowledge } from '../services/kbFromBlob.js';
 
 export default async function handler(req, res) {
+  // Debug: Log environment keys to console (visible in Vercel logs or terminal)
+  console.log('[Chat API] Environment Keys:', Object.keys(process.env).join(', '));
+
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method Not Allowed' });
     return;
@@ -8,7 +12,8 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    res.status(500).json({ error: 'Configuration Error', message: 'Missing DEEPSEEK_API_KEY' });
+    console.error('[Chat API] Missing DEEPSEEK_API_KEY');
+    res.status(500).json({ error: 'Configuration Error', message: 'Missing DEEPSEEK_API_KEY. Please check your .env file or Vercel Environment Variables.' });
     return;
   }
 
@@ -17,14 +22,25 @@ export default async function handler(req, res) {
     const lastUserMessage = messages.slice().reverse().find(m => m.role === 'user');
     const userText = lastUserMessage ? lastUserMessage.content : "";
 
-    // 1. Force strict mode to always be true to ensure we consult KB
-    const isStrictKB = true; // shouldUseKnowledge(userText) -> Always TRUE now.
+    // Dynamic import to isolate side effects
+    let shouldUseKnowledge, searchKnowledge;
+    try {
+        const kbModule = await import('../services/kbFromBlob.js');
+        shouldUseKnowledge = kbModule.shouldUseKnowledge;
+        searchKnowledge = kbModule.searchKnowledge;
+    } catch (err) {
+        console.error('[Chat API] Failed to load kbFromBlob service:', err);
+        // Fallback or handle error. For now, just continue without KB logic if load fails.
+    }
+
+    // 1. Force strict mode to always be true (if module loaded)
+    const isStrictKB = shouldUseKnowledge ? true : false;
     
     // 2. Load Context from Blob (if strict)
     let contextExcerpt = "";
     let appliedDocName = "None";
 
-    if (isStrictKB) {
+    if (isStrictKB && searchKnowledge) {
         try {
             const { excerpt, sources } = await searchKnowledge(userText);
             contextExcerpt = excerpt;
@@ -55,10 +71,6 @@ export default async function handler(req, res) {
 
     let systemPrompt = "";
 
-    // IMPORTANT: Because we force isStrictKB=true, we handle two main cases:
-    // Case A: We found relevant KB docs (contextExcerpt is not empty).
-    // Case B: We searched but found NOTHING relevant (contextExcerpt is empty).
-
     if (contextExcerpt) {
         systemPrompt = `${CORE_PERSONA}${visionContext}
 
@@ -78,11 +90,12 @@ ${contextExcerpt}
    - 引用资料回答（用 Point form）。
    - 贴心追问。`;
     } else {
-        // Case B: Found nothing in KB
+        // Case B: Found nothing in KB or KB failed to load
+        // Fallback prompt for no data
         systemPrompt = `${CORE_PERSONA}${visionContext}
 
 【重要任务：无法检索到资料】
-客人提出了问题，但系统无法在知识库中找到相关资料。
+客人提出了问题，但系统无法在知识库中找到相关资料（或读取失败）。
 **严厉警告**：
 1. **绝对禁止** 编造任何价钱、套餐内容、具体工艺参数。
 2. 你必须诚实地告诉客人：「唔好意思，关于呢个具体问题，我手头个资料库暂时未有相关记录。不如你直接话我知你嘅具体需求（例如大约尺寸、想做咩位置），我可以转介俾更资深嘅同事或者设计师直接联络你？」
@@ -121,22 +134,9 @@ ${contextExcerpt}
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Pipe the DeepSeek stream directly to the client
-    // Note: Vercel serverless functions support streaming via web streams or node streams depending on runtime.
-    // For standard Node.js runtime in Vercel, we can iterate and flush.
-    
-    // We need to parse the SSE from DeepSeek and forward just the content or raw SSE.
-    // Simplest is to forward the raw stream but we might want to filter.
-    // For now, let's implement a pass-through reader.
-    
     if (deepSeekResponse.body) {
         // @ts-ignore
         for await (const chunk of deepSeekResponse.body) {
-            // chunk is Buffer (Node) or Uint8Array (Web)
-            // DeepSeek sends SSE format: data: {...}
-            // We can just forward it if the client expects SSE, 
-            // OR we can parse it and send raw text chunks if we want a simpler client.
-            // Let's assume we forward the SSE chunks directly so the client parses them.
             res.write(chunk);
         }
     }
