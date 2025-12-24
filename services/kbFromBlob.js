@@ -44,15 +44,21 @@ async function loadKnowledgeIndex() {
         
         // 1. List files
         const { blobs } = await list({ prefix: KB_PREFIX });
-        const docxFiles = blobs.filter(b => b.pathname.endsWith('.docx'));
+        
+        // Support .docx, .txt, and .md files
+        const validFiles = blobs.filter(b => 
+            b.pathname.endsWith('.docx') || 
+            b.pathname.endsWith('.txt') || 
+            b.pathname.endsWith('.md')
+        );
 
-        if (docxFiles.length === 0) {
-            console.warn('[KB] No .docx files found in Blob storage under', KB_PREFIX);
+        if (validFiles.length === 0) {
+            console.warn('[KB] No supported files (.docx, .txt, .md) found in Blob storage under', KB_PREFIX);
             return;
         }
 
         // 2. Download and Parse (Parallel)
-        await Promise.all(docxFiles.map(async (blob) => {
+        await Promise.all(validFiles.map(async (blob) => {
             const filename = blob.pathname.replace(KB_PREFIX, ''); // Clean name
             
             // Check cache first (by simple name for now, ideally etag)
@@ -65,9 +71,16 @@ async function loadKnowledgeIndex() {
                 const arrayBuffer = await response.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer);
 
-                // Parse docx
-                const result = await mammoth.extractRawText({ buffer: buffer });
-                const text = result.value;
+                let text = '';
+                
+                // Parse based on extension
+                if (blob.pathname.endsWith('.docx')) {
+                    const result = await mammoth.extractRawText({ buffer: buffer });
+                    text = result.value;
+                } else {
+                    // Assume text/md is UTF-8
+                    text = buffer.toString('utf-8');
+                }
                 
                 // Store in cache
                 kbCache[filename] = text;
