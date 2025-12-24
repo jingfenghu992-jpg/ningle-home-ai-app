@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { prompt, baseImageBlobUrl, size = "1024x1024" } = req.body;
+  const { prompt, baseImageBlobUrl, size = "1024x1024", renderIntake } = req.body;
 
   if (!baseImageBlobUrl) {
     res.status(400).json({ ok: false, message: 'Missing baseImageBlobUrl' });
@@ -33,6 +33,19 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Construct Prompt Server-Side if renderIntake is provided
+    let finalPrompt = prompt;
+    if (renderIntake) {
+        const { space, style, color, requirements } = renderIntake;
+        // Keep prompt simple and direct for StepFun
+        finalPrompt = `Realistic interior design render of ${space || 'room'}, ${style || 'modern'} style, ${color || 'neutral'} color scheme. ${requirements || ''}. Keep structural elements unchanged. High quality, photorealistic.`;
+    }
+
+    if (!finalPrompt) {
+         res.status(400).json({ ok: false, message: 'Missing prompt or renderIntake' });
+         return;
+    }
+
     let dataUrl = baseImageBlobUrl;
     // Ensure we have data URL for StepFun
     if (!baseImageBlobUrl.startsWith('data:')) {
@@ -53,9 +66,9 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'step-1x-medium',
-        prompt: prompt,
+        prompt: finalPrompt,
         source_url: dataUrl,
-        source_weight: 0.55, // Adjusted for balance
+        source_weight: 0.55,
         size: size,
         n: 1,
         response_format: "url",
@@ -92,7 +105,8 @@ export default async function handler(req, res) {
     res.status(200).json({
       ok: true,
       resultBlobUrl: finalBlobUrl || resultUrl,
-      isTemporaryUrl: !finalBlobUrl
+      isTemporaryUrl: !finalBlobUrl,
+      finalPromptUsed: finalPrompt // Return for debug if needed
     });
 
   } catch (error) {

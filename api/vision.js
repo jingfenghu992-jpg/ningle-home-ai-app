@@ -13,6 +13,7 @@ export default async function handler(req, res) {
     }
 
     const imageUrl = req.body.imageUrl || req.body.imageDataUrl || req.body.image;
+    const spaceType = req.body.spaceType; // New: Accept space type hint
 
     if (!imageUrl) {
         res.status(400).json({ error: 'Missing imageUrl' });
@@ -33,7 +34,6 @@ export default async function handler(req, res) {
     try {
         console.log('[Vision API] Analyzing image...');
         
-        // Convert to base64 if needed (StepFun might not reach Vercel Blobs directly)
         let finalImageUrl = imageUrl;
         if (imageUrl.startsWith('http')) {
             try {
@@ -49,6 +49,8 @@ export default async function handler(req, res) {
             }
         }
 
+        const spacePrompt = spaceType ? `這是一張${spaceType}的照片。` : "";
+
         const response = await fetch('https://api.stepfun.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -61,14 +63,15 @@ export default async function handler(req, res) {
                     {
                         role: "system",
                         content: `你是一位專業的室內設計視覺分析師，專精於香港住宅空間。請嚴格根據上傳圖片的真實視覺內容進行分析。
-返回 JSON 格式：
+${spacePrompt}
+返回 JSON 格式（內容用繁體中文）：
 {
   "perspective": "視角與鏡頭高度",
   "structure": "空間結構（橫樑、柱位、窗台、假天花位置）",
   "lighting": "光線來源與色溫",
   "materials": "主要材質與質感",
   "hk_notes": "香港常見戶型特徵（例如：窗台深度、冷氣機位、樓底高度感）",
-  "suggestions": "針對此空間的3個裝修建議"
+  "suggestions": "針對此空間的3個重點裝修建議（簡短）"
 }
 如果無法返回 JSON，請用列點方式詳細描述。`
                     },
