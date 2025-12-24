@@ -6,9 +6,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  // Use STEPFUN_API_KEY if available, otherwise fallback to VISION key for shared usage
+  const apiKey = process.env.STEPFUN_API_KEY || process.env.STEPFUN_VISION_API_KEY;
   if (!apiKey) {
-    res.status(500).json({ error: 'Configuration Error', message: 'Missing DEEPSEEK_API_KEY' });
+    res.status(500).json({ error: 'Configuration Error', message: 'Missing STEPFUN_API_KEY or STEPFUN_VISION_API_KEY' });
     return;
   }
 
@@ -102,25 +103,25 @@ ${contextExcerpt}
         ...messages
     ];
 
-    // Call DeepSeek with streaming enabled
-    const deepSeekResponse = await fetch('https://api.deepseek.com/chat/completions', {
+    // Call StepFun with streaming enabled
+    const stepfunResponse = await fetch('https://api.stepfun.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'step-1-8k',
         messages: apiMessages,
         stream: true, // ENABLE STREAMING
-        max_tokens: 600,
+        max_tokens: 1000,
         temperature: 0.7
       })
     });
 
-    if (!deepSeekResponse.ok) {
-        const errorText = await deepSeekResponse.text();
-        res.status(deepSeekResponse.status).json({ error: 'Upstream API Error', details: errorText });
+    if (!stepfunResponse.ok) {
+        const errorText = await stepfunResponse.text();
+        res.status(stepfunResponse.status).json({ error: 'Upstream API Error', details: errorText });
         return;
     }
 
@@ -129,22 +130,13 @@ ${contextExcerpt}
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Pipe the DeepSeek stream directly to the client
-    // Note: Vercel serverless functions support streaming via web streams or node streams depending on runtime.
-    // For standard Node.js runtime in Vercel, we can iterate and flush.
+    // Pipe the StepFun stream directly to the client
     
-    // We need to parse the SSE from DeepSeek and forward just the content or raw SSE.
-    // Simplest is to forward the raw stream but we might want to filter.
-    // For now, let's implement a pass-through reader.
-    
-    if (deepSeekResponse.body) {
+    if (stepfunResponse.body) {
         // @ts-ignore
-        for await (const chunk of deepSeekResponse.body) {
+        for await (const chunk of stepfunResponse.body) {
             // chunk is Buffer (Node) or Uint8Array (Web)
-            // DeepSeek sends SSE format: data: {...}
-            // We can just forward it if the client expects SSE, 
-            // OR we can parse it and send raw text chunks if we want a simpler client.
-            // Let's assume we forward the SSE chunks directly so the client parses them.
+            // StepFun sends SSE format: data: {...} just like OpenAI/DeepSeek
             res.write(chunk);
         }
     }
