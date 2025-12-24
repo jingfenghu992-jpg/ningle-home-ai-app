@@ -6,7 +6,7 @@ interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   return (
-    <div className="flex flex-col h-[100dvh] w-full max-w-md mx-auto bg-warm-dark shadow-2xl overflow-hidden relative">
+    <div className="app-warm-grain flex flex-col h-[100dvh] w-full max-w-md mx-auto shadow-2xl overflow-hidden relative">
       {children}
     </div>
   );

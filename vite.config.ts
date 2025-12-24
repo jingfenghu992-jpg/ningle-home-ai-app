@@ -7,6 +7,10 @@ import generateHandler from './api/generate'
 import kbStatusHandler from './api/kbStatus'
 import visionHealthHandler from './api/vision-health'
 import envCheckHandler from './api/env-check'
+import uploadHandler from './api/upload'
+import designGenerateHandler from './api/design/generate'
+import kbListHandler from './api/kb/list'
+import kbGetHandler from './api/kb/get'
 import { IncomingMessage, ServerResponse } from 'http'
 
 const apiMockPlugin = (): Plugin => ({
@@ -24,8 +28,12 @@ const apiMockPlugin = (): Plugin => ({
       if (pathname === '/api/chat') return chatHandler(req, res)
       if (pathname === '/api/vision') return visionHandler(req, res)
       if (pathname === '/api/generate') return generateHandler(req, res)
-      if (pathname === '/api/kb-status') return kbStatusHandler(req, res)
+      if (pathname === '/api/kbStatus') return kbStatusHandler(req, res)
       if (pathname === '/api/env-check') return envCheckHandler(req, res)
+      if (pathname === '/api/upload') return uploadHandler(req, res)
+      if (pathname === '/api/design/generate') return designGenerateHandler(req, res)
+      if (pathname === '/api/kb/list') return kbListHandler(req, res)
+      if (pathname === '/api/kb/get') return kbGetHandler(req, res)
 
       // 404 for unknown /api routes
       res.statusCode = 404

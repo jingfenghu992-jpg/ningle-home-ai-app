@@ -1,5 +1,6 @@
 // Dynamic import handling is now inside the handler to prevent cold start crashes
 // but we keep the file structure clean.
+import { searchKnowledge, shouldUseKnowledge } from '../services/kbFromBlob.js';
 
 export default async function handler(req, res) {
   // Simple Environment Check
@@ -19,6 +20,10 @@ export default async function handler(req, res) {
 
   try {
     const { messages, visionSummary, spaceType } = req.body;
+    const userLatestText =
+      Array.isArray(messages)
+        ? [...messages].reverse().find((m) => m?.role === 'user' && typeof m?.content === 'string')?.content
+        : '';
     
     // Core Persona (Hong Kong Home Design Consultant)
     const CORE_PERSONA = `你係「寧樂家居」嘅資深全屋訂造設計顧問。
@@ -43,8 +48,27 @@ export default async function handler(req, res) {
         visionContext += `以下是視覺分析報告，請必須引用此內容回答用戶問題：\n${visionSummary}\n\n請針對此空間提供 3-4 個具體、可落地的訂造傢俬建議（例如C字櫃、地台床、窗台書枱等），保持簡短精煉，格式適合在手機卡片閱讀。\n`;
     }
 
+    // Knowledge Base Context (Vercel Blob)
+    let kbContext = "";
+    try {
+      if (shouldUseKnowledge(userLatestText)) {
+        const kb = await searchKnowledge(userLatestText);
+        if (kb?.excerpt) {
+          const sources = Array.isArray(kb.sources) ? kb.sources.join('、') : '';
+          kbContext =
+            `\n\n【公司知識庫（內部資料）】\n` +
+            `以下內容來自 Vercel Blob 的知識庫文件，請優先依據此段落回答涉及板材/五金/價錢/流程/戶型/風格等問題；` +
+            `如果知識庫未覆蓋，請明確講「呢部分要同事一對一跟進」而唔好亂估。\n` +
+            (sources ? `來源：${sources}\n` : '') +
+            `${kb.excerpt}\n`;
+        }
+      }
+    } catch (e) {
+      console.warn('[Chat API] KB load/search failed (non-fatal):', e);
+    }
+
     // Final System Prompt
-    const systemPrompt = `${CORE_PERSONA}${visionContext}`;
+    const systemPrompt = `${CORE_PERSONA}${visionContext}${kbContext}`;
 
     const apiMessages = [
         { role: "system", content: systemPrompt },

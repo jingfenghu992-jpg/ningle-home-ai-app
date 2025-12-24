@@ -5,7 +5,9 @@ import mammoth from 'mammoth';
 let kbCache = {};
 let kbIndexLoaded = false;
 
-const KB_PREFIX = 'app知识库/';
+// 统一与线上 Vercel Blob 目录一致（你截图里是「应用知识库/」）
+// 同时保留旧前缀作为兼容（避免历史数据或文档不一致导致查不到）
+const KB_PREFIXES = ['应用知识库/', '應用知識庫/', 'app知识库/'];
 
 // Business Keywords for Strict Trigger (Merged from your requirements)
 export const BUSINESS_KEYWORDS = {
@@ -38,17 +40,17 @@ async function loadKnowledgeIndex() {
     if (kbIndexLoaded && Object.keys(kbCache).length > 0) return;
 
     try {
-        console.log('[KB] Loading from Vercel Blob prefix:', KB_PREFIX);
-        
+        console.log('[KB] Loading from Vercel Blob prefixes:', KB_PREFIXES);
+
         // Wrap list call in try-catch to handle missing blob token or permission errors gracefully
-        let blobs = [];
-        try {
-            const listResult = await list({ prefix: KB_PREFIX });
-            blobs = listResult.blobs;
-        } catch (listErr) {
-            console.error('[KB] Failed to list blobs. Is BLOB_READ_WRITE_TOKEN set?', listErr);
-            throw listErr; // Re-throw to be caught by searchKnowledge
-        }
+        const listResults = await Promise.allSettled(
+            KB_PREFIXES.map((prefix) => list({ prefix }))
+        );
+
+        const blobs = listResults
+            .filter((r) => r.status === 'fulfilled')
+            // @ts-ignore
+            .flatMap((r) => r.value?.blobs || []);
         
         const docxFiles = blobs.filter(b => 
             b.pathname.toLowerCase().endsWith('.docx') || 
@@ -62,7 +64,14 @@ async function loadKnowledgeIndex() {
 
         // 2. Download and Parse (Parallel)
         await Promise.all(docxFiles.map(async (blob) => {
-            const filename = blob.pathname.replace(KB_PREFIX, ''); // Clean name
+            // Clean name: remove any matched prefix for display/cache key
+            let filename = blob.pathname;
+            for (const prefix of KB_PREFIXES) {
+                if (filename.startsWith(prefix)) {
+                    filename = filename.replace(prefix, '');
+                    break;
+                }
+            }
             
             // Check cache first (by simple name for now, ideally etag)
             if (kbCache[filename]) return;
