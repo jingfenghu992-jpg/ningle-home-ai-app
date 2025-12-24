@@ -5,10 +5,16 @@ export default async function handler(req, res) {
     return;
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  // Fallback to StepFun keys if DEEPSEEK_API_KEY is missing
+  const apiKey = 
+    process.env.DEEPSEEK_API_KEY || 
+    process.env.STEPFUN_IMAGE_API_KEY || 
+    process.env.STEPFUN_VISION_API_KEY || 
+    process.env.STEPFUN_VISION_API_KEY_2;
+
   if (!apiKey) {
-    console.error('[Chat API] Missing DEEPSEEK_API_KEY');
-    res.status(500).json({ error: 'Configuration Error', message: 'Missing DEEPSEEK_API_KEY' });
+    console.error('[Chat API] Missing API Key (tried DEEPSEEK and STEPFUN keys)');
+    res.status(500).json({ error: 'Configuration Error', message: 'Missing StepFun API key' });
     return;
   }
 
@@ -47,15 +53,17 @@ export default async function handler(req, res) {
         ...messages
     ];
 
-    // Call DeepSeek with streaming enabled
-    const deepSeekResponse = await fetch('https://api.deepseek.com/chat/completions', {
+    // Use StepFun Chat API instead of DeepSeek
+    // Endpoint: https://api.stepfun.com/v1/chat/completions
+    // Model: step-1-8k (Standard chat model) or step-1-32k
+    const deepSeekResponse = await fetch('https://api.stepfun.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'step-1-8k', // Using StepFun model
         messages: apiMessages,
         stream: true, // ENABLE STREAMING
         max_tokens: 600,
@@ -65,6 +73,7 @@ export default async function handler(req, res) {
 
     if (!deepSeekResponse.ok) {
         const errorText = await deepSeekResponse.text();
+        console.error('[Chat API] Upstream Error:', deepSeekResponse.status, errorText);
         res.status(deepSeekResponse.status).json({ error: 'Upstream API Error', details: errorText });
         return;
     }
