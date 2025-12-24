@@ -22,14 +22,15 @@ export default async function handler(req, res) {
 
     const keys = [
         process.env.STEPFUN_VISION_API_KEY,
-        process.env.STEPFUN_VISION_API_KEY_2
+        process.env.STEPFUN_VISION_API_KEY_2,
+        process.env.STEPFUN_IMAGE_API_KEY // Fallback
     ].filter(Boolean);
 
     if (keys.length === 0) {
         res.status(500).json({ 
             ok: false,
             errorCode: 'MISSING_KEY',
-            message: 'No STEPFUN_VISION_API_KEY configured' 
+            message: 'No StepFun API Keys configured' 
         });
         return;
     }
@@ -39,7 +40,8 @@ export default async function handler(req, res) {
 
     for (const key of keys) {
         try {
-            usedKey = key === process.env.STEPFUN_VISION_API_KEY ? 'KEY_1' : 'KEY_2';
+            // Mask key for logging
+            usedKey = `KEY_...${key.slice(-4)}`;
             console.log(`[Vision API] Trying with ${usedKey}...`);
 
             // Setup controller for upstream timeout (50s to avoid Vercel gateway timeout)
@@ -66,12 +68,6 @@ export default async function handler(req, res) {
                         const base64 = buffer.toString('base64');
                         const mime = imgRes.headers.get('content-type') || 'image/jpeg';
                         
-                        // Check size here. If > 4MB (safe margin for Vercel 1024MB RAM), we might still fail.
-                        // Vercel Hobby has 1024MB RAM. A 10MB JPEG can decompress to 100MB+ bitmap in memory depending on libs,
-                        // but here we just hold base64 string which is ~1.33x size.
-                        // 10MB image -> 13MB string. This is fine for memory.
-                        // The issue might be request body size to StepFun? StepFun limit?
-                        // Let's just log size.
                         const sizeMB = base64.length / 1024 / 1024;
                         console.log(`[Vision API] Converted image size: ${sizeMB.toFixed(2)} MB`);
 
