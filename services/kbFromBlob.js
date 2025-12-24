@@ -30,12 +30,7 @@ const ALL_KEYWORDS = [
 // Check if user text hits any business keyword
 export function shouldUseKnowledge(text) {
     if (!text) return false;
-    
-    // Always return true to force checking the KB for every query.
-    // This addresses the user requirement: "all replies must use the knowledge base".
-    // We will handle the "no hit" case in the searchKnowledge function (returning empty)
-    // and in the chat prompt (handling empty context).
-    return true;
+    return true; // Always on
 }
 
 // Load KB from Blob
@@ -45,11 +40,16 @@ async function loadKnowledgeIndex() {
     try {
         console.log('[KB] Loading from Vercel Blob prefix:', KB_PREFIX);
         
-        // 1. List files
-        const { blobs } = await list({ prefix: KB_PREFIX });
+        // Wrap list call in try-catch to handle missing blob token or permission errors gracefully
+        let blobs = [];
+        try {
+            const listResult = await list({ prefix: KB_PREFIX });
+            blobs = listResult.blobs;
+        } catch (listErr) {
+            console.error('[KB] Failed to list blobs. Is BLOB_READ_WRITE_TOKEN set?', listErr);
+            throw listErr; // Re-throw to be caught by searchKnowledge
+        }
         
-        // Use a more inclusive filter to catch files with different extensions or weird naming
-        // Assuming we only want Word documents.
         const docxFiles = blobs.filter(b => 
             b.pathname.toLowerCase().endsWith('.docx') || 
             b.pathname.toLowerCase().endsWith('.doc')
@@ -95,7 +95,13 @@ async function loadKnowledgeIndex() {
 
 // Search KB
 export async function searchKnowledge(query) {
-    await loadKnowledgeIndex();
+    // Ensure loading logic is safe
+    try {
+        await loadKnowledgeIndex();
+    } catch (e) {
+        console.error('[KB] Critical error loading knowledge base:', e);
+        return { excerpt: "", sources: [] };
+    }
 
     const normQuery = query.toLowerCase();
     const hits = [];
@@ -125,7 +131,6 @@ export async function searchKnowledge(query) {
         }
         
         // 3. Document relevance boost (Naive)
-        // If query contains "报价" or "价格", boost pricing docs
         if ((normQuery.includes("价") || normQuery.includes("钱")) && filename.includes("价")) {
             score += 20;
         }
@@ -158,14 +163,12 @@ export async function searchKnowledge(query) {
         // Priority 1: Match the longest Business Keyword found in query
         let bestKeyword = "";
         if (queryBusinessKeywords.length > 0) {
-            // Sort by length desc
             bestKeyword = queryBusinessKeywords.sort((a, b) => b.length - a.length)[0];
         }
 
         if (bestKeyword) {
             bestIndex = normContent.indexOf(bestKeyword.toLowerCase());
         } else {
-            // Priority 2: Match the longest token
             const longestToken = queryTokens.sort((a, b) => b.length - a.length)[0];
             if (longestToken && longestToken.length > 1) {
                 bestIndex = normContent.indexOf(longestToken.toLowerCase());
@@ -174,10 +177,8 @@ export async function searchKnowledge(query) {
 
         if (bestIndex === -1) bestIndex = 0;
         
-        // Take window: start a bit before match (if not 0)
-        // Increased context window to ensure full paragraphs are captured
-        const start = Math.max(0, bestIndex - 500); // More previous context
-        const end = Math.min(hit.content.length, start + 3000); // Larger window
+        const start = Math.max(0, bestIndex - 500); 
+        const end = Math.min(hit.content.length, start + 3000); 
         
         combinedExcerpt += hit.content.substring(start, end) + "...\n";
         usedSources.push(hit.filename);

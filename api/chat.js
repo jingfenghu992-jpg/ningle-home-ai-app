@@ -3,17 +3,28 @@
 
 export default async function handler(req, res) {
   // Debug: Log environment keys to console (visible in Vercel logs or terminal)
-  console.log('[Chat API] Environment Keys:', Object.keys(process.env).join(', '));
+  // Mask the values for security, but show the keys to verify existence.
+  const envKeys = Object.keys(process.env).sort();
+  console.log('[Chat API] Environment Keys Available:', envKeys.join(', '));
 
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method Not Allowed' });
     return;
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  // Attempt to find the key in standard or alternative names
+  const apiKey = process.env.DEEPSEEK_API_KEY || process.env.DEEPSEEK_KEY;
+
   if (!apiKey) {
     console.error('[Chat API] Missing DEEPSEEK_API_KEY');
-    res.status(500).json({ error: 'Configuration Error', message: 'Missing DEEPSEEK_API_KEY. Please check your .env file or Vercel Environment Variables.' });
+    // Return debug info to client for diagnosis
+    res.status(500).json({ 
+        error: 'Configuration Error', 
+        message: 'Missing DEEPSEEK_API_KEY environment variable.',
+        debug: {
+            availableEnvKeys: envKeys
+        }
+    });
     return;
   }
 
@@ -24,29 +35,32 @@ export default async function handler(req, res) {
 
     // Dynamic import to isolate side effects
     let shouldUseKnowledge, searchKnowledge;
+    let kbLoadError = null;
+
     try {
         const kbModule = await import('../services/kbFromBlob.js');
         shouldUseKnowledge = kbModule.shouldUseKnowledge;
         searchKnowledge = kbModule.searchKnowledge;
     } catch (err) {
         console.error('[Chat API] Failed to load kbFromBlob service:', err);
-        // Fallback or handle error. For now, just continue without KB logic if load fails.
+        kbLoadError = err.message;
     }
 
     // 1. Force strict mode to always be true (if module loaded)
-    const isStrictKB = shouldUseKnowledge ? true : false;
+    const isStrictKB = !!searchKnowledge;
     
     // 2. Load Context from Blob (if strict)
     let contextExcerpt = "";
     let appliedDocName = "None";
 
-    if (isStrictKB && searchKnowledge) {
+    if (isStrictKB) {
         try {
             const { excerpt, sources } = await searchKnowledge(userText);
             contextExcerpt = excerpt;
             if (sources.length > 0) appliedDocName = sources.join(', ');
         } catch (e) {
             console.error("[Chat API] KB Search Failed:", e);
+            // Don't crash, just log
         }
     }
 
@@ -91,11 +105,13 @@ ${contextExcerpt}
    - 贴心追问。`;
     } else {
         // Case B: Found nothing in KB or KB failed to load
-        // Fallback prompt for no data
+        let fallbackReason = "无法检索到资料";
+        if (kbLoadError) fallbackReason += ` (系统错误: ${kbLoadError})`;
+        
         systemPrompt = `${CORE_PERSONA}${visionContext}
 
-【重要任务：无法检索到资料】
-客人提出了问题，但系统无法在知识库中找到相关资料（或读取失败）。
+【重要任务：${fallbackReason}】
+客人提出了问题，但系统无法在知识库中找到相关资料。
 **严厉警告**：
 1. **绝对禁止** 编造任何价钱、套餐内容、具体工艺参数。
 2. 你必须诚实地告诉客人：「唔好意思，关于呢个具体问题，我手头个资料库暂时未有相关记录。不如你直接话我知你嘅具体需求（例如大约尺寸、想做咩位置），我可以转介俾更资深嘅同事或者设计师直接联络你？」
