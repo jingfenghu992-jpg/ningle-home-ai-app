@@ -1,5 +1,4 @@
 import React from 'react';
-import { Camera, Upload, ArrowRight, ArrowUpRight } from 'lucide-react';
 
 interface StartScreenProps {
   onUpload: (file: File) => void;
@@ -16,7 +15,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
   };
 
   const handleWhatsApp = () => {
-    const text = encodeURIComponent('你好，我想了解全屋訂造/室內設計方案，想免費跟進一下。');
+    const text = encodeURIComponent('我想免費了解全屋訂造／收納方案，方便了解嗎？');
     const waLink = `https://wa.me/85256273817?text=${text}`;
     window.open(waLink, '_blank', 'noopener,noreferrer');
   };
@@ -25,55 +24,112 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
     <div className="flex flex-col items-center justify-center h-full px-4 pb-12 animate-in fade-in duration-700">
       
       {/* Main Card */}
-      <div className="w-full max-w-sm bg-[#F3F0EA] rounded-[32px] p-6 shadow-xl border border-white/20 flex flex-col items-center">
+      <div 
+        className="w-full max-w-[420px] flex flex-col items-center backdrop-blur-[10px]"
+        style={{
+             padding: '18px',
+             borderRadius: '28px',
+             backgroundColor: 'rgba(243,235,221,0.10)',
+             border: '1px solid rgba(255,255,255,0.14)',
+             boxShadow: '0 20px 60px rgba(0,0,0,0.35)'
+        }}
+      >
         
-        {/* Image Placeholder */}
-        <div className="w-full aspect-[4/3] bg-[#EBE8E3] rounded-[24px] mb-6 overflow-hidden relative shadow-inner">
-           {/* Placeholder content - can be replaced with actual image later */}
-           <div className="absolute inset-0 flex items-center justify-center text-[#8A8F79]/20">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-           </div>
-           {/* If we had an image asset, it would go here: <img src="..." className="w-full h-full object-cover" /> */}
+        {/* Hero Image */}
+        <div className="w-full relative shadow-sm overflow-hidden" style={{ borderRadius: '18px', height: 'clamp(160px, 25vh, 190px)' }}>
+            <img 
+                src="/ui/hero-room.png" 
+                alt="Living Room" 
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?q=80&w=800&auto=format&fit=crop';
+                }} 
+            />
+            {/* Inner Shadow for blend */}
+            <div className="absolute inset-0 shadow-[inset_0_-10px_20px_rgba(0,0,0,0.1)] pointer-events-none rounded-[18px]" />
         </div>
 
-        {/* Title & Subtitle */}
-        <h1 className="text-[28px] font-bold text-[#4A453C] mb-3 text-center tracking-tight leading-tight">
-          上傳你屋企相片
-        </h1>
-        
-        <p className="text-[#4A453C]/70 text-center mb-8 text-[16px] leading-relaxed max-w-[260px]">
-          我會先幫你分析空間，再一步步幫你規劃訂造方案
-        </p>
+        {/* Content Container */}
+        <div className="w-full flex flex-col items-center pt-6 pb-2 px-1">
 
-        {/* Main Action Button */}
-        <div className="w-full space-y-3">
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full bg-[#8A8F79] hover:bg-[#6B705C] text-white py-4 rounded-[20px] font-bold text-[18px] shadow-lg shadow-[#8A8F79]/25 flex items-center justify-center gap-2.5 transition-all active:scale-95"
-          >
-            <Upload size={22} />
-            開始分析
-          </button>
-          
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            accept="image/*" 
-            capture="environment"
-            className="hidden" 
-            onChange={handleFileChange}
-          />
+            {/* Title */}
+            <h1 className="mb-3 text-center tracking-tight leading-[1.1]"
+                style={{
+                    fontSize: 'clamp(26px, 3.2vw, 32px)',
+                    fontWeight: 800,
+                    color: '#F3EBDD'
+                }}
+            >
+              上傳你屋企相片
+            </h1>
+            
+            {/* Subtitle */}
+            <p className="text-center mb-8 leading-relaxed max-w-[280px]"
+                style={{
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    color: 'rgba(243,235,221,0.85)'
+                }}
+            >
+              我會先幫你分析空間，再一步步幫你規劃訂造方案
+            </p>
+
+            {/* Main Action Button */}
+            <div className="w-full mb-4">
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] hover:bg-[#9A9378]"
+                style={{
+                    height: '52px',
+                    backgroundColor: '#8D876E',
+                    borderRadius: '16px',
+                    color: '#FFFFFF',
+                    fontSize: '16px',
+                    fontWeight: 700,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                }}
+              >
+                <img 
+                    src="/ui/icon-camera.png" 
+                    className="w-[18px] h-[18px] object-contain" 
+                    alt="Camera" 
+                    onError={(e) => {
+                         // Fallback SVG
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.parentElement?.insertAdjacentHTML('afterbegin', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>');
+                    }}
+                />
+                <span>開始分析</span>
+              </button>
+              
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                accept="image/*" 
+                capture="environment"
+                className="hidden" 
+                onChange={handleFileChange}
+              />
+            </div>
+
+             {/* Footer Prompt Bar */}
+             <button 
+                onClick={handleWhatsApp}
+                className="w-full flex items-center justify-between transition-colors hover:bg-black/25"
+                style={{
+                    backgroundColor: 'rgba(0,0,0,0.18)',
+                    borderRadius: '14px',
+                    padding: '12px 12px',
+                    color: 'rgba(243,235,221,0.85)',
+                    fontSize: '13px',
+                    fontWeight: 400
+                }}
+              >
+                <span>想問報價／尺寸？按右上角『免費跟進』</span>
+                <span className="opacity-70 text-[16px] font-light">→</span>
+              </button>
         </div>
       </div>
-
-      {/* Footer Text */}
-      <button 
-        onClick={handleWhatsApp}
-        className="mt-8 text-[#EBE8E3]/60 text-sm flex items-center gap-1.5 hover:text-[#EBE8E3] transition-colors"
-      >
-        <span>想問報價/尺寸？按右上角「免費跟進」</span>
-        <ArrowUpRight size={14} />
-      </button>
     </div>
   );
 };

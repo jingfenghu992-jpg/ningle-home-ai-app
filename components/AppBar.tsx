@@ -1,33 +1,43 @@
 import React from 'react';
-import { HelpCircle, MessageCircle } from 'lucide-react';
 
 export const AppBar: React.FC = () => {
   const handleWhatsApp = () => {
-    const text = encodeURIComponent('你好，我想了解全屋訂造/室內設計方案，想免費跟進一下。');
+    const text = encodeURIComponent('我想免費了解全屋訂造／收納方案，方便了解嗎？');
     const waLink = `https://wa.me/85256273817?text=${text}`;
     window.open(waLink, '_blank', 'noopener,noreferrer');
   };
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-[#2E2C29] border-b border-white/5 shrink-0 z-20">
+    <div className="flex items-center justify-between px-4 h-[56px] shrink-0 z-20">
       <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-[#8A8F79] rounded-lg flex items-center justify-center text-white font-bold">
+        <div className="w-[28px] h-[28px] bg-[#F3EBDD] rounded-lg flex items-center justify-center text-[#2A201A] font-bold text-sm">
           N
         </div>
-        <span className="text-[#EBE8E3] font-medium text-lg">寧樂家居助手</span>
+        <span className="font-semibold text-[18px] text-[#F3EBDD] tracking-wide">
+          寧樂家居助手
+        </span>
       </div>
-      <div className="flex items-center gap-3">
-        <button 
-          onClick={handleWhatsApp}
-          className="flex items-center gap-1.5 bg-[#8A8F79] hover:bg-[#6B705C] text-white px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
-        >
-          <MessageCircle size={16} />
-          <span>免費跟進</span>
-        </button>
-        <button className="text-white/60 hover:text-white transition-colors">
-          <HelpCircle size={22} />
-        </button>
-      </div>
+      
+      <button 
+        onClick={handleWhatsApp}
+        className="flex items-center gap-1.5 h-[34px] px-[12px] rounded-[999px] transition-colors backdrop-blur-sm"
+        style={{
+          backgroundColor: 'rgba(255,255,255,0.12)',
+          border: '1px solid rgba(255,255,255,0.18)'
+        }}
+      >
+        <img 
+            src="/ui/icon-whatsapp.png" 
+            alt="WA" 
+            className="w-4 h-4 object-contain opacity-90"
+            onError={(e) => {
+                // Fallback SVG if image not found
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.parentElement?.insertAdjacentHTML('afterbegin', '<svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-circle"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>');
+            }}
+        />
+        <span className="text-[#F3EBDD] text-[14px] font-medium leading-none pt-[1px]">免費跟進</span>
+      </button>
     </div>
   );
 };
