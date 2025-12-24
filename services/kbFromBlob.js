@@ -30,8 +30,12 @@ const ALL_KEYWORDS = [
 // Check if user text hits any business keyword
 export function shouldUseKnowledge(text) {
     if (!text) return false;
-    const norm = text.toLowerCase().replace(/\s+/g, '');
-    return ALL_KEYWORDS.some(kw => norm.includes(kw.toLowerCase()));
+    
+    // Always return true to force checking the KB for every query.
+    // This addresses the user requirement: "all replies must use the knowledge base".
+    // We will handle the "no hit" case in the searchKnowledge function (returning empty)
+    // and in the chat prompt (handling empty context).
+    return true;
 }
 
 // Load KB from Blob
@@ -43,10 +47,16 @@ async function loadKnowledgeIndex() {
         
         // 1. List files
         const { blobs } = await list({ prefix: KB_PREFIX });
-        const docxFiles = blobs.filter(b => b.pathname.endsWith('.docx'));
+        
+        // Use a more inclusive filter to catch files with different extensions or weird naming
+        // Assuming we only want Word documents.
+        const docxFiles = blobs.filter(b => 
+            b.pathname.toLowerCase().endsWith('.docx') || 
+            b.pathname.toLowerCase().endsWith('.doc')
+        );
 
         if (docxFiles.length === 0) {
-            console.warn('[KB] No .docx files found in Blob storage under', KB_PREFIX);
+            console.warn('[KB] No .docx/.doc files found in Blob storage under', KB_PREFIX);
             return;
         }
 
@@ -113,6 +123,12 @@ export async function searchKnowledge(query) {
                 score += 1;
             }
         }
+        
+        // 3. Document relevance boost (Naive)
+        // If query contains "报价" or "价格", boost pricing docs
+        if ((normQuery.includes("价") || normQuery.includes("钱")) && filename.includes("价")) {
+            score += 20;
+        }
 
         if (score > 0) {
             hits.push({ filename, content, score });
@@ -160,8 +176,8 @@ export async function searchKnowledge(query) {
         
         // Take window: start a bit before match (if not 0)
         // Increased context window to ensure full paragraphs are captured
-        const start = Math.max(0, bestIndex - 300);
-        const end = Math.min(hit.content.length, start + 2000);
+        const start = Math.max(0, bestIndex - 500); // More previous context
+        const end = Math.min(hit.content.length, start + 3000); // Larger window
         
         combinedExcerpt += hit.content.substring(start, end) + "...\n";
         usedSources.push(hit.filename);

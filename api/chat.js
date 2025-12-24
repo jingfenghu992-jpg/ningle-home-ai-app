@@ -17,8 +17,8 @@ export default async function handler(req, res) {
     const lastUserMessage = messages.slice().reverse().find(m => m.role === 'user');
     const userText = lastUserMessage ? lastUserMessage.content : "";
 
-    // 1. Determine "Strict Mode" (Business Keywords)
-    const isStrictKB = shouldUseKnowledge(userText);
+    // 1. Force strict mode to always be true to ensure we consult KB
+    const isStrictKB = true; // shouldUseKnowledge(userText) -> Always TRUE now.
     
     // 2. Load Context from Blob (if strict)
     let contextExcerpt = "";
@@ -31,7 +31,6 @@ export default async function handler(req, res) {
             if (sources.length > 0) appliedDocName = sources.join(', ');
         } catch (e) {
             console.error("[Chat API] KB Search Failed:", e);
-            // Fallback: Continue without strict context
         }
     }
 
@@ -56,46 +55,38 @@ export default async function handler(req, res) {
 
     let systemPrompt = "";
 
-    if (isStrictKB && contextExcerpt) {
+    // IMPORTANT: Because we force isStrictKB=true, we handle two main cases:
+    // Case A: We found relevant KB docs (contextExcerpt is not empty).
+    // Case B: We searched but found NOTHING relevant (contextExcerpt is empty).
+
+    if (contextExcerpt) {
         systemPrompt = `${CORE_PERSONA}${visionContext}
 
-【重要任務：業務查詢解答】
-客人問緊關鍵業務問題（板材/報價/流程/公司資料等）。
-**唯一資料來源**：你必須**完全依賴**以下提供的【參考資料】回答，資料入面無嘅就話唔清楚，**嚴禁**自行創作價錢或條款。
+【重要任務：客戶查詢解答】
+**唯一資料來源**：你必須**完全依賴**以下提供的【參考資料】回答，資料入面無嘅就話唔清楚，**嚴禁**自行創作價錢、條款或流程。
 
 ====================
 ${contextExcerpt}
 ====================
 
 回答規則：
-1. **必須引用資料**：所有價錢、參數、流程必須來自上方資料。
-2. **資料不足時**：如果上面資料搵唔到答案，請老實回答：「呢方面具體細節我手頭資料暫時未有顯示，為免報錯價，不如你留個 Contact 或者講低大約尺寸，我幫你問問工程部同事？」。
-3. **輸出結構**：
-   - 先確認客人的問題。
-   - 用 Point form 列出資料中的重點。
-   - 最後加 1-2 個貼心追問。
-4. **語氣包裝**：用「根據我哋標準做法」、「目前優惠係」代替「文檔顯示」。`;
-    } else if (isStrictKB && !contextExcerpt) {
-        // Hit keywords but KB failed or empty
-        systemPrompt = `${CORE_PERSONA}${visionContext}
-
-【任務：業務查詢（資料讀取失敗）】
-客人問緊業務問題（如價錢、公司流程），但系統未能讀取到相關文件。
-**嚴格規則**：
-1. **絕對唔好** 嘗試報價或提供具體收費標準（因為你讀唔到最新價單）。
-2. 請誠實禮貌回答：「唔好意思，我暫時讀取唔到最新的詳細價單/資料。不過一般來講...（提供極之通用的行業知識，例如訂造通常按尺算）」。
-3. 立即引導客人：「不如你話我知大概尺寸，或者留個 WhatsApp，我叫同事直接報個準確價錢俾你？」`;
+1. **必须引用資料**：所有价钱、参数、流程必须来自上方资料。
+2. **资料不足时**：如果上面资料找不到答案（例如客人问某个非常具体的尺寸或非标做法），请老实回答：「关于呢个具体细节，我手头资料暂时未有显示，为免讲错，不如你留个 WhatsApp 或者讲低大约尺寸，我帮你问问工程部同事再覆你？」。
+3. **绝对禁止兜底**：不要尝试用“通常做法”来回答涉及价钱或核心业务的问题。
+4. **输出结构**：
+   - 确认客人问题。
+   - 引用资料回答（用 Point form）。
+   - 贴心追问。`;
     } else {
-        // General Design Chat
+        // Case B: Found nothing in KB
         systemPrompt = `${CORE_PERSONA}${visionContext}
 
-【任務：一般設計閒聊】
-解答設計風格、空間感問題。
-原則：
-1. **極速回覆**：重點清晰，唔好長篇大論。
-2. **結構鎖**：如涉及出圖，絕不改動原圖結構。
-3. **禮貌引導**：適時引導客人講出具體需求（例如戶型、預算）。
-4. **視覺引用**：如上方有視覺分析資料，請自然地融入對話中。`;
+【重要任务：无法检索到资料】
+客人提出了问题，但系统无法在知识库中找到相关资料。
+**严厉警告**：
+1. **绝对禁止** 编造任何价钱、套餐内容、具体工艺参数。
+2. 你必须诚实地告诉客人：「唔好意思，关于呢个具体问题，我手头个资料库暂时未有相关记录。不如你直接话我知你嘅具体需求（例如大约尺寸、想做咩位置），我可以转介俾更资深嘅同事或者设计师直接联络你？」
+3. **可以** 回答非常通用的设计理念（如：浅色显大、镜面增加空间感），但**绝对不能** 涉及公司具体的业务承诺（如交期、保修、具体板材型号）。`;
     }
 
     const apiMessages = [
