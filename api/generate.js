@@ -14,13 +14,14 @@ export default async function handler(req, res) {
 
     const { prompt, size = "1024x1024" } = req.body;
     
-    const apiKey = process.env.STEPFUN_IMAGE_API_KEY;
+    // 统一使用同一个星辰/StepFun Key（与 Vercel 环境变量一致）
+    const apiKey = process.env.STEPFUN_API_KEY;
     if (!apiKey) {
-        console.error('Missing STEPFUN_IMAGE_API_KEY');
+        console.error('Missing STEPFUN_API_KEY');
         res.status(500).json({ 
             ok: false,
             errorCode: 'MISSING_KEY',
-            message: 'Missing STEPFUN_IMAGE_API_KEY' 
+            message: 'Missing STEPFUN_API_KEY' 
         });
         return;
     }
@@ -72,7 +73,7 @@ export default async function handler(req, res) {
             ok: true,
             b64_json: base64Image,
             debug: {
-                usedKey: "STEPFUN_IMAGE_API_KEY",
+                usedKey: "STEPFUN_API_KEY",
                 requestId: data.created // timestamp usually
             }
         });

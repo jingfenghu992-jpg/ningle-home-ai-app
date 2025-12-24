@@ -4,7 +4,8 @@ export default async function handler(req, res) {
         return;
     }
 
-    const apiKey = process.env.STEPFUN_IMAGE_API_KEY;
+    // 统一使用同一个星辰/StepFun Key（与 Vercel 环境变量一致）
+    const apiKey = process.env.STEPFUN_API_KEY;
     if (!apiKey) {
         res.status(200).json({ ok: false, errorCode: 'MISSING_KEY' });
         return;
@@ -34,7 +35,7 @@ export default async function handler(req, res) {
             const data = await response.json();
             res.status(200).json({
                 ok: true,
-                usedKey: "STEPFUN_IMAGE_API_KEY",
+                usedKey: "STEPFUN_API_KEY",
                 requestId: data.created
             });
         } else {

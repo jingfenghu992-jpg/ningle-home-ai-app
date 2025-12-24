@@ -16,15 +16,21 @@ export default async function handler(req, res) {
     }
 
     try {
-        // Check list files
-        const { blobs } = await list({ prefix: '应用知识库/' });
-        const docxFiles = blobs.filter(b => b.pathname.endsWith('.docx'));
+        const prefixes = ['应用知识库/', '應用知識庫/', 'app知识库/'];
+        const results = await Promise.allSettled(prefixes.map((prefix) => list({ prefix })));
+        const blobs = results
+            .filter(r => r.status === 'fulfilled')
+            // @ts-ignore
+            .flatMap(r => r.value?.blobs || []);
+
+        const docxFiles = blobs.filter(b => b.pathname.toLowerCase().endsWith('.docx'));
 
         res.status(200).json({
             ok: true,
             files: docxFiles.length,
             loaded: docxFiles.length > 0,
-            fileNames: docxFiles.map(b => b.pathname.split('/').pop()) // Show names for verification
+            prefixes,
+            fileNames: docxFiles.map(b => b.pathname) // Show full pathnames for verification
         });
 
     } catch (error) {
