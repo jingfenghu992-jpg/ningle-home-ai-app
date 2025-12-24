@@ -172,7 +172,7 @@ const App: React.FC = () => {
             {/* 2. State-based Cards */}
             
             {appState === 'WAITING_FOR_SPACE' && (
-                <NextStepCard text="收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）" />
+                <NextStepCard text="呢張相係咩空間？（例如：客廳／睡房／廚房／浴室／走廊）" />
             )}
 
             {(appState === 'ANALYSIS_DONE' || appState === 'RENDER_INTAKE' || appState === 'GENERATING' || appState === 'RENDER_DONE') && (
