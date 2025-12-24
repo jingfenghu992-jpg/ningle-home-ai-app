@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, MessageCircle } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 
 export const AppBar: React.FC = () => {
   const handleWhatsApp = () => {
@@ -9,24 +9,29 @@ export const AppBar: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-[#2E2C29] border-b border-white/5 shrink-0 z-20">
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 bg-[#8A8F79] rounded-lg flex items-center justify-center text-white font-bold">
-          N
+    <div className="shrink-0 z-20 px-4 pt-4">
+      <div className="relative w-full rounded-[28px] border border-white/12 bg-white/10 backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.42)]">
+        {/* subtle warm highlight */}
+        <div className="absolute inset-0 rounded-[28px] bg-[radial-gradient(120%_120%_at_20%_0%,rgba(255,235,210,0.22)_0%,rgba(255,235,210,0)_58%)] pointer-events-none" />
+        <div className="absolute inset-0 rounded-[28px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] pointer-events-none" />
+
+        <div className="relative px-4 py-2.5">
+          {/* Centered title (true center, like reference) */}
+          <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[#F1E3CD] font-semibold text-lg tracking-wide drop-shadow-[0_10px_24px_rgba(0,0,0,0.45)]">
+            寧樂家居助手
+          </div>
+
+          {/* Right CTA */}
+          <div className="flex items-center justify-end">
+            <button
+              onClick={handleWhatsApp}
+              className="flex items-center gap-2 bg-[#7C806A] hover:bg-[#6B705C] text-[#F7F3EA] px-4 py-2 rounded-full text-sm font-semibold transition-colors shadow-lg shadow-black/20 border border-white/10"
+            >
+              <MessageCircle size={16} />
+              <span>免費跟進</span>
+            </button>
+          </div>
         </div>
-        <span className="text-[#EBE8E3] font-medium text-lg">寧樂家居助手</span>
-      </div>
-      <div className="flex items-center gap-3">
-        <button 
-          onClick={handleWhatsApp}
-          className="flex items-center gap-1.5 bg-[#8A8F79] hover:bg-[#6B705C] text-white px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
-        >
-          <MessageCircle size={16} />
-          <span>免費跟進</span>
-        </button>
-        <button className="text-white/60 hover:text-white transition-colors">
-          <HelpCircle size={22} />
-        </button>
       </div>
     </div>
   );
