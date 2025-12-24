@@ -24,16 +24,16 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 pb-10 animate-in fade-in duration-700">
+    <div className="flex flex-col items-center justify-center h-full px-6 pb-12 animate-in fade-in duration-700">
       
       {/* Main Card */}
-      <div className="relative w-full max-w-sm rounded-[36px] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.55)] border border-white/14 bg-white/10 backdrop-blur-xl flex flex-col items-center">
+      <div className="relative w-full max-w-sm rounded-[38px] p-6 shadow-[0_26px_80px_rgba(0,0,0,0.60)] border border-white/14 bg-[#3b2d27]/40 backdrop-blur-2xl flex flex-col items-center">
         {/* Soft inner glow (warmer, more welcoming) */}
-        <div className="absolute inset-0 rounded-[36px] bg-[radial-gradient(120%_120%_at_50%_0%,rgba(255,235,210,0.20)_0%,rgba(255,235,210,0)_58%)] pointer-events-none" />
-        <div className="absolute inset-0 rounded-[36px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] pointer-events-none" />
+        <div className="absolute inset-0 rounded-[38px] bg-[radial-gradient(120%_120%_at_50%_0%,rgba(255,235,210,0.18)_0%,rgba(255,235,210,0)_60%)] pointer-events-none" />
+        <div className="absolute inset-0 rounded-[38px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)] pointer-events-none" />
         
         {/* Image Placeholder */}
-        <div className="relative w-full aspect-[4/3] bg-white/6 rounded-[26px] mb-6 overflow-hidden shadow-[0_10px_26px_rgba(0,0,0,0.35)] border border-white/12">
+        <div className="relative w-full aspect-[4/3] bg-white/6 rounded-[28px] mb-6 overflow-hidden shadow-[0_12px_30px_rgba(0,0,0,0.40)] border border-white/12">
           {heroSrc ? (
             <>
               <img
@@ -48,8 +48,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
                 decoding="async"
               />
               {/* Warm overlay to match reference */}
-              <div className="absolute inset-0 bg-[radial-gradient(85%_70%_at_50%_28%,rgba(0,0,0,0)_0%,rgba(0,0,0,0.22)_62%,rgba(0,0,0,0.40)_100%)]" />
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,240,220,0.05)_0%,rgba(255,240,220,0)_40%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(90%_80%_at_50%_28%,rgba(0,0,0,0)_0%,rgba(0,0,0,0.20)_60%,rgba(0,0,0,0.45)_100%)]" />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,240,220,0.06)_0%,rgba(255,240,220,0)_45%)]" />
             </>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -62,11 +62,11 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
         </div>
 
         {/* Title & Subtitle */}
-        <h1 className="relative text-[40px] font-black text-[#F4EFE6] mb-3 text-center tracking-tight leading-tight drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)]">
+        <h1 className="relative text-[40px] font-black text-[#F1E3CD] mb-3 text-center tracking-tight leading-tight drop-shadow-[0_12px_26px_rgba(0,0,0,0.55)]">
           上傳你屋企相片
         </h1>
         
-        <p className="text-[#F4EFE6]/82 text-center mb-7 text-[16px] leading-relaxed max-w-[300px]">
+        <p className="text-[#F1E3CD]/78 text-center mb-7 text-[16px] leading-relaxed max-w-[300px]">
           我會先幫你分析空間，再一步步幫你規劃訂造方案
         </p>
 
@@ -74,7 +74,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
         <div className="w-full space-y-4">
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="w-full bg-[#8A8F79] hover:bg-[#6B705C] text-white py-4 rounded-[24px] font-bold text-[20px] shadow-[0_14px_30px_rgba(0,0,0,0.35)] flex items-center justify-center gap-3 transition-all active:scale-[0.98] border border-white/12"
+            className="w-full bg-[#7C806A] hover:bg-[#6B705C] text-[#F7F3EA] py-4 rounded-[24px] font-bold text-[20px] shadow-[0_16px_34px_rgba(0,0,0,0.40)] flex items-center justify-center gap-3 transition-all active:scale-[0.98] border border-white/12"
           >
             <Camera size={22} />
             開始分析
@@ -92,20 +92,17 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
           {/* Hint bar (inside card, like reference) */}
           <button
             onClick={handleWhatsApp}
-            className="w-full rounded-[22px] bg-white/8 border border-white/12 px-4 py-3.5 text-left flex items-center gap-3 hover:bg-white/10 transition-colors"
+            className="w-full rounded-[24px] bg-white/7 border border-white/12 px-4 py-3.5 text-left flex items-center gap-3 hover:bg-white/9 transition-colors"
           >
-            <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center text-[#F4EFE6]/90 shadow-sm">
+            <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center text-[#F1E3CD]/90 shadow-sm">
               <StickyNote size={18} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[#F4EFE6]/85 text-sm font-medium truncate">
+              <div className="text-[#F1E3CD]/85 text-sm font-medium truncate">
                 想問報價/尺寸？按右上角「免費跟進」
               </div>
-              <div className="text-[#F4EFE6]/55 text-xs mt-0.5 truncate">
-                我哋同事會一對一跟進，回覆更準更快
-              </div>
             </div>
-            <ArrowRight size={18} className="text-[#F4EFE6]/70 shrink-0" />
+            <ArrowRight size={18} className="text-[#F1E3CD]/70 shrink-0" />
           </button>
         </div>
       </div>
