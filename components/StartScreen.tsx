@@ -8,7 +8,8 @@ interface StartScreenProps {
 
 export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const [heroOk, setHeroOk] = React.useState(true);
+  // Prefer user-provided /public/hero.jpg; fall back to bundled /public/hero.svg; then placeholder.
+  const [heroSrc, setHeroSrc] = React.useState<string | null>('/hero.jpg');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -30,12 +31,15 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
         
         {/* Image Placeholder */}
         <div className="w-full aspect-[4/3] bg-[#EBE8E3] rounded-[24px] mb-6 overflow-hidden relative shadow-inner">
-          {heroOk ? (
+          {heroSrc ? (
             <img
-              src="/hero.jpg"
+              src={heroSrc}
               alt="主視覺"
               className="absolute inset-0 w-full h-full object-cover"
-              onError={() => setHeroOk(false)}
+              onError={() => {
+                // If hero.jpg is missing, fall back to hero.svg. If that also fails, show placeholder.
+                setHeroSrc((prev) => (prev === '/hero.jpg' ? '/hero.svg' : null));
+              }}
               loading="eager"
               decoding="async"
             />
