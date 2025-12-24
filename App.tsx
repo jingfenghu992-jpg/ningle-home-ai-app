@@ -149,7 +149,13 @@ const App: React.FC = () => {
       <AppBar />
       
       {appState === 'START' ? (
-        <StartScreen onUpload={handleUpload} onCamera={() => (document.querySelector('input[type=file]') as HTMLInputElement)?.click()} />
+        <StartScreen 
+            onUpload={handleUpload} 
+            onCamera={() => {
+                const input = document.querySelector('input[type=file]') as HTMLInputElement;
+                input?.click();
+            }} 
+        />
       ) : (
         <>
           <div className="flex-1 overflow-y-auto overflow-x-hidden relative scrollbar-none pb-4">

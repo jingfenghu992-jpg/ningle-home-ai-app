@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "kb:build": "node scripts/build_kb.js",
-    "build": "npm run kb:build && tsc && vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
