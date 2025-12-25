@@ -1,6 +1,9 @@
 import { put, list } from '@vercel/blob';
 import { createHash } from 'crypto';
 
+// Bump this whenever prompt logic changes, to avoid returning stale cached renders.
+const PROMPT_VERSION = 'v4-render-20251225';
+
 export const config = {
     api: {
         bodyParser: {
@@ -131,6 +134,7 @@ export default async function handler(req, res) {
   try {
     // --- Job idempotency + cache (for large-scale public usage) ---
     const cacheKeyPayload = stableStringify({
+      promptVersion: PROMPT_VERSION,
       base: normalizeUrlForKey(baseImageBlobUrl),
       size: String(size || ''),
       renderIntake: renderIntake || null,
@@ -304,7 +308,7 @@ export default async function handler(req, res) {
 
         // Hard constraints for HK apartment + balcony cases
         const hardRules = [
-            'Photorealistic high-end interior design rendering, magazine quality, beautiful and finished.',
+            'Photorealistic high-end interior design rendering, V-Ray/Corona render style, magazine quality, beautiful and finished.',
             'This must look like a real interior design proposal render, NOT an empty room.',
             'Hong Kong apartment practicality, built-in cabinetry is the main change.',
             'INTERIOR ONLY: do NOT redesign the balcony or outdoor view; keep balcony/exterior as background unchanged.',

@@ -23,6 +23,7 @@ const App: React.FC = () => {
     height?: number;
     spaceType?: string;
     visionSummary?: string;
+    analysisStatus?: 'idle' | 'running' | 'done';
     render?: { style?: string; color?: string; focus?: string; storage?: string; priority?: string; intensity?: string };
   }>>({});
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
@@ -116,11 +117,22 @@ const App: React.FC = () => {
       setAppState('START');
       return;
     }
+    // Prevent duplicate analysis for the same uploadId
+    if (active.analysisStatus === 'running') {
+      await typeOutAI("收到～我而家分析緊呢張相，你等我幾秒先～");
+      return;
+    }
+    if (active.analysisStatus === 'done' && String(active.spaceType || '') === String(spaceTypeText || '')) {
+      await typeOutAI("呢張相我已經分析完成啦～你可以直接按「生成智能效果圖」。");
+      return;
+    }
 
     const analysisLoadingId = addLoadingToast("收到，圖片正在分析中，請稍等…", { loadingType: 'analyzing', uploadId });
     setAppState('ANALYZING');
     try {
-      setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], spaceType: spaceTypeText } }) : prev);
+      // Mark running + update spaceType; clear old analysis messages for this upload to avoid duplicates
+      setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], spaceType: spaceTypeText, analysisStatus: 'running' } }) : prev);
+      setMessages(prev => prev.filter(m => !(m.meta?.kind === 'analysis' && m.meta?.uploadId === uploadId)));
 
       const visionRes = await analyzeImage({
         imageDataUrl: active.dataUrl,
@@ -134,7 +146,7 @@ const App: React.FC = () => {
         setAnalysisSummary(visionRes.vision_summary);
         setAppState('ANALYSIS_DONE');
         stopLoadingToast(analysisLoadingId);
-        setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], visionSummary: visionRes.vision_summary } }) : prev);
+        setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], visionSummary: visionRes.vision_summary, analysisStatus: 'done' } }) : prev);
 
         await typeOutAI(
           `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
@@ -142,12 +154,14 @@ const App: React.FC = () => {
         );
       } else {
         stopLoadingToast(analysisLoadingId);
+        setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], analysisStatus: 'idle' } }) : prev);
         await typeOutAI("分析失敗，請重試。");
         setAppState('WAITING_FOR_SPACE');
       }
     } catch (e) {
       console.error(e);
       stopLoadingToast(analysisLoadingId);
+      setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], analysisStatus: 'idle' } }) : prev);
       await typeOutAI("系統錯誤，請重試。");
       setAppState('WAITING_FOR_SPACE');
     }
