@@ -108,7 +108,8 @@ export default async function handler(req, res) {
       };
 
       const mustInclude = Array.isArray(opts?.mustInclude) ? opts.mustInclude : [];
-      const system = `You are a senior HK interior designer. Produce a compact, executable design spec that will be used for image-to-image generation.
+      const system = `You are a senior Hong Kong interior designer specialized in public housing (公屋) and subsidized home ownership (居屋) layouts.
+Produce a compact, executable design spec that will be used for image-to-image generation.
 Output MUST be valid JSON only, no extra text.
 Rules:
 - The generated image MUST look like a finished photorealistic interior render (V-Ray/Corona style).
@@ -124,6 +125,15 @@ Space-specific must-haves:
 - dining room: MUST include dining table for 4 + chairs + pendant above table + dining sideboard/tall pantry.
 - bedroom: MUST include bed + full-height wardrobe.
 - kitchen: MUST include base cabinets + wall cabinets + countertop + sink/cooktop zone.
+- bathroom: MUST include vanity cabinet + mirror cabinet + shower screen/zone + anti-slip floor tile.
+- entryway: MUST include shoe cabinet + bench + full-length mirror + concealed clutter storage.
+- corridor: MUST include shallow storage along corridor + clear circulation width.
+- study: MUST include desk + bookcase/storage + task lighting.
+
+Hong Kong constraints to respect:
+- Small units, narrow corridors, low ceiling height: use slim cove/linear lighting, avoid bulky ceiling drops.
+- Common issues: window bay (窗台深), A/C unit position (冷气机位), diamond living room (钻石厅), wasted corridor corners.
+- Cabinetry should be practical: full-height storage, shallow cabinets in corridors, toe-kick, integrated handles, durable easy-clean surfaces.
 
 Return JSON schema:
 {
@@ -259,18 +269,43 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
         try {
           const spaceKind = inferSpaceKind(renderIntake?.space);
           const mustInclude = (() => {
-            const base = ['CEILING detail', 'FLOOR finish', 'BUILT-IN CABINETRY', 'SOFT FURNISHINGS', 'INTERIOR ONLY (do not change balcony)'];
-            if (spaceKind === 'living') return base.concat(['TV', 'TV console', 'TV feature wall storage', 'keep sofa and coffee table if present']);
+            const base = [
+              'CEILING detail (cove/false ceiling + downlights)',
+              'FLOOR finish (engineered wood / porcelain tile)',
+              'WALL finish',
+              'BUILT-IN CABINETRY',
+              'LIGHTING plan',
+              'SOFT FURNISHINGS',
+              'INTERIOR ONLY (do not change balcony/outdoor view)',
+              'DO NOT warp/melt objects'
+            ];
+            if (spaceKind === 'living') return base.concat(['TV', 'TV console', 'TV feature wall storage', 'sofa', 'coffee table', 'rug', 'curtains']);
             if (spaceKind === 'dining') return base.concat(['dining table for 4', 'chairs', 'pendant above table', 'dining sideboard/tall pantry']);
-            if (spaceKind === 'bedroom') return base.concat(['bed', 'full-height wardrobe']);
-            if (spaceKind === 'kitchen') return base.concat(['base + wall cabinets', 'countertop', 'sink/cooktop zone']);
+            if (spaceKind === 'bedroom') return base.concat(['bed', 'full-height wardrobe', 'bedside', 'curtains']);
+            if (spaceKind === 'study') return base.concat(['desk', 'bookcase/storage', 'task lighting']);
+            if (spaceKind === 'kitchen') return base.concat(['base cabinets', 'wall cabinets', 'countertop/worktop', 'sink', 'cooktop', 'backsplash tiles']);
+            if (spaceKind === 'bath') return base.concat(['vanity cabinet', 'mirror cabinet', 'shower screen/zone', 'anti-slip floor tiles']);
+            if (spaceKind === 'entry') return base.concat(['shoe cabinet', 'bench/seat', 'full-length mirror', 'concealed clutter storage']);
+            if (spaceKind === 'corridor') return base.concat(['shallow cabinets along corridor', 'clear walkway/circulation']);
             return base;
           })();
 
           designSpec = await buildSpec(renderIntake, { mustInclude });
-          // If missing critical items (e.g., living room without TV), retry once with stronger mustInclude
+          // If missing critical items, retry once with stronger mustInclude
           if (!validateMustHave(spaceKind, designSpec)) {
-            designSpec = await buildSpec(renderIntake, { mustInclude: mustInclude.concat(['DO NOT warp/melt objects', 'MUST mention TV explicitly if living room']) });
+            const retryExtra =
+              spaceKind === 'living'
+                ? ['MUST mention TV explicitly', 'MUST include TV feature wall with storage']
+                : spaceKind === 'kitchen'
+                  ? ['MUST include sink + cooktop triangle workflow', 'MUST include tall pantry/electrical cabinet if space allows']
+                  : spaceKind === 'bath'
+                    ? ['MUST include dry-wet separation', 'MUST include anti-slip floor tiles']
+                    : spaceKind === 'entry'
+                      ? ['MUST include shoe storage with bench + mirror']
+                      : spaceKind === 'corridor'
+                        ? ['MUST keep clear circulation width', 'use shallow storage only']
+                        : ['Ensure all must-haves are explicitly present in prompt'];
+            designSpec = await buildSpec(renderIntake, { mustInclude: mustInclude.concat(retryExtra) });
           }
           if (designSpec?.prompt_en) {
             finalPrompt = designSpec.prompt_en;
