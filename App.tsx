@@ -19,7 +19,7 @@ const App: React.FC = () => {
   // --- State ---
   const [appState, setAppState] = useState<'START' | 'WAITING_FOR_SPACE' | 'ANALYZING' | 'ANALYSIS_DONE' | 'RENDER_INTAKE' | 'GENERATING' | 'RENDER_DONE'>('START');
   
-  const [pendingImage, setPendingImage] = useState<{dataUrl: string, blobUrl?: string} | null>(null);
+  const [pendingImage, setPendingImage] = useState<{dataUrl: string, blobUrl?: string, width?: number, height?: number} | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
   
@@ -39,8 +39,22 @@ const App: React.FC = () => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             const dataUrl = e.target?.result as string;
-            setPendingImage({ dataUrl, blobUrl: '' });
-            setAppState('WAITING_FOR_SPACE');
+            // Probe image dimensions (used to pick best StepFun output size)
+            try {
+                const img = new Image();
+                img.onload = () => {
+                    setPendingImage({ dataUrl, blobUrl: '', width: img.width, height: img.height });
+                    setAppState('WAITING_FOR_SPACE');
+                };
+                img.onerror = () => {
+                    setPendingImage({ dataUrl, blobUrl: '' });
+                    setAppState('WAITING_FOR_SPACE');
+                };
+                img.src = dataUrl;
+            } catch {
+                setPendingImage({ dataUrl, blobUrl: '' });
+                setAppState('WAITING_FOR_SPACE');
+            }
             
             // Upload in background
             try {
@@ -165,11 +179,24 @@ const App: React.FC = () => {
 
   const triggerGeneration = async (intakeData: any, revisionText?: string) => {
       try {
+          const pickStepFunSize = (w?: number, h?: number) => {
+              if (!w || !h) return '1280x800';
+              const ratio = w / h;
+              // Prefer 16:9 sizes for room photos; use square only if close to square.
+              if (ratio > 1.15) return '1280x800';
+              if (ratio < 0.87) return '800x1280';
+              return '1024x1024';
+          };
+
           const payload = {
               prompt: '', 
               renderIntake: intakeData || {}, 
               baseImageBlobUrl: lastGeneratedImage || pendingImage?.blobUrl || undefined, 
-              size: '1024x1024'
+              size: pickStepFunSize(pendingImage?.width, pendingImage?.height),
+              // StepFun doc: smaller source_weight => more similar to source (less deformation)
+              source_weight: 0.4,
+              steps: 40,
+              cfg_scale: 6.0
           };
           
           // If revision, we assume we use the last generated image as base

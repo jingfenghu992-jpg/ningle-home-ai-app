@@ -4,6 +4,7 @@ export interface GenerateResponse {
   ok: boolean;
   b64_json?: string; // Legacy
   resultBlobUrl?: string; // New img2img result
+  debug?: any;
   message?: string;
   errorCode?: string;
 }
@@ -27,7 +28,17 @@ export async function uploadImage(file: File | Blob): Promise<{ url: string } | 
   }
 }
 
-export async function generateDesignImage(params: { prompt: string; baseImageBlobUrl: string; size?: string }): Promise<GenerateResponse> {
+export async function generateDesignImage(params: {
+  prompt?: string;
+  baseImageBlobUrl: string;
+  size?: string;
+  renderIntake?: any;
+  source_weight?: number;
+  steps?: number;
+  cfg_scale?: number;
+  seed?: number;
+  response_format?: 'b64_json' | 'url';
+}): Promise<GenerateResponse> {
   try {
     return await fetchJSON<GenerateResponse>('/api/design/generate', {
       method: 'POST',

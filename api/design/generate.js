@@ -14,7 +14,50 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { prompt, baseImageBlobUrl, size = "1024x1024", renderIntake } = req.body;
+  const {
+    prompt,
+    baseImageBlobUrl,
+    size,
+    renderIntake,
+    // StepFun image2image params (optional overrides)
+    source_weight,
+    steps,
+    cfg_scale,
+    seed,
+    response_format
+  } = req.body;
+
+  const allowedSizes = new Set([
+    "256x256", "512x512", "768x768", "1024x1024",
+    "1280x800", "800x1280"
+  ]);
+  const finalSize = (typeof size === 'string' && allowedSizes.has(size)) ? size : "1024x1024";
+
+  // StepFun doc: smaller source_weight => closer to source (less deformation)
+  const finalSourceWeight =
+    typeof source_weight === 'number' && source_weight > 0 && source_weight <= 1
+      ? source_weight
+      : 0.4;
+
+  const finalSteps =
+    Number.isInteger(steps) && steps >= 1 && steps <= 100
+      ? steps
+      : 40;
+
+  const finalCfgScale =
+    typeof cfg_scale === 'number' && cfg_scale >= 1 && cfg_scale <= 10
+      ? cfg_scale
+      : 6.0;
+
+  const finalSeed =
+    Number.isInteger(seed) && seed > 0
+      ? seed
+      : undefined;
+
+  const finalResponseFormat =
+    response_format === 'b64_json' || response_format === 'url'
+      ? response_format
+      : 'url';
 
   if (!baseImageBlobUrl) {
     res.status(400).json({ ok: false, message: 'Missing baseImageBlobUrl' });
@@ -62,15 +105,28 @@ export default async function handler(req, res) {
             model: 'step-1x-medium',
             prompt: finalPrompt,
             source_url: urlToUse,
-            source_weight: 0.55,
-            size: size,
+            source_weight: finalSourceWeight,
+            size: finalSize,
             n: 1,
-            response_format: "url",
-            steps: 50,
-            cfg_scale: 7.5
+            response_format: finalResponseFormat,
+            seed: finalSeed,
+            steps: finalSteps,
+            cfg_scale: finalCfgScale
           })
         });
     };
+
+    // Quick preflight check for public URL access (non-fatal; we can still try)
+    if (sourceUrl.startsWith('http')) {
+        try {
+            const headRes = await fetch(sourceUrl, { method: 'HEAD' });
+            if (!headRes.ok && headRes.status !== 405) {
+                console.warn(`[Design Gen] source_url HEAD not OK: ${headRes.status}`);
+            }
+        } catch (e) {
+            console.warn('[Design Gen] source_url HEAD failed:', e?.message || e);
+        }
+    }
 
     let stepfunRes = await callStepFun(sourceUrl);
 
@@ -107,16 +163,26 @@ export default async function handler(req, res) {
     }
 
     const data = await stepfunRes.json();
-    const resultUrl = data.data?.[0]?.url;
+    const first = data.data?.[0];
+    const finishReason = first?.finish_reason;
+    const resultSeed = first?.seed ?? data.seed;
+    const resultUrl = first?.url;
+    const resultImageB64 = first?.image;
 
-    if (!resultUrl) {
-      throw new Error('No image URL received from StepFun');
+    if (finalResponseFormat === 'url') {
+        if (!resultUrl) {
+            throw new Error(`No image URL received from StepFun (finish_reason=${finishReason || 'unknown'})`);
+        }
+    } else {
+        if (!resultImageB64) {
+            throw new Error(`No image base64 received from StepFun (finish_reason=${finishReason || 'unknown'})`);
+        }
     }
 
     // Try persistence (Non-fatal)
     let finalBlobUrl = null;
     try {
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
+        if (process.env.BLOB_READ_WRITE_TOKEN && finalResponseFormat === 'url') {
             const imgRes = await fetch(resultUrl);
             if (imgRes.ok) {
                 const blob = await put(`ningle-results/${Date.now()}.jpg`, imgRes.body, { access: 'public' });
@@ -127,11 +193,24 @@ export default async function handler(req, res) {
         console.warn('Blob persistence failed:', e);
     }
 
+    const finalResult =
+      finalResponseFormat === 'url'
+        ? (finalBlobUrl || resultUrl)
+        : `data:image/jpeg;base64,${resultImageB64}`;
+
     res.status(200).json({
-      ok: true,
-      resultBlobUrl: finalBlobUrl || resultUrl,
-      isTemporaryUrl: !finalBlobUrl,
-      debug: { usedFallback }
+        ok: true,
+        resultBlobUrl: finalResult,
+        isTemporaryUrl: finalResponseFormat === 'url' ? !finalBlobUrl : true,
+        debug: {
+            usedFallback,
+            size: finalSize,
+            source_weight: finalSourceWeight,
+            steps: finalSteps,
+            cfg_scale: finalCfgScale,
+            seed: resultSeed,
+            finish_reason: finishReason
+        }
     });
 
   } catch (error) {
