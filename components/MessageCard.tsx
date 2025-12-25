@@ -9,8 +9,6 @@ interface MessageCardProps {
 export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick }) => {
   const isUser = message.sender === 'user';
   
-  if (message.type === 'image') return null; // Images handled by PhotoCard primarily, or special card
-
   return (
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-6 px-4 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
       <div 
@@ -22,13 +20,19 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
           }
         `}
       >
-        <div className="whitespace-pre-wrap">
-            {message.content}
-            {/* Blinking Cursor for AI streaming if last char is not punctuation or if needed */}
-            {!isUser && message.content.length > 0 && (
-                <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[#8A8F79] animate-pulse align-middle" style={{animationDuration: '0.8s'}}></span>
-            )}
-        </div>
+        {message.type === 'image' ? (
+          <div className="max-w-xs md:max-w-sm rounded-[14px] overflow-hidden bg-black/5">
+            <img src={message.content} alt="result" className="w-full h-auto object-cover" />
+          </div>
+        ) : (
+          <div className="whitespace-pre-wrap">
+              {message.content}
+              {/* Blinking cursor ONLY during streaming */}
+              {!isUser && message.isStreaming && (
+                  <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[#8A8F79] animate-pulse align-middle" style={{animationDuration: '0.8s'}}></span>
+              )}
+          </div>
+        )}
 
         {/* Options / Chips */}
         {message.options && message.options.length > 0 && (

@@ -63,7 +63,7 @@ const App: React.FC = () => {
         // Create an empty assistant message for streaming updates
         setMessages(prev => [
             ...prev,
-            { id: assistantId, type: 'text', content: '', sender: 'ai', timestamp: Date.now() }
+            { id: assistantId, type: 'text', content: '', sender: 'ai', timestamp: Date.now(), isStreaming: true }
         ]);
 
         try {
@@ -82,9 +82,10 @@ const App: React.FC = () => {
             })) {
                 setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + delta } : m));
             }
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, isStreaming: false } : m));
         } catch (e: any) {
             console.error(e);
-            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: `（聊天失敗：${e?.message || '未知錯誤'}）` } : m));
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, isStreaming: false, content: `（聊天失敗：${e?.message || '未知錯誤'}）` } : m));
         }
     };
 
@@ -124,6 +125,8 @@ const App: React.FC = () => {
             if (visionRes.ok && visionRes.vision_summary) {
                 setAnalysisSummary(visionRes.vision_summary);
                 setAppState('ANALYSIS_DONE');
+                // Also append analysis summary into chat flow so user doesn't need to scroll up
+                addSystemToast(`【圖片分析結果】\n${visionRes.vision_summary}`);
                 
                 // Optional: Short toast from AI
                 // addSystemToast("分析完成！可以睇下上面嘅摘要。");
@@ -181,6 +184,11 @@ const App: React.FC = () => {
               const resultUrl = res.resultBlobUrl || (res.b64_json ? `data:image/jpeg;base64,${res.b64_json}` : null);
               setLastGeneratedImage(resultUrl!);
               setAppState('RENDER_DONE');
+              // Also append generated image into chat flow so it follows conversation
+              setMessages(prev => [
+                  ...prev,
+                  { id: `${Date.now()}-img`, type: 'image', content: resultUrl!, sender: 'ai', timestamp: Date.now() }
+              ]);
           } else {
               throw new Error(res.message);
           }
@@ -271,7 +279,7 @@ const App: React.FC = () => {
 
             {/* 3. Small Chat Stream (Toasts/Short interaction) */}
             <div className="mt-4">
-                {messages.slice(-3).map((msg) => ( // Only show last 3 messages to avoid clutter
+                {messages.map((msg) => (
                     <MessageCard key={msg.id} message={msg} />
                 ))}
                 <div ref={chatEndRef} />

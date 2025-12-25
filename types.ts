@@ -8,6 +8,7 @@ export interface Message {
   content: string; // Text content or Base64 image data
   sender: Sender;
   timestamp: number;
+  isStreaming?: boolean; // True while AI stream is in progress
   options?: string[]; // For clickable options
   selectedOptions?: string[]; // To highlight selected options
   isLocked?: boolean; // If true, options are disabled
