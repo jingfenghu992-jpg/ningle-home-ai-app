@@ -62,18 +62,17 @@ export default async function handler(req, res) {
                 messages: [
                     {
                         role: "system",
-                        content: `你是一位專業的「香港全屋訂造」視覺分析師，核心專長是：櫃體設計、收納規劃、動線與落地可施工方案。請嚴格根據上傳圖片的真實視覺內容進行分析，避免泛泛而談的軟裝建議（例如只講擺花/裝飾品）。
+                        content: `你是一位資深香港全屋訂造設計師，專注：櫃體設計、收納分區、動線落地。
 ${spacePrompt}
-返回 JSON 格式（內容用繁體中文；只要以下欄位）：
-{
-  "structure": "空間結構（只講：門窗/落地窗/陽台門/窗台、橫樑/柱位、假天花/冷氣機位等）",
-  "lighting": "光線來源與色溫（自然光/燈位不足等）",
-  "suggestions": [
-    "建議1：櫃體/收納訂造（要具體：位置/高度/開門方式/分區）",
-    "建議2：櫃體/收納訂造（要具體：位置/高度/開門方式/分區）"
-  ]
-}
-如果無法返回 JSON，請用列點方式詳細描述。`
+
+請用「人正常講嘢」嘅口吻輸出，唔好用 JSON、唔好用引號/大括號、唔好出現欄位名。
+只需要 4 段內容：
+1) 結構：用 1–2 句講清楚門窗/落地窗/陽台門/窗台、橫樑柱位、假天花/冷氣機位等（只講你睇到嘅）
+2) 光線：用 1 句講自然光/色溫/補光方向
+3) 櫃體建議 1（要具體：位置 + 大概高度範圍 + 開門方式 + 分區）
+4) 櫃體建議 2（同上）
+
+限制：每句盡量短，少標點，不要講軟裝擺設（例如擺花、裝飾品）`
                     },
                     {
                         role: "user",
@@ -93,31 +92,37 @@ ${spacePrompt}
         const data = await response.json();
         const content = data.choices[0]?.message?.content || "";
         
-        // Try parse JSON
-        let parsed = null;
-        try {
-            const cleanContent = content.replace(/```json/g, '').replace(/```/g, '').trim();
-            parsed = JSON.parse(cleanContent);
-        } catch (e) {}
-
-        const formatMaybeArray = (v) => {
-            if (v == null) return "";
-            if (Array.isArray(v)) {
-                return v.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n');
-            }
-            if (typeof v === 'object') return JSON.stringify(v);
-            return String(v);
+        // If model still returns JSON, try to extract and humanize it.
+        const tryParseJson = (raw) => {
+            try {
+                const clean = String(raw || '').replace(/```json/g, '').replace(/```/g, '').trim();
+                // Robust extraction between first { and last }
+                const s = clean.indexOf('{');
+                const e = clean.lastIndexOf('}');
+                if (s >= 0 && e > s) {
+                    return JSON.parse(clean.slice(s, e + 1));
+                }
+            } catch {}
+            return null;
         };
 
-        const shorten = (s, max = 120) => {
-            const t = formatMaybeArray(s).replace(/\s+/g, ' ').trim();
-            return t.length > max ? t.slice(0, max) + '…' : t;
+        const parsed = tryParseJson(content);
+        const humanize = (p) => {
+            const structure = String(p?.structure || '').trim();
+            const lighting = String(p?.lighting || '').trim();
+            const suggestions = Array.isArray(p?.suggestions) ? p.suggestions : [];
+            const s1 = suggestions[0] ? String(suggestions[0]).trim() : '';
+            const s2 = suggestions[1] ? String(suggestions[1]).trim() : '';
+            const lines = [
+                structure ? `結構：${structure}` : '',
+                lighting ? `光線：${lighting}` : '',
+                s1 ? `建議：${s1}` : '',
+                s2 ? `建議：${s2}` : ''
+            ].filter(Boolean);
+            return lines.join('\n');
         };
 
-        const suggestionsText = formatMaybeArray(parsed?.suggestions);
-        const summary = parsed
-            ? `【視覺分析】\n結構：${shorten(parsed.structure, 220)}\n光線：${shorten(parsed.lighting, 160)}\n建議：\n${suggestionsText}`
-            : content;
+        const summary = parsed ? humanize(parsed) : String(content || '').trim();
 
         res.status(200).json({
             ok: true,
