@@ -10,6 +10,10 @@ export interface Message {
   timestamp: number;
   isStreaming?: boolean; // True while AI stream is in progress
   options?: string[]; // For clickable options
+  meta?: {
+    uploadId?: string; // Bind actions to a specific uploaded image
+    kind?: 'upload' | 'analysis' | 'generated';
+  };
   selectedOptions?: string[]; // To highlight selected options
   isLocked?: boolean; // If true, options are disabled
   multiSelectLimit?: number; // Max number of selectable options

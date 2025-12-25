@@ -14,10 +14,10 @@ const App: React.FC = () => {
   // --- State ---
   const [appState, setAppState] = useState<'START' | 'WAITING_FOR_SPACE' | 'ANALYZING' | 'ANALYSIS_DONE' | 'RENDER_INTAKE' | 'GENERATING' | 'RENDER_DONE'>('START');
   
-  const [pendingImage, setPendingImage] = useState<{dataUrl: string, blobUrl?: string, width?: number, height?: number} | null>(null);
+  const [uploads, setUploads] = useState<Record<string, { dataUrl: string; blobUrl?: string; width?: number; height?: number; spaceType?: string }>>({});
+  const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
-  const [spaceTypeHint, setSpaceTypeHint] = useState<string | null>(null);
   
   // Chat history for context, but we display sparingly
   const [messages, setMessages] = useState<Message[]>([]);
@@ -36,10 +36,10 @@ const App: React.FC = () => {
 
   const resetToStart = () => {
       setAppState('START');
-      setPendingImage(null);
+      setUploads({});
+      setActiveUploadId(null);
       setAnalysisSummary(null);
       setLastGeneratedImage(null);
-      setSpaceTypeHint(null);
       setMessages([]);
   };
 
@@ -48,29 +48,31 @@ const App: React.FC = () => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             const dataUrl = e.target?.result as string;
+            const uploadId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            setActiveUploadId(uploadId);
 
             // Show the latest uploaded image in chat immediately (user bubble)
             setMessages(prev => [
                 ...prev,
-                { id: `${Date.now()}-upload`, type: 'image', content: dataUrl, sender: 'user', timestamp: Date.now() }
+                { id: `${uploadId}-upload`, type: 'image', content: dataUrl, sender: 'user', timestamp: Date.now(), meta: { kind: 'upload', uploadId } }
             ]);
 
             // Probe image dimensions (used to pick best StepFun output size)
             try {
                 const img = new Image();
                 img.onload = () => {
-                    setPendingImage({ dataUrl, blobUrl: '', width: img.width, height: img.height });
+                    setUploads(prev => ({ ...prev, [uploadId]: { dataUrl, blobUrl: '', width: img.width, height: img.height } }));
                     setAppState('WAITING_FOR_SPACE');
                     addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
                 };
                 img.onerror = () => {
-                    setPendingImage({ dataUrl, blobUrl: '' });
+                    setUploads(prev => ({ ...prev, [uploadId]: { dataUrl, blobUrl: '' } }));
                     setAppState('WAITING_FOR_SPACE');
                     addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
                 };
                 img.src = dataUrl;
             } catch {
-                setPendingImage({ dataUrl, blobUrl: '' });
+                setUploads(prev => ({ ...prev, [uploadId]: { dataUrl, blobUrl: '' } }));
                 setAppState('WAITING_FOR_SPACE');
                 addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
             }
@@ -79,7 +81,9 @@ const App: React.FC = () => {
             try {
                 const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
                 const upRes = await uploadImage(compressedFile);
-                if (upRes?.url) setPendingImage(prev => prev ? { ...prev, blobUrl: upRes.url } : null);
+                if (upRes?.url) {
+                    setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], blobUrl: upRes.url } }) : prev);
+                }
             } catch (err) { console.error(err); }
         };
         reader.readAsDataURL(blob);
@@ -147,13 +151,21 @@ const App: React.FC = () => {
 
         // Polite status message before analysis starts
         addSystemToast("收到，圖片正在分析中，請稍等…");
-        setSpaceTypeHint(text);
         setAppState('ANALYZING');
         // Perform Analysis
         try {
+            const uid = activeUploadId;
+            const active = uid ? uploads[uid] : undefined;
+            if (!uid || !active?.dataUrl) {
+                addSystemToast("搵唔到你最新上傳嗰張相，麻煩你再上傳一次～");
+                setAppState('START');
+                return;
+            }
+
+            setUploads(prev => prev[uid] ? ({ ...prev, [uid]: { ...prev[uid], spaceType: text } }) : prev);
             const visionRes = await analyzeImage({ 
-                imageDataUrl: pendingImage!.dataUrl, 
-                imageUrl: pendingImage!.blobUrl, 
+                imageDataUrl: active.dataUrl, 
+                imageUrl: active.blobUrl, 
                 mode: 'consultant', 
                 spaceType: text 
             } as any);
@@ -166,6 +178,15 @@ const App: React.FC = () => {
                     `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
                     ["生成智能效果圖"]
                 );
+                // Bind the action to this uploadId by attaching meta to the last message
+                setMessages(prev => {
+                    const last = prev[prev.length - 1];
+                    if (!last) return prev;
+                    return [
+                        ...prev.slice(0, -1),
+                        { ...last, meta: { ...(last.meta || {}), kind: 'analysis', uploadId: uid } }
+                    ];
+                });
                 
                 // Optional: Short toast from AI
                 // addSystemToast("分析完成！可以睇下上面嘅摘要。");
@@ -212,8 +233,8 @@ const App: React.FC = () => {
           const payload = {
               prompt: '', 
               renderIntake: intakeData || {}, 
-              baseImageBlobUrl: lastGeneratedImage || pendingImage?.blobUrl || undefined, 
-              size: pickStepFunSize(pendingImage?.width, pendingImage?.height),
+              baseImageBlobUrl: lastGeneratedImage || (intakeData?.baseImageBlobUrl ?? ''), 
+              size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
               // StepFun doc: smaller source_weight => more similar to source (less deformation)
               source_weight: 0.4,
               steps: 40,
@@ -246,10 +267,16 @@ const App: React.FC = () => {
       }
   };
 
-  const handleOptionClick = (opt: string) => {
+  const handleOptionClick = (message: Message, opt: string) => {
       if (opt === '生成智能效果圖') {
+          const uploadId = message.meta?.uploadId;
+          const u = uploadId ? uploads[uploadId] : undefined;
           // If blob URL not ready, guide user to wait to avoid "Missing baseImageBlobUrl"
-          if (!pendingImage?.blobUrl) {
+          if (!uploadId || !u) {
+              addSystemToast("搵唔到對應嘅相片，麻煩你再上傳一次～");
+              return;
+          }
+          if (!u.blobUrl) {
               addSystemToast("相片仲上傳緊，請等幾秒再試～");
               return;
           }
@@ -257,10 +284,14 @@ const App: React.FC = () => {
           setAppState('GENERATING');
           // Generate directly with a sane default intake to make the button always work
           const defaultIntake = {
-              space: spaceTypeHint || 'room',
+              space: u.spaceType || 'room',
               style: 'modern',
               color: 'neutral',
               requirements: 'Preserve the original structure, windows, doors, and perspective. Improve storage and lighting. Hong Kong apartment practical layout.'
+              ,
+              baseImageBlobUrl: u.blobUrl,
+              baseWidth: u.width,
+              baseHeight: u.height
           };
           triggerGeneration(defaultIntake);
           return;

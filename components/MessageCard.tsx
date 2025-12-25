@@ -3,7 +3,7 @@ import { Message } from '../types';
 
 interface MessageCardProps {
   message: Message;
-  onOptionClick?: (opt: string) => void;
+  onOptionClick?: (message: Message, opt: string) => void;
 }
 
 export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick }) => {
@@ -40,7 +40,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
             {message.options.map((opt, i) => (
               <button
                 key={i}
-                onClick={() => onOptionClick?.(opt)}
+                onClick={() => onOptionClick?.(message, opt)}
                 className="bg-white/50 hover:bg-white text-[#4A453C] border border-black/5 px-3 py-1.5 rounded-full text-xs font-medium transition-all shadow-sm active:scale-95"
               >
                 {opt}
