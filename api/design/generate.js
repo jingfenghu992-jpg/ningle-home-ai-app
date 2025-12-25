@@ -176,32 +176,77 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
     };
 
     const inferSpaceKind = (spaceText) => {
-      const s = String(spaceText || '');
-      if (s.includes('客') || s.toLowerCase().includes('living')) return 'living';
-      if (s.includes('餐') || s.toLowerCase().includes('dining')) return 'dining';
-      if (s.includes('睡') || s.includes('卧') || s.includes('房') || s.toLowerCase().includes('bed')) return 'bedroom';
-      if (s.includes('廚') || s.includes('厨') || s.toLowerCase().includes('kitchen')) return 'kitchen';
+      const s0 = String(spaceText || '');
+      const s = s0.toLowerCase();
+      // Living / dining
+      if (s0.includes('客') || s.includes('living')) return 'living';
+      if (s0.includes('餐') || s.includes('dining')) return 'dining';
+      // Bedroom / study
+      if (s0.includes('書') || s0.includes('书') || s.includes('study')) return 'study';
+      if (s0.includes('睡') || s0.includes('卧') || s0.includes('房') || s.includes('bed')) return 'bedroom';
+      // Kitchen / bath
+      if (s0.includes('廚') || s0.includes('厨') || s.includes('kitchen')) return 'kitchen';
+      if (s0.includes('浴') || s0.includes('厕') || s0.includes('衛') || s0.includes('卫') || s.includes('bath')) return 'bath';
+      // Entry / corridor / hallway
+      if (s0.includes('玄') || s0.includes('关') || s0.includes('關') || s.includes('entry')) return 'entry';
+      if (s0.includes('走廊') || s0.includes('通道') || s.includes('corridor') || s.includes('hallway')) return 'corridor';
       return 'other';
     };
 
     const validateMustHave = (spaceKind, spec) => {
       const p = String(spec?.prompt_en || '').toLowerCase();
       if (!p) return false;
-      // universal
-      const universal = ['ceiling', 'floor', 'cabinet', 'lighting'];
+
+      // Universal "finished render" elements (these make it look like a real proposal)
+      const universal = ['ceiling', 'floor', 'wall finish', 'lighting', 'built-in', 'cabinet', 'soft'];
       if (!universal.every(k => p.includes(k))) return false;
+
       if (spaceKind === 'living') {
         if (!p.includes('tv')) return false;
         if (!(p.includes('tv console') || p.includes('media console') || p.includes('tv cabinet'))) return false;
+        if (!(p.includes('sofa') || p.includes('sectional'))) return false;
         return true;
       }
       if (spaceKind === 'dining') {
         if (!p.includes('dining table')) return false;
-        if (!p.includes('dining chair') && !p.includes('chairs')) return false;
+        if (!(p.includes('chairs') || p.includes('dining chair'))) return false;
+        if (!(p.includes('pendant') || p.includes('chandelier'))) return false;
         return true;
       }
-      if (spaceKind === 'bedroom') return p.includes('bed') && (p.includes('wardrobe') || p.includes('closet'));
-      if (spaceKind === 'kitchen') return (p.includes('countertop') || p.includes('worktop')) && p.includes('cabinet');
+      if (spaceKind === 'bedroom') {
+        if (!p.includes('bed')) return false;
+        if (!(p.includes('wardrobe') || p.includes('closet'))) return false;
+        return true;
+      }
+      if (spaceKind === 'study') {
+        if (!(p.includes('desk') || p.includes('work desk') || p.includes('study desk'))) return false;
+        if (!(p.includes('bookcase') || p.includes('bookshelf') || p.includes('storage'))) return false;
+        return true;
+      }
+      if (spaceKind === 'kitchen') {
+        if (!(p.includes('countertop') || p.includes('worktop'))) return false;
+        if (!(p.includes('backsplash') || p.includes('tile backsplash'))) return false;
+        if (!(p.includes('sink') || p.includes('cooktop') || p.includes('stove'))) return false;
+        return true;
+      }
+      if (spaceKind === 'bath') {
+        if (!(p.includes('vanity') || p.includes('vanity cabinet'))) return false;
+        if (!(p.includes('mirror cabinet') || p.includes('medicine cabinet') || p.includes('mirror'))) return false;
+        if (!(p.includes('shower') || p.includes('shower screen') || p.includes('wet area'))) return false;
+        if (!(p.includes('non-slip') || p.includes('anti-slip'))) return false;
+        return true;
+      }
+      if (spaceKind === 'entry') {
+        if (!(p.includes('shoe cabinet') || p.includes('shoe storage'))) return false;
+        if (!(p.includes('bench') || p.includes('seat'))) return false;
+        if (!(p.includes('mirror') || p.includes('full-length mirror'))) return false;
+        return true;
+      }
+      if (spaceKind === 'corridor') {
+        if (!(p.includes('shallow cabinet') || p.includes('wall cabinet') || p.includes('storage along corridor'))) return false;
+        if (!(p.includes('clear walkway') || p.includes('clear circulation'))) return false;
+        return true;
+      }
       return true;
     };
 
