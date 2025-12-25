@@ -58,6 +58,36 @@ const App: React.FC = () => {
     const userMsg: Message = { id: Date.now().toString(), type: 'text', content: text, sender: 'user', timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
 
+    const runChat = async () => {
+        const assistantId = `${Date.now()}-ai`;
+        // Create an empty assistant message for streaming updates
+        setMessages(prev => [
+            ...prev,
+            { id: assistantId, type: 'text', content: '', sender: 'ai', timestamp: Date.now() }
+        ]);
+
+        try {
+            const apiMessages = [...messages, userMsg]
+                .filter(m => m.type === 'text' && typeof m.content === 'string')
+                .map(m => ({
+                    role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                    content: m.content
+                }));
+
+            for await (const delta of chatWithDeepseekStream({
+                mode: 'consultant',
+                text,
+                messages: apiMessages,
+                visionSummary: analysisSummary || undefined
+            })) {
+                setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + delta } : m));
+            }
+        } catch (e: any) {
+            console.error(e);
+            setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: `（聊天失敗：${e?.message || '未知錯誤'}）` } : m));
+        }
+    };
+
     if (appState === 'WAITING_FOR_SPACE') {
         setAppState('ANALYZING');
         // Perform Analysis
@@ -90,9 +120,12 @@ const App: React.FC = () => {
              setAppState('GENERATING');
              triggerGeneration(null, text); // Pass revision text
         } else {
-             // Normal chat
-             // addSystemToast("收到。");
+             // Normal chat (after render)
+             await runChat();
         }
+    } else {
+        // Normal chat (generic)
+        await runChat();
     }
   };
 
