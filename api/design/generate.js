@@ -80,8 +80,109 @@ export default async function handler(req, res) {
     let finalPrompt = prompt;
     if (renderIntake) {
         const { space, style, color, requirements } = renderIntake;
-        // Keep prompt simple and direct for StepFun
-        finalPrompt = `Realistic interior design render of ${space || 'room'}, ${style || 'modern'} style, ${color || 'neutral'} color scheme. ${requirements || ''}.`;
+
+        const normalize = (s) => String(s || '').trim();
+        const compact = (s, max = 360) => {
+            const t = normalize(s).replace(/\s+/g, ' ');
+            return t.length > max ? t.slice(0, max) + '…' : t;
+        };
+
+        // Map user-facing (mostly Chinese) selections into explicit English design constraints
+        const mapSpace = (s) => {
+            const t = normalize(s);
+            if (t.includes('餐')) return 'dining room';
+            if (t.includes('客')) return 'living room';
+            if (t.includes('廚') || t.includes('厨')) return 'kitchen';
+            if (t.includes('玄') || t.includes('关') || t.includes('關')) return 'entryway';
+            if (t.includes('書') || t.includes('书')) return 'study room';
+            if (t.includes('睡') || t.includes('卧') || t.includes('房')) return 'bedroom';
+            if (t.includes('浴') || t.includes('厕') || t.includes('衛') || t.includes('卫')) return 'bathroom';
+            return t ? `room (${t})` : 'room';
+        };
+
+        const mapStyle = (s) => {
+            const t = normalize(s);
+            if (t.includes('日式') || t.includes('木')) return 'Japandi / Japanese wood minimalist, warm and calm, clean lines, natural wood details';
+            if (t.includes('奶油')) return 'Creamy minimal style, soft warm palette, rounded details, cozy';
+            if (t.includes('輕奢') || t.includes('轻奢')) return 'Light luxury modern style, subtle metal accents, refined materials';
+            if (t.includes('現代') || t.includes('现代') || t.includes('簡約') || t.includes('简约')) return 'Modern minimalist, clean geometry, practical';
+            return t || 'Modern minimalist';
+        };
+
+        const mapColor = (s) => {
+            const t = normalize(s);
+            if (t.includes('淺木') || t.includes('浅木')) return 'light oak wood + off-white, warm neutral';
+            if (t.includes('胡桃')) return 'walnut wood + gray-white, warm gray neutral';
+            if (t.includes('純白') || t.includes('纯白')) return 'pure white + light gray, clean and bright';
+            if (t.includes('深木')) return 'dark wood + warm white, cozy contrast';
+            return t || 'neutral';
+        };
+
+        const inferFromRequirements = (req, keys) => {
+            const r = normalize(req);
+            for (const k of keys) {
+                if (r.includes(k)) return k;
+            }
+            return '';
+        };
+
+        // These fields are currently embedded in requirements text on the client,
+        // so we infer keywords to steer the prompt harder.
+        const reqText = normalize(requirements);
+        const focusKw = inferFromRequirements(reqText, ['餐邊', '餐边', '餐桌', '動線', '动线', '電視', '电视', '衣櫃', '衣柜', '玄關', '玄关', '書枱', '书桌', '收納牆', '收纳墙']);
+        const storageKw = inferFromRequirements(reqText, ['隱藏', '隐藏', '展示', '工作位', '书桌', '書枱']);
+        const priorityKw = inferFromRequirements(reqText, ['性價比', '性价比', '耐用', '易打理']);
+        const intensityKw = inferFromRequirements(reqText, ['輕改', '轻改', '明顯', '明显', '大改造']);
+
+        const focusHint = focusKw
+            ? `Focus area: ${focusKw.includes('餐') ? 'dining layout + dining sideboard / tall storage' : focusKw}.`
+            : '';
+        const storageHint = storageKw
+            ? `Storage direction: ${storageKw.includes('隱') || storageKw.includes('隐') ? 'mostly concealed storage with clean fronts' : storageKw.includes('展示') ? 'mix of display + concealed storage (glass/openshelf + closed cabinets)' : 'storage with a work desk / study nook integration'}.`
+            : '';
+        const priorityHint = priorityKw
+            ? `Priority: ${priorityKw.includes('耐用') ? 'durability' : priorityKw.includes('易') ? 'easy to clean' : 'value-for-money'}.`
+            : '';
+        const intensityHint = intensityKw
+            ? `Renovation intensity: ${intensityKw.includes('輕') || intensityKw.includes('轻') ? 'light refresh, keep closer to source' : intensityKw.includes('大') ? 'bolder redesign, more visible changes' : 'noticeable redesign with structure preserved'}.`
+            : '';
+
+        const spaceEn = mapSpace(space);
+        const styleEn = mapStyle(style);
+        const colorEn = mapColor(color);
+
+        // Hard constraints for HK apartment + balcony cases
+        const hardRules = [
+            'Photorealistic interior design rendering (professional).',
+            'Hong Kong apartment practicality, built-in cabinetry is the main change.',
+            'INTERIOR ONLY: do NOT redesign the balcony or outdoor view; keep balcony/exterior as background unchanged.',
+            'Do NOT add balcony furniture; do NOT change balcony floor/walls/railings.',
+            'Keep the exact room structure and perspective: do NOT move windows/doors/beams/columns; keep camera viewpoint.',
+        ].join(' ');
+
+        const mustHave = [
+            'Must include: a coherent cabinetry/storage plan; wall finish; floor finish; simple ceiling detail (cove/false ceiling); lighting plan; soft furnishings.',
+            spaceEn.includes('dining') ? 'Dining must-have: place a dining table and chairs with clear circulation, plus a dining sideboard/tall pantry storage.' : '',
+        ].filter(Boolean).join(' ');
+
+        const quality = 'Materials: ENF-grade multilayer wood/plywood cabinetry. Lighting: warm, natural, not oversharpened. Clean realistic textures, no cartoon look.';
+
+        const extraReq = compact(requirements, 380);
+
+        // Keep prompt explicit and mostly English for better adherence.
+        finalPrompt = [
+            `Design a ${spaceEn}.`,
+            `Style: ${styleEn}.`,
+            `Color palette: ${colorEn}.`,
+            hardRules,
+            focusHint,
+            storageHint,
+            priorityHint,
+            intensityHint,
+            mustHave,
+            quality,
+            extraReq ? `Constraints/notes: ${extraReq}` : ''
+        ].filter(Boolean).join(' ');
     }
 
     if (!finalPrompt) {
