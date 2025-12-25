@@ -416,6 +416,26 @@ const App: React.FC = () => {
       ];
   };
 
+  const isBedroomLike = (space?: string, focus?: string) => {
+      const s = normalizeSpaceKey(space);
+      const f = String(focus || '').trim();
+      const hit = (t: string) => s.includes(t) || f.includes(t);
+      return (
+          hit('卧') ||
+          hit('睡') ||
+          hit('房') ||
+          hit('床') ||
+          hit('衣櫃') ||
+          hit('衣柜') ||
+          hit('榻榻米') ||
+          hit('地台') ||
+          hit('活動床') ||
+          hit('活动床') ||
+          hit('隱形床') ||
+          hit('隐形床')
+      );
+  };
+
   const isBareShellFromSummary = (summary?: string) => {
       const s = String(summary || '');
       if (!s) return false;
@@ -642,6 +662,27 @@ const App: React.FC = () => {
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), focus: opt } }
               }) : prev);
 
+              // Bedroom needs one extra non-sensitive choice to avoid weird bed outputs.
+              if (isBedroomLike(u.spaceType || '', opt)) {
+                  await typeOutAI("睡房想做咩床型？（會影響出圖同擺位）", {
+                      options: ["標準雙人床", "地台床", "榻榻米", "活動床/隱形床"],
+                      meta: { kind: 'render_flow', stage: 'bed', uploadId }
+                  });
+              } else {
+                  await typeOutAI("你想收納取向係邊種？", {
+                      options: ["隱藏收納為主", "收納+展示", "收納+書枱/工作位"],
+                      meta: { kind: 'render_flow', stage: 'storage', uploadId }
+                  });
+              }
+              return;
+          }
+
+          if (message.meta.stage === 'bed') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), bedType: opt } }
+              }) : prev);
+
               await typeOutAI("你想收納取向係邊種？", {
                   options: ["隱藏收納為主", "收納+展示", "收納+書枱/工作位"],
                   meta: { kind: 'render_flow', stage: 'storage', uploadId }
@@ -685,10 +726,11 @@ const App: React.FC = () => {
               const color = u.render?.color || '淺木+米白';
               const focus = u.render?.focus || '全屋統一質感（牆地頂＋燈光＋軟裝）';
               const storage = u.render?.storage || '隱藏收納為主';
+              const bedType = (u.render as any)?.bedType || '';
               const vibe = (u.render as any)?.vibe || '溫馨暖光';
               const decor = (u.render as any)?.decor || '標準搭配（推薦）';
               await typeOutAI(
-                `好，我幫你用「${style}｜${color}｜${focus}｜${storage}｜${vibe}｜${decor}」出一張效果圖（保留原本門窗/梁柱/冷氣機位）。準備好就按下面開始生成～`,
+                `好，我幫你用「${style}｜${color}｜${focus}${bedType ? `｜${bedType}` : ''}｜${storage}｜${vibe}｜${decor}」出一張效果圖（保留原本門窗/梁柱/冷氣機位）。準備好就按下面開始生成～`,
                 { options: ["開始生成效果圖"], meta: { kind: 'render_flow', stage: 'confirm', uploadId } }
               );
               return;
@@ -729,6 +771,7 @@ const App: React.FC = () => {
               const color = u.render?.color || '淺木+米白';
               const focus = u.render?.focus || '全屋整體';
               const storage = u.render?.storage || '隱藏收納為主';
+              const bedType = (u.render as any)?.bedType || '';
               const vibe = (u.render as any)?.vibe || '溫馨暖光';
               const decor = (u.render as any)?.decor || '標準搭配（推薦）';
 
@@ -794,15 +837,17 @@ const App: React.FC = () => {
                 if (d.includes('豐富') || d.includes('丰富')) return 'Soft furnishing density: richer styling with rug, curtains, artwork, plants, cushions; still tidy.';
                 return 'Soft furnishing density: balanced standard styling (recommended), natural and livable.';
               })();
+              const bedSpec = bedType ? `Bedroom bed type: ${String(bedType).includes('地台') ? 'platform bed with storage' : String(bedType).includes('榻榻米') ? 'tatami bed with storage' : String(bedType).includes('活動') || String(bedType).includes('隐形') || String(bedType).includes('隱形') ? 'Murphy/hidden bed (residential, not medical)' : 'standard residential bed (no hospital rails)'}.` : '';
 
               // Keep requirements concise to avoid StepFun prompt >1024
               const requirements = [
-                  `Focus: ${focus}. Storage: ${storage}. Vibe: ${vibe}. Decor: ${decor}.`,
+                  `Focus: ${focus}. ${bedType ? `Bed: ${bedType}.` : ''} Storage: ${storage}. Vibe: ${vibe}. Decor: ${decor}.`,
                   photorealisticSpec,
                   hkHardConstraints,
                   `Must include: cabinetry/storage plan; ceiling + floor + wall finishes; lighting; soft furnishings.`,
                   isDining ? `Dining: include table+chairs with clear circulation; add dining sideboard/tall storage when suitable.` : '',
                   suiteSpec ? `Package: ${suiteSpec}` : '',
+                  bedSpec,
                   vibeSpec,
                   decorSpec,
                   bareShellSpec,
@@ -816,6 +861,7 @@ const App: React.FC = () => {
                   color,
                   // Send structured selections to backend for better prompt alignment
                   focus,
+                  bedType,
                   storage,
                   vibe,
                   decor,

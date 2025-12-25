@@ -101,6 +101,7 @@ export default async function handler(req, res) {
         style: normalize(intake?.style),
         color: normalize(intake?.color),
         focus: normalize(intake?.focus),
+        bedType: normalize(intake?.bedType),
         storage: normalize(intake?.storage),
         vibe: normalize(intake?.vibe),
         decor: normalize(intake?.decor),
@@ -119,6 +120,9 @@ Rules:
 - Do NOT move windows/doors/beams/columns; keep camera viewpoint/perspective.
 - Preserve object geometry: keep window frames, doors, straight vertical/horizontal lines; do NOT warp/melt/stretch objects; no bent walls, no distorted windows.
 - Must include: ceiling detail (cove/false ceiling + downlights), finished flooring, finished wall surfaces, built-in cabinetry, lighting plan, and soft furnishings.
+- If constraints indicate the room is unfinished/bare shell, complete full fit-out (ceiling + walls + flooring + skirting + curtains). If it appears already finished, keep existing ceiling/walls/floor and mainly enhance lighting mood, material harmony, cabinetry and soft furnishings.
+- Never output an office grid ceiling / mineral fiber ceiling tiles.
+- For bedrooms: bed MUST be a residential bed (no hospital bed, no metal guardrails).
 - The spec MUST match the final render and also match the explanation.
 - The explanation MUST reflect the user's selections (style/color/focus/storage/vibe/decor) and be visually verifiable.
 - Keep prompt_en <= 900 characters.
@@ -188,17 +192,19 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
       };
     };
 
-    const inferSpaceKind = (spaceText, focusText, reqText) => {
+    const inferSpaceKind = (spaceText, focusText, reqText, bedTypeText) => {
       const s0 = String(spaceText || '');
       const s = s0.toLowerCase();
       const f0 = String(focusText || '');
       const f = f0.toLowerCase();
       const r0 = String(reqText || '');
       const r = r0.toLowerCase();
+      const b0 = String(bedTypeText || '');
+      const b = b0.toLowerCase();
 
       // If user picked "其他/other", infer from focus/requirements to avoid missing must-haves.
-      const hint = `${f0} ${r0}`;
-      const hintL = `${f} ${r}`;
+      const hint = `${f0} ${r0} ${b0}`;
+      const hintL = `${f} ${r} ${b}`;
       const has = (arr) => arr.some(k => hint.includes(k) || hintL.includes(String(k).toLowerCase()));
       if (has(['廚', '厨', '廚櫃', '橱柜', '吊櫃', '吊柜', '星盆', '爐頭', '炉头', 'kitchen', 'cooktop', 'sink'])) return 'kitchen';
       if (has(['浴', '厕', '衛', '卫', '洗手', '浴室櫃', '浴室柜', '鏡櫃', '镜柜', 'bath', 'vanity', 'shower'])) return 'bath';
@@ -287,7 +293,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
     if (renderIntake) {
         // Build a spec first (prompt + explanation from same source) to keep them consistent
         try {
-          const spaceKind = inferSpaceKind(renderIntake?.space, renderIntake?.focus, renderIntake?.requirements);
+          const spaceKind = inferSpaceKind(renderIntake?.space, renderIntake?.focus, renderIntake?.requirements, renderIntake?.bedType);
           const mustInclude = (() => {
             const base = [
               'CEILING detail (cove/false ceiling + downlights)',
@@ -301,7 +307,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             ];
             if (spaceKind === 'living') return base.concat(['TV', 'TV console', 'TV feature wall storage', 'sofa', 'coffee table', 'rug', 'curtains']);
             if (spaceKind === 'dining') return base.concat(['dining table for 4', 'chairs', 'pendant above table', 'dining sideboard/tall pantry']);
-            if (spaceKind === 'bedroom') return base.concat(['bed', 'full-height wardrobe', 'bedside', 'curtains']);
+            if (spaceKind === 'bedroom') return base.concat(['residential bed (no hospital bed, no metal rails)', 'full-height wardrobe', 'bedside', 'curtains']);
             if (spaceKind === 'study') return base.concat(['desk', 'bookcase/storage', 'task lighting']);
             if (spaceKind === 'kitchen') return base.concat(['base cabinets', 'wall cabinets', 'countertop/worktop', 'sink', 'cooktop', 'backsplash tiles']);
             if (spaceKind === 'bath') return base.concat(['vanity cabinet', 'mirror cabinet', 'shower screen/zone', 'anti-slip floor tiles']);
@@ -474,11 +480,13 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             'INTERIOR ONLY: do NOT redesign the balcony or outdoor view; keep balcony/exterior as background unchanged.',
             'Do NOT add balcony furniture; do NOT change balcony floor/walls/railings/exterior facade.',
             'Keep the exact room structure and perspective: do NOT move windows/doors/beams/columns; keep camera viewpoint.',
+            'Do NOT generate office grid ceiling / mineral fiber ceiling tiles; use gypsum board ceiling with slim cove lighting instead.',
+            'Bedroom bed must be residential; avoid hospital bed / medical rails.',
             'Do NOT leave bare concrete floor or unfinished walls; fully finish the interior.',
         ].join(' ');
 
         const mustHave = [
-            'Must include: finished flooring (engineered wood or large-format porcelain tiles with skirting), finished wall surfaces, and a proper ceiling design (gypsum false ceiling / cove lighting + downlights).',
+            'Must include: finished flooring (engineered wood or large-format porcelain tiles with skirting), finished wall surfaces, and a proper ceiling design (gypsum board flat ceiling / slim cove lighting + downlights).',
             'Must include: built-in cabinetry plan with real details (full-height cabinets, toe-kick, shadow gap or integrated handles, internal compartments).',
             'Must include: a complete furniture layout + soft furnishings (curtains, rug, artwork, plants), warm realistic lighting, coherent styling.',
             spaceEn.includes('dining') ? 'Dining must-have: dining table for 4 + chairs with clear circulation, pendant light above table, and a dining sideboard/tall pantry storage with display niche lighting.' : '',
@@ -488,7 +496,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             'Materials: ENF-grade multilayer wood/plywood cabinetry.',
             'Lighting: warm, natural; balanced exposure; not oversharpened.',
             'Clean realistic textures; no cartoon/CGI look; no low-poly.',
-            'Avoid: empty room, blank walls, unfinished concrete, muddy textures.'
+            'Avoid: empty room, blank walls, unfinished concrete, muddy textures, toy-like 3D, distorted straight lines.'
         ].join(' ');
 
         const extraReq = compact(requirements, 380);
@@ -712,7 +720,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             if (refineSource) {
                 const refinePrompt = (() => {
                     const suffix =
-                      ' Refine into magazine-quality photorealistic interior render: ONLY enhance materials, lighting layers (ceiling cove + downlights), and soft furnishings (curtains/rug/art/plants) matching the chosen style/palette, and add cabinetry detailing. Do NOT change layout or move furniture/cabinets. Keep straight lines; no distorted windows/doors. Keep structure and perspective unchanged. Avoid empty room, blank walls, unfinished concrete.';
+                      ' Refine into magazine-quality photorealistic interior render: ONLY enhance materials, lighting layers (ceiling cove + downlights), and soft furnishings (curtains/rug/art/plants) matching the chosen style/palette, and add cabinetry detailing. Do NOT change layout or move furniture/cabinets. Keep straight lines; no distorted windows/doors; no office grid ceiling; no hospital bed/medical rails. Keep structure and perspective unchanged. Avoid empty room, blank walls, unfinished concrete.';
                     const t = String(finalPrompt + suffix).replace(/\s+/g, ' ').trim();
                     return t.length > 1024 ? t.slice(0, 1021) + '...' : t;
                 })();
