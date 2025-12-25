@@ -736,8 +736,9 @@ const App: React.FC = () => {
               setAppState('GENERATING');
 
               const baseImage = u.dataUrl;
-              // Default params tuned for "photorealistic, noticeable upgrade, keep structure"
-              const genParams = { source_weight: 0.46, cfg_scale: 7.8, steps: 52 };
+              // Default params tuned for: keep structure first, then add beauty in refine pass
+              // StepFun doc: smaller source_weight => closer to source (less deformation)
+              const genParams = { source_weight: 0.42, cfg_scale: 7.2, steps: 48 };
 
               const pickConstraints = (summary?: string) => {
                   if (!summary) return '';

@@ -117,7 +117,7 @@ Rules:
 - The generated image MUST look like a finished photorealistic interior render (V-Ray/Corona style).
 - INTERIOR ONLY: do NOT redesign balcony/outdoor view; keep balcony as background unchanged.
 - Do NOT move windows/doors/beams/columns; keep camera viewpoint/perspective.
-- Preserve object geometry: keep window frames, doors, sofa/coffee-table shapes (if present) and do NOT warp/melt objects.
+- Preserve object geometry: keep window frames, doors, straight vertical/horizontal lines; do NOT warp/melt/stretch objects; no bent walls, no distorted windows.
 - Must include: ceiling detail (cove/false ceiling + downlights), finished flooring, finished wall surfaces, built-in cabinetry, lighting plan, and soft furnishings.
 - The spec MUST match the final render and also match the explanation.
 - The explanation MUST reflect the user's selections (style/color/focus/storage/vibe/decor) and be visually verifiable.
@@ -712,7 +712,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             if (refineSource) {
                 const refinePrompt = (() => {
                     const suffix =
-                      ' Refine into magazine-quality photorealistic interior render: strengthen lighting layers (ceiling cove + downlights), improve material realism, add coherent soft furnishings (curtains/rug/art/plants) matching the chosen style/palette, and increase cabinetry detailing. Keep structure and perspective unchanged. Avoid empty room, blank walls, unfinished concrete.';
+                      ' Refine into magazine-quality photorealistic interior render: ONLY enhance materials, lighting layers (ceiling cove + downlights), and soft furnishings (curtains/rug/art/plants) matching the chosen style/palette, and add cabinetry detailing. Do NOT change layout or move furniture/cabinets. Keep straight lines; no distorted windows/doors. Keep structure and perspective unchanged. Avoid empty room, blank walls, unfinished concrete.';
                     const t = String(finalPrompt + suffix).replace(/\s+/g, ' ').trim();
                     return t.length > 1024 ? t.slice(0, 1021) + '...' : t;
                 })();
@@ -721,9 +721,9 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
                     rf: 'url',
                     promptToUse: refinePrompt,
                     // Lower weight to preserve the (already designed) first-pass image
-                    sw: Math.min(0.38, finalSourceWeight),
-                    st: Math.min(34, finalSteps),
-                    cfg: Math.min(6.4, finalCfgScale)
+                    sw: Math.min(0.32, finalSourceWeight),
+                    st: Math.min(36, finalSteps),
+                    cfg: Math.min(6.8, finalCfgScale)
                 });
                 if (refineRes.ok) {
                     const refineData = await readStepFunJson(refineRes);
