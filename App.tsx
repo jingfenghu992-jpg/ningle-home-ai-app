@@ -20,7 +20,8 @@ const App: React.FC = () => {
     width?: number;
     height?: number;
     spaceType?: string;
-    render?: { style?: string; color?: string; priority?: string };
+    visionSummary?: string;
+    render?: { style?: string; color?: string; focus?: string; storage?: string; priority?: string; intensity?: string };
   }>>({});
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
@@ -254,6 +255,8 @@ const App: React.FC = () => {
                 setAnalysisSummary(visionRes.vision_summary);
                 setAppState('ANALYSIS_DONE');
                 stopLoadingToast(analysisLoadingId);
+                // Save analysis summary to this upload for later img2img prompt grounding
+                setUploads(prev => prev[uid] ? ({ ...prev, [uid]: { ...prev[uid], visionSummary: visionRes.vision_summary } }) : prev);
                 // Append analysis summary (typed) + action button, bound to this upload
                 await typeOutAI(
                     `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
@@ -309,15 +312,15 @@ const App: React.FC = () => {
               ? (lastGeneratedImage || (intakeData?.baseImageBlobUrl ?? ''))
               : (intakeData?.baseImageBlobUrl ?? '');
 
-          const payload = {
+              const payload = {
               prompt: '', 
               renderIntake: intakeData || {}, 
               baseImageBlobUrl: baseUrl,
               size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
               // StepFun doc: smaller source_weight => more similar to source (less deformation)
-              source_weight: 0.4,
-              steps: 40,
-              cfg_scale: 6.0
+                  source_weight: intakeData?.source_weight ?? 0.4,
+                  steps: intakeData?.steps ?? 40,
+                  cfg_scale: intakeData?.cfg_scale ?? 6.0
           };
           
           // If revision, we assume we use the last generated image as base
@@ -394,6 +397,32 @@ const App: React.FC = () => {
                   ...prev,
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), color: opt } }
               }) : prev);
+              await typeOutAI("呢張圖你最想改邊個位置（重點做櫃體收納）？", {
+                  options: ["電視牆收納", "餐邊/廚櫃收納", "玄關鞋櫃", "全屋整體"],
+                  meta: { kind: 'render_flow', stage: 'focus', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'focus') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), focus: opt } }
+              }) : prev);
+
+              await typeOutAI("你想收納取向係邊種？", {
+                  options: ["隱藏收納為主", "收納+展示", "收納+書枱/工作位"],
+                  meta: { kind: 'render_flow', stage: 'storage', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'storage') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), storage: opt } }
+              }) : prev);
+
               await typeOutAI("你更重視邊個取向？", {
                   options: ["性價比優先", "耐用優先", "易打理優先"],
                   meta: { kind: 'render_flow', stage: 'priority', uploadId }
@@ -407,9 +436,24 @@ const App: React.FC = () => {
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), priority: opt } }
               }) : prev);
 
+              await typeOutAI("想改造得幾明顯？（越明顯，變化越大但可能更易走樣）", {
+                  options: ["保留結構（輕改）", "明顯改造（推薦）", "大改造（更大變化）"],
+                  meta: { kind: 'render_flow', stage: 'intensity', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'intensity') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), intensity: opt } }
+              }) : prev);
+
               const style = u.render?.style || '現代簡約';
               const color = u.render?.color || '淺木+米白';
-              await typeOutAI(`好，我幫你用「${style}｜${color}｜${opt}」去出一張效果圖（盡量保留原本門窗/梁柱/結構）。準備好就按下面開始生成～`, {
+              const focus = u.render?.focus || '全屋整體';
+              const storage = u.render?.storage || '隱藏收納為主';
+              await typeOutAI(`好，我幫你用「${style}｜${color}｜${focus}｜${storage}」出一張效果圖（保留原本門窗/梁柱/結構）。準備好就按下面開始生成～`, {
                   options: ["開始生成效果圖"],
                   meta: { kind: 'render_flow', stage: 'confirm', uploadId }
               });
@@ -420,20 +464,38 @@ const App: React.FC = () => {
               const style = u.render?.style || '現代簡約';
               const color = u.render?.color || '淺木+米白';
               const priority = u.render?.priority || '性價比優先';
+              const focus = u.render?.focus || '全屋整體';
+              const storage = u.render?.storage || '隱藏收納為主';
+              const intensity = u.render?.intensity || '明顯改造（推薦）';
 
               const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
               setAppState('GENERATING');
 
               const baseImage = u.blobUrl || u.dataUrl;
+              // Tune parameters by intensity (StepFun doc: smaller source_weight => closer to source)
+              const intensityParams = (() => {
+                  if (intensity.includes('輕改')) return { source_weight: 0.38, cfg_scale: 6.0, steps: 40 };
+                  if (intensity.includes('大改造')) return { source_weight: 0.58, cfg_scale: 7.5, steps: 45 };
+                  return { source_weight: 0.48, cfg_scale: 7.0, steps: 45 }; // recommended
+              })();
+
+              const structureNotes = u.visionSummary ? `\nStructure notes from analysis:\n${u.visionSummary}\n` : '';
               const intake = {
                   space: u.spaceType || 'room',
                   style,
                   color,
                   requirements:
-                    `Priority: ${priority}. Do a noticeable redesign based on the user's selections. Add custom built-in cabinetry and storage plan (TV wall unit / tall cabinets / sideboard / window bench where suitable). Preserve original structure, windows, doors, beams/columns, and perspective. Hong Kong apartment practical layout. Use ENF-grade multi-layer wood/plywood where applicable.`,
+                    `Priority: ${priority}. Focus area: ${focus}. Storage type: ${storage}. Intensity: ${intensity}.
+Do a noticeable redesign based on the user's selections. Add custom built-in cabinetry and a clear storage layout (full-height cabinets / TV wall unit / sideboard / shoe cabinet / window bench as suitable).
+Preserve original structure and perspective: DO NOT move windows/doors/balcony opening/beams/columns; keep camera viewpoint and geometry consistent.
+Hong Kong apartment practical layout (optimize circulation and storage). Materials: emphasize ENF-grade multi-layer wood/plywood cabinetry.
+${structureNotes}`,
                   baseImageBlobUrl: baseImage,
                   baseWidth: u.width,
-                  baseHeight: u.height
+                  baseHeight: u.height,
+                  source_weight: intensityParams.source_weight,
+                  cfg_scale: intensityParams.cfg_scale,
+                  steps: intensityParams.steps
               };
 
               try {
