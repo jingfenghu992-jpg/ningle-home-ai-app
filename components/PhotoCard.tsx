@@ -14,7 +14,7 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({ imageUrl, status, timestam
       case 'waiting': return { text: '待確認空間', color: 'bg-yellow-500/80' };
       case 'analyzing': return { text: '分析中...', color: 'bg-blue-500/80' };
       case 'rendering': return { text: '生成中...', color: 'bg-purple-500/80' };
-      case 'done': return { text: '已分析', color: 'bg-[#8A8F79]' };
+      case 'done': return { text: '已分析', color: 'bg-[var(--app-primary)]' };
       default: return { text: '已上傳', color: 'bg-gray-500/80' };
     }
   };
@@ -22,7 +22,7 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({ imageUrl, status, timestam
   const badge = getStatusBadge();
 
   return (
-    <div className="relative group rounded-[20px] overflow-hidden shadow-lg border-2 border-[#F3F0EA]/10 shrink-0 mx-4 mt-4 mb-2">
+    <div className="relative group rounded-[16px] overflow-hidden border border-[var(--app-border)] shrink-0 mx-4 mt-4 mb-2" style={{ boxShadow: 'var(--elev-1)' }}>
       <div className="aspect-video w-full bg-black/20 relative">
         <img src={imageUrl} alt="Room" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />

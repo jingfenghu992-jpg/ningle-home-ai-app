@@ -1,5 +1,6 @@
 import React from 'react';
-import { Camera, Upload, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { Upload, Sparkles, LayoutGrid, ShieldCheck, ArrowRight } from 'lucide-react';
+import hkLivingDining from '../assets/hk-living-dining.svg';
 
 interface StartScreenProps {
   onUpload: (file: File) => void;
@@ -22,58 +23,88 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4 pb-12 animate-in fade-in duration-700">
-      
-      {/* Main Card */}
-      <div className="w-full max-w-sm bg-[#F3F0EA] rounded-[32px] p-6 shadow-xl border border-white/20 flex flex-col items-center">
-        
-        {/* Image Placeholder */}
-        <div className="w-full aspect-[4/3] bg-[#EBE8E3] rounded-[24px] mb-6 overflow-hidden relative shadow-inner">
-           {/* Placeholder content - can be replaced with actual image later */}
-           <div className="absolute inset-0 flex items-center justify-center text-[#8A8F79]/20">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-           </div>
-           {/* If we had an image asset, it would go here: <img src="..." className="w-full h-full object-cover" /> */}
+    <div className="flex flex-col h-full px-5 pb-8 animate-in fade-in duration-700">
+      <div className="flex-1 flex flex-col justify-center">
+        <div
+          className="w-full bg-[var(--app-surface)] rounded-[var(--radius-card)] border border-[var(--app-border)] p-5"
+          style={{ boxShadow: 'var(--elev-1)' }}
+        >
+          {/* Example / Guidance */}
+          <div className="w-full aspect-[4/3] rounded-[14px] overflow-hidden mb-5 relative border border-[var(--app-divider)]">
+            <img
+              src={hkLivingDining}
+              alt="溫馨香港客餐廳示意圖"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          </div>
+
+          <h1 className="text-[30px] font-semibold text-[var(--app-text-main)] tracking-tight leading-tight">
+            上傳照片，生成訂造建議
+          </h1>
+          <p className="mt-2 text-[15px] leading-relaxed text-[var(--app-text-muted)]">
+            我會先分析空間與收納，再提供用料同預算方向（你可再補充需求）。
+          </p>
+
+          <div className="mt-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 text-[var(--app-primary)]">
+                <LayoutGrid size={18} />
+              </div>
+              <div className="text-[14px] leading-relaxed text-[var(--app-text-main)]">
+                支持 廚房 / 衣櫃 / 全屋訂造
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 text-[var(--app-primary)]">
+                <Sparkles size={18} />
+              </div>
+              <div className="text-[14px] leading-relaxed text-[var(--app-text-main)]">
+                自動整理重點問題同改善方向
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 text-[var(--app-primary)]">
+                <ShieldCheck size={18} />
+              </div>
+              <div className="text-[14px] leading-relaxed text-[var(--app-text-main)]">
+                你可選擇偏好：耐用 / 易打理 / 性價比
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full py-4 rounded-[var(--radius-btn)] font-semibold text-[17px] text-white flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+              style={{ backgroundColor: 'var(--app-primary)', boxShadow: '0 10px 24px rgba(20,83,45,0.18)' }}
+            >
+              <Upload size={20} />
+              上傳照片並開始分析
+            </button>
+
+            <div className="mt-3 text-center text-xs text-[var(--app-text-muted)]">
+              你亦可以直接拍照上傳（手機會提示使用相機）
+            </div>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+          </div>
         </div>
 
-        {/* Title & Subtitle */}
-        <h1 className="text-[28px] font-bold text-[#4A453C] mb-3 text-center tracking-tight leading-tight">
-          上傳你屋企相片
-        </h1>
-        
-        <p className="text-[#4A453C]/70 text-center mb-8 text-[16px] leading-relaxed max-w-[260px]">
-          我會先幫你分析空間，再一步步幫你規劃訂造方案
-        </p>
-
-        {/* Main Action Button */}
-        <div className="w-full space-y-3">
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full bg-[#8A8F79] hover:bg-[#6B705C] text-white py-4 rounded-[20px] font-bold text-[18px] shadow-lg shadow-[#8A8F79]/25 flex items-center justify-center gap-2.5 transition-all active:scale-95"
-          >
-            <Upload size={22} />
-            開始分析
-          </button>
-          
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            accept="image/*" 
-            capture="environment"
-            className="hidden" 
-            onChange={handleFileChange}
-          />
-        </div>
+        <button
+          onClick={handleWhatsApp}
+          className="mt-5 w-full flex items-center justify-center gap-2 text-sm font-semibold text-[var(--app-primary)] hover:opacity-90 transition-opacity"
+        >
+          <span>只想問報價/尺寸？免費跟進</span>
+          <ArrowRight size={16} />
+        </button>
       </div>
-
-      {/* Footer Text */}
-      <button 
-        onClick={handleWhatsApp}
-        className="mt-8 text-[#EBE8E3]/60 text-sm flex items-center gap-1.5 hover:text-[#EBE8E3] transition-colors"
-      >
-        <span>想問報價/尺寸？按右上角「免費跟進」</span>
-        <ArrowUpRight size={14} />
-      </button>
     </div>
   );
 };

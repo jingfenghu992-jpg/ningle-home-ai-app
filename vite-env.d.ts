@@ -6,3 +6,8 @@ declare const process: {
     [key: string]: string | undefined;
   }
 };
+
+declare module '*.svg' {
+  const src: string;
+  export default src;
+}
