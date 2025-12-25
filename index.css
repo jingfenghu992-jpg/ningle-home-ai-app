@@ -4,12 +4,12 @@
 
 :root {
   /* Warm Home Palette */
-  --app-bg: #2E2C29;          /* Warm Dark Gray */
-  --app-surface: #F3F0EA;     /* Warm Beige/Off-white (Card Bg) */
+  --app-bg: #F5F2ED;          /* Warm Beige background */
+  --app-surface: #FFFCF7;     /* Card surface */
   --app-text-main: #4A453C;   /* Deep Warm Gray (Text on Light) */
-  --app-text-light: #EBE8E3;  /* Text on Dark */
-  --app-accent: #8A8F79;      /* Olive Green */
-  --app-accent-dark: #6B705C;
+  --app-text-light: #4A453C;
+  --app-accent: #1F4D3A;      /* Deep green */
+  --app-accent-dark: #173C2D;
   
   --card-radius: 20px;
   --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
