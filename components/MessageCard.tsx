@@ -24,7 +24,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       >
         <div className="whitespace-pre-wrap">
             {message.content}
-            {/* Blinking Cursor for AI streaming if last char is not punctuation or if needed */}
+            {/* Blinking cursor while streaming */}
             {!isUser && message.content.length > 0 && (
                 <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[var(--app-primary)] animate-pulse align-middle" style={{animationDuration: '0.8s'}}></span>
             )}

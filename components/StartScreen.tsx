@@ -1,5 +1,6 @@
 import React from 'react';
 import { Upload, Sparkles, LayoutGrid, ShieldCheck, ArrowRight } from 'lucide-react';
+import hkLivingDining from '../assets/hk-living-dining.svg';
 
 interface StartScreenProps {
   onUpload: (file: File) => void;
@@ -30,28 +31,18 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload, onCamera }) 
         >
           {/* Example / Guidance */}
           <div className="w-full aspect-[4/3] rounded-[14px] overflow-hidden mb-5 relative border border-[var(--app-divider)]">
-            <div
-              className="absolute inset-0"
-              style={{
-                background:
-                  'linear-gradient(135deg, rgba(20,83,45,0.08), rgba(201,162,39,0.08), rgba(250,247,242,1))',
-              }}
+            <img
+              src={hkLivingDining}
+              alt="溫馨香港客餐廳示意圖"
+              className="absolute inset-0 w-full h-full object-cover"
             />
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-              <div className="text-[var(--app-primary)]/80 font-semibold text-sm mb-1">
-                示例：客廳 / 廚房 / 睡房
-              </div>
-              <div className="text-[var(--app-text-muted)] text-xs leading-relaxed">
-                影到主要牆身、櫃位位置同走位會更準
-              </div>
-            </div>
           </div>
 
           <h1 className="text-[30px] font-semibold text-[var(--app-text-main)] tracking-tight leading-tight">
             上傳照片，生成訂造建議
           </h1>
           <p className="mt-2 text-[15px] leading-relaxed text-[var(--app-text-muted)]">
-            AI 先分析空間與收納，再提供用料同預算方向（你可再補充需求）。
+            我會先分析空間與收納，再提供用料同預算方向（你可再補充需求）。
           </p>
 
           <div className="mt-5 space-y-3">

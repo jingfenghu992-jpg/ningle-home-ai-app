@@ -73,7 +73,7 @@ const App: React.FC = () => {
                 setAnalysisSummary(visionRes.vision_summary);
                 setAppState('ANALYSIS_DONE');
                 
-                // Optional: Short toast from AI
+                // Optional: Short toast from assistant
                 // addSystemToast("分析完成！可以睇下上面嘅摘要。");
             } else {
                 addSystemToast("分析失敗，請重試。");

@@ -24,7 +24,7 @@ export const AnalysisCard: React.FC<AnalysisCardProps> = ({ summary }) => {
     <div className="mx-4 my-4 bg-white rounded-[16px] p-6 border border-[var(--app-border)] animate-in slide-in-from-bottom-4 duration-500" style={{ boxShadow: 'var(--elev-0)' }}>
       <div className="flex items-center gap-2 mb-4 text-[var(--app-primary)] font-bold text-sm tracking-wide">
         <Sparkles size={18} />
-        <span>智能分析摘要</span>
+        <span>分析摘要</span>
       </div>
       
       <div className="space-y-3">

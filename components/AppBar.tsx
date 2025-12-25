@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, MessageCircle } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 
 interface AppBarProps {
   variant?: 'light' | 'dark';
@@ -28,9 +28,6 @@ export const AppBar: React.FC<AppBarProps> = ({ variant = 'light' }) => {
           >
             <MessageCircle size={16} />
             <span>免費跟進</span>
-          </button>
-          <button className="text-white/60 hover:text-white transition-colors" aria-label="幫助">
-            <HelpCircle size={22} />
           </button>
         </div>
       </div>
@@ -61,12 +58,6 @@ export const AppBar: React.FC<AppBarProps> = ({ variant = 'light' }) => {
           >
             <MessageCircle size={16} />
             <span>免費跟進</span>
-          </button>
-          <button
-            className="p-2 rounded-full text-[var(--app-text-muted)] hover:bg-[var(--app-divider)] hover:text-[var(--app-text-main)] transition-colors"
-            aria-label="幫助"
-          >
-            <HelpCircle size={20} />
           </button>
         </div>
       </div>

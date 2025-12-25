@@ -18,7 +18,7 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({ summary }) => {
     <div className="mx-4 my-2 bg-white border border-[var(--app-border)] rounded-[16px] p-4 text-[var(--app-text-main)]" style={{ boxShadow: 'var(--elev-0)' }}>
       <div className="flex items-center gap-2 mb-3 text-[var(--app-primary)] font-semibold text-xs tracking-wide">
         <Sparkles size={14} />
-        <span>AI 空間分析摘要</span>
+        <span>空間分析摘要</span>
       </div>
       
       <div className="space-y-2 text-sm leading-relaxed">
