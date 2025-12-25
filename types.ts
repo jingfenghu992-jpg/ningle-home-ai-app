@@ -12,7 +12,8 @@ export interface Message {
   options?: string[]; // For clickable options
   meta?: {
     uploadId?: string; // Bind actions to a specific uploaded image
-    kind?: 'upload' | 'analysis' | 'generated';
+    kind?: 'upload' | 'analysis' | 'generated' | 'render_flow';
+    stage?: 'style' | 'color' | 'priority' | 'confirm';
   };
   selectedOptions?: string[]; // To highlight selected options
   isLocked?: boolean; // If true, options are disabled

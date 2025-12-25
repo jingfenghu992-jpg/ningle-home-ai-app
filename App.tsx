@@ -14,7 +14,14 @@ const App: React.FC = () => {
   // --- State ---
   const [appState, setAppState] = useState<'START' | 'WAITING_FOR_SPACE' | 'ANALYZING' | 'ANALYSIS_DONE' | 'RENDER_INTAKE' | 'GENERATING' | 'RENDER_DONE'>('START');
   
-  const [uploads, setUploads] = useState<Record<string, { dataUrl: string; blobUrl?: string; width?: number; height?: number; spaceType?: string }>>({});
+  const [uploads, setUploads] = useState<Record<string, {
+    dataUrl: string;
+    blobUrl?: string;
+    width?: number;
+    height?: number;
+    spaceType?: string;
+    render?: { style?: string; color?: string; priority?: string };
+  }>>({});
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
@@ -30,8 +37,29 @@ const App: React.FC = () => {
 
   // --- Handlers ---
 
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
   const addSystemToast = (text: string, options?: string[]) => {
       setMessages(prev => [...prev, { id: Date.now().toString(), type: 'text', content: text, sender: 'ai', timestamp: Date.now(), options }]);
+  };
+
+  const typeOutAI = async (text: string, opts?: { options?: string[]; meta?: Message['meta'] }) => {
+      const id = `${Date.now()}-ai-typed`;
+      const meta = opts?.meta;
+      setMessages(prev => [...prev, { id, type: 'text', content: '', sender: 'ai', timestamp: Date.now(), isStreaming: true, meta }]);
+
+      const chunkSize = 4; // tradeoff: "字字出现" 观感 vs setState 频率
+      for (let i = 0; i < text.length; i += chunkSize) {
+          const chunk = text.slice(i, i + chunkSize);
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, content: m.content + chunk } : m));
+          // slightly faster for long summaries
+          // (keeps the "typing" feel without being painfully slow)
+          // eslint-disable-next-line no-await-in-loop
+          await sleep(16);
+      }
+
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, isStreaming: false, options: opts?.options } : m));
+      return id;
   };
 
   const resetToStart = () => {
@@ -149,8 +177,8 @@ const App: React.FC = () => {
             return;
         }
 
-        // Polite status message before analysis starts
-        addSystemToast("收到，圖片正在分析中，請稍等…");
+        // Polite status message before analysis starts (typed)
+        await typeOutAI("收到，圖片正在分析中，請稍等…");
         setAppState('ANALYZING');
         // Perform Analysis
         try {
@@ -173,30 +201,21 @@ const App: React.FC = () => {
             if (visionRes.ok && visionRes.vision_summary) {
                 setAnalysisSummary(visionRes.vision_summary);
                 setAppState('ANALYSIS_DONE');
-                // Append analysis summary + action buttons into chat flow
-                addSystemToast(
+                // Append analysis summary (typed) + action button, bound to this upload
+                await typeOutAI(
                     `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
-                    ["生成智能效果圖"]
+                    { options: ["生成智能效果圖"], meta: { kind: 'analysis', uploadId: uid } }
                 );
-                // Bind the action to this uploadId by attaching meta to the last message
-                setMessages(prev => {
-                    const last = prev[prev.length - 1];
-                    if (!last) return prev;
-                    return [
-                        ...prev.slice(0, -1),
-                        { ...last, meta: { ...(last.meta || {}), kind: 'analysis', uploadId: uid } }
-                    ];
-                });
                 
                 // Optional: Short toast from AI
                 // addSystemToast("分析完成！可以睇下上面嘅摘要。");
             } else {
-                addSystemToast("分析失敗，請重試。");
+                await typeOutAI("分析失敗，請重試。");
                 setAppState('WAITING_FOR_SPACE');
             }
         } catch (e) {
             console.error(e);
-            addSystemToast("系統錯誤，請重試。");
+            await typeOutAI("系統錯誤，請重試。");
             setAppState('WAITING_FOR_SPACE');
         }
     } else if (appState === 'RENDER_DONE' || lastGeneratedImage) {
@@ -230,10 +249,15 @@ const App: React.FC = () => {
               return '1024x1024';
           };
 
+          const baseUrl =
+            revisionText
+              ? (lastGeneratedImage || (intakeData?.baseImageBlobUrl ?? ''))
+              : (intakeData?.baseImageBlobUrl ?? '');
+
           const payload = {
               prompt: '', 
               renderIntake: intakeData || {}, 
-              baseImageBlobUrl: lastGeneratedImage || (intakeData?.baseImageBlobUrl ?? ''), 
+              baseImageBlobUrl: baseUrl,
               size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
               // StepFun doc: smaller source_weight => more similar to source (less deformation)
               source_weight: 0.4,
@@ -267,34 +291,96 @@ const App: React.FC = () => {
       }
   };
 
-  const handleOptionClick = (message: Message, opt: string) => {
+  const handleOptionClick = async (message: Message, opt: string) => {
+      const uploadId = message.meta?.uploadId;
+      const u = uploadId ? uploads[uploadId] : undefined;
+
       if (opt === '生成智能效果圖') {
-          const uploadId = message.meta?.uploadId;
-          const u = uploadId ? uploads[uploadId] : undefined;
           // If blob URL not ready, guide user to wait to avoid "Missing baseImageBlobUrl"
           if (!uploadId || !u) {
-              addSystemToast("搵唔到對應嘅相片，麻煩你再上傳一次～");
+              await typeOutAI("搵唔到對應嘅相片，麻煩你再上傳一次～");
               return;
           }
           if (!u.blobUrl) {
-              addSystemToast("相片仲上傳緊，請等幾秒再試～");
+              await typeOutAI("相片仲上傳緊，請等幾秒再試～");
               return;
           }
-          addSystemToast("收到～我而家幫你生成效果圖（會盡量保留原本門窗/梁柱/結構），請稍等…");
-          setAppState('GENERATING');
-          // Generate directly with a sane default intake to make the button always work
-          const defaultIntake = {
-              space: u.spaceType || 'room',
-              style: 'modern',
-              color: 'neutral',
-              requirements: 'Preserve the original structure, windows, doors, and perspective. Improve storage and lighting. Hong Kong apartment practical layout.'
-              ,
-              baseImageBlobUrl: u.blobUrl,
-              baseWidth: u.width,
-              baseHeight: u.height
-          };
-          triggerGeneration(defaultIntake);
+
+          // Start clickable intake flow in chat
+          await typeOutAI("想做咩風格先？你可以先揀一個～", {
+              options: ["現代簡約", "奶油風", "日式木系", "輕奢"],
+              meta: { kind: 'render_flow', stage: 'style', uploadId }
+          });
           return;
+      }
+
+      // Render flow steps (bound to the analysis/upload)
+      if (message.meta?.kind === 'render_flow' && uploadId && u) {
+          if (message.meta.stage === 'style') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), style: opt } }
+              }) : prev);
+              await typeOutAI("色系想走邊種？", {
+                  options: ["淺木+米白", "胡桃木+灰白", "純白+淺灰", "深木+暖白"],
+                  meta: { kind: 'render_flow', stage: 'color', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'color') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), color: opt } }
+              }) : prev);
+              await typeOutAI("你更重視邊個取向？", {
+                  options: ["性價比優先", "耐用優先", "易打理優先"],
+                  meta: { kind: 'render_flow', stage: 'priority', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'priority') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), priority: opt } }
+              }) : prev);
+
+              const style = u.render?.style || '現代簡約';
+              const color = u.render?.color || '淺木+米白';
+              await typeOutAI(`好，我幫你用「${style}｜${color}｜${opt}」去出一張效果圖（盡量保留原本門窗/梁柱/結構）。準備好就按下面開始生成～`, {
+                  options: ["開始生成效果圖"],
+                  meta: { kind: 'render_flow', stage: 'confirm', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'confirm' && opt === '開始生成效果圖') {
+              if (!u.blobUrl) {
+                  await typeOutAI("相片仲上傳緊，請等幾秒再試～");
+                  return;
+              }
+
+              const style = u.render?.style || '現代簡約';
+              const color = u.render?.color || '淺木+米白';
+              const priority = u.render?.priority || '性價比優先';
+
+              await typeOutAI("收到～我而家幫你生成效果圖，請稍等…");
+              setAppState('GENERATING');
+
+              const intake = {
+                  space: u.spaceType || 'room',
+                  style,
+                  color,
+                  requirements:
+                    `Priority: ${priority}. Preserve original structure, windows, doors, beams/columns, and perspective. Improve storage and lighting. Hong Kong apartment practical layout. Use ENF-grade plywood/multi-layer wood where applicable.`,
+                  baseImageBlobUrl: u.blobUrl,
+                  baseWidth: u.width,
+                  baseHeight: u.height
+              };
+
+              triggerGeneration(intake);
+          }
       }
   };
 
