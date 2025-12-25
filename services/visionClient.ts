@@ -8,7 +8,7 @@ export interface VisionResponse {
   errorCode?: string;
 }
 
-export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: string; mode: string }): Promise<VisionResponse> {
+export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: string; mode: string; spaceType?: string }): Promise<VisionResponse> {
   const payloadUrl = params.imageUrl || params.imageDataUrl;
   if (!payloadUrl) {
     console.error('[Vision Client] Invalid image payload');
@@ -25,6 +25,7 @@ export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: s
     const body: any = {
       mode: params.mode
     };
+    if (params.spaceType) body.spaceType = params.spaceType;
 
     if (params.imageUrl) {
       body.imageUrl = params.imageUrl;

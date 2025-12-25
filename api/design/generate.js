@@ -81,12 +81,22 @@ export default async function handler(req, res) {
     if (renderIntake) {
         const { space, style, color, requirements } = renderIntake;
         // Keep prompt simple and direct for StepFun
-        finalPrompt = `Realistic interior design render of ${space || 'room'}, ${style || 'modern'} style, ${color || 'neutral'} color scheme. ${requirements || ''}. Keep structural elements unchanged. High quality, photorealistic.`;
+        finalPrompt = `Realistic interior design render of ${space || 'room'}, ${style || 'modern'} style, ${color || 'neutral'} color scheme. ${requirements || ''}.`;
     }
 
     if (!finalPrompt) {
          res.status(400).json({ ok: false, message: 'Missing prompt or renderIntake' });
          return;
+    }
+
+    // StepFun: prompt length must be 1..1024 chars
+    finalPrompt = String(finalPrompt).replace(/\s+/g, ' ').trim();
+    if (finalPrompt.length === 0) {
+        res.status(400).json({ ok: false, message: 'Invalid prompt (empty)' });
+        return;
+    }
+    if (finalPrompt.length > 1024) {
+        finalPrompt = finalPrompt.slice(0, 1021) + '...';
     }
 
     // --- STRATEGY A: Try Blob URL directly ---

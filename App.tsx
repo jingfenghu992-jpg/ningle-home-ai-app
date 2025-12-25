@@ -249,7 +249,7 @@ const App: React.FC = () => {
                 imageUrl: active.blobUrl, 
                 mode: 'consultant', 
                 spaceType: text 
-            } as any);
+            });
 
             if (visionRes.ok && visionRes.vision_summary) {
                 setAnalysisSummary(visionRes.vision_summary);
@@ -411,8 +411,20 @@ const App: React.FC = () => {
                   ...prev,
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), color: opt } }
               }) : prev);
+              const space = u.spaceType || '';
+              const isDining = String(space).includes('餐');
+              const isKitchen = String(space).includes('廚') || String(space).includes('厨');
+              const isEntrance = String(space).includes('玄') || String(space).includes('關') || String(space).includes('关');
+              const focusOptions = isDining
+                ? ["餐桌佈局+動線", "餐邊櫃/高櫃收納", "展示+收納牆", "全屋整體"]
+                : isKitchen
+                  ? ["廚櫃動線+收納", "高櫃電器櫃", "餐邊/島台", "全屋整體"]
+                  : isEntrance
+                    ? ["鞋櫃+換鞋位", "收納+展示", "雜物/清潔櫃", "全屋整體"]
+                    : ["電視牆收納", "高櫃/衣櫃收納", "書枱/工作位", "全屋整體"];
+
               await typeOutAI("呢張圖你最想改邊個位置（重點做櫃體收納）？", {
-                  options: ["電視牆收納", "餐邊/廚櫃收納", "玄關鞋櫃", "全屋整體"],
+                  options: focusOptions,
                   meta: { kind: 'render_flow', stage: 'focus', uploadId }
               });
               return;
@@ -493,12 +505,15 @@ const App: React.FC = () => {
                   return { source_weight: 0.48, cfg_scale: 7.0, steps: 45 }; // recommended
               })();
 
-              const compact = (s?: string, max = 600) => {
-                  if (!s) return '';
-                  const cleaned = s.replace(/\s+/g, ' ').trim();
-                  return cleaned.length > max ? cleaned.slice(0, max) + '…' : cleaned;
+              const pickConstraints = (summary?: string) => {
+                  if (!summary) return '';
+                  const lines = summary.split('\n').map(l => l.trim()).filter(Boolean);
+                  // Prefer "結構/特徵/香港" lines only
+                  const picked = lines.filter(l => l.startsWith('結構：') || l.startsWith('特徵：') || l.includes('窗') || l.includes('梁') || l.includes('冷氣') || l.includes('柱') || l.includes('窗台'));
+                  const text = (picked.length ? picked : lines.slice(0, 6)).join('；');
+                  return text.length > 220 ? text.slice(0, 220) + '…' : text;
               };
-              const structureNotes = u.visionSummary ? `\n(Structure notes from analysis, keep these constraints)\n${compact(u.visionSummary)}\n` : '';
+              const structureNotes = u.visionSummary ? `Constraints: ${pickConstraints(u.visionSummary)}` : '';
 
               const space = u.spaceType || 'room';
               const isDining = String(space).includes('餐') || String(space).toLowerCase().includes('dining');
@@ -506,18 +521,21 @@ const App: React.FC = () => {
                 ? `\nDining must-have: place a dining table and chairs appropriately (clear circulation), add a dining sideboard / tall pantry storage as suitable.`
                 : '';
 
+              // Keep requirements concise to avoid StepFun prompt >1024
+              const requirements = [
+                  `Priority: ${priority}. Focus: ${focus}. Storage: ${storage}. Intensity: ${intensity}.`,
+                  `INTERIOR ONLY (ignore balcony/exterior).`,
+                  `Must include: cabinetry/storage plan + dining table/sideboard if dining; ceiling + floor + wall finish + lighting + soft furnishings.`,
+                  `Do NOT move windows/doors/beams/columns; keep camera perspective.`,
+                  `Material: ENF-grade multi-layer wood/plywood cabinetry.`,
+                  structureNotes ? structureNotes : ''
+              ].filter(Boolean).join(' ');
+
               const intake = {
                   space,
                   style,
                   color,
-                  requirements:
-                    `Priority: ${priority}. Focus area: ${focus}. Storage type: ${storage}. Intensity: ${intensity}.
-INTERIOR ONLY: redesign the interior space only; do NOT redesign the outdoor balcony/exterior view. Keep balcony/exterior as background.
-Do a noticeable redesign based on the user's selections. Must include: ceiling design (simple false ceiling/cove lighting), finished flooring (wood/tiles), wall finish, built-in cabinetry plan, lighting plan, and soft furnishings.
-Custom cabinetry & storage: full-height cabinets / wall unit / sideboard / shoe cabinet / window bench as suitable. Provide a coherent layout and keep practical circulation.
-Preserve original structure and perspective: DO NOT move windows/doors/balcony opening/beams/columns; keep camera viewpoint and geometry consistent.${diningMustHave}
-Hong Kong apartment practical layout. Materials: emphasize ENF-grade multi-layer wood/plywood cabinetry.
-${structureNotes}`,
+                  requirements,
                   baseImageBlobUrl: baseImage,
                   baseWidth: u.width,
                   baseHeight: u.height,

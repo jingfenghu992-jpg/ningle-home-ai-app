@@ -113,11 +113,16 @@ ${spacePrompt}
             return String(v);
         };
 
+        const shorten = (s, max = 120) => {
+            const t = formatMaybeArray(s).replace(/\s+/g, ' ').trim();
+            return t.length > max ? t.slice(0, max) + '…' : t;
+        };
+
         const suggestionsText = formatMaybeArray(parsed?.suggestions);
         const hkNotesText = formatMaybeArray(parsed?.hk_notes);
 
         const summary = parsed
-            ? `【視覺分析】\n視角：${formatMaybeArray(parsed.perspective)}\n結構：${formatMaybeArray(parsed.structure)}\n光線：${formatMaybeArray(parsed.lighting)}\n特徵：${hkNotesText}\n建議：\n${suggestionsText}`
+            ? `【視覺分析】\n視角：${shorten(parsed.perspective)}\n結構：${shorten(parsed.structure)}\n光線：${shorten(parsed.lighting)}\n特徵：${shorten(hkNotesText, 160)}\n建議：\n${suggestionsText}`
             : content;
 
         res.status(200).json({
