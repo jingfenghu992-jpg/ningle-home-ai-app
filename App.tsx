@@ -479,16 +479,30 @@ const App: React.FC = () => {
                   return { source_weight: 0.48, cfg_scale: 7.0, steps: 45 }; // recommended
               })();
 
-              const structureNotes = u.visionSummary ? `\nStructure notes from analysis:\n${u.visionSummary}\n` : '';
+              const compact = (s?: string, max = 600) => {
+                  if (!s) return '';
+                  const cleaned = s.replace(/\s+/g, ' ').trim();
+                  return cleaned.length > max ? cleaned.slice(0, max) + '…' : cleaned;
+              };
+              const structureNotes = u.visionSummary ? `\n(Structure notes from analysis, keep these constraints)\n${compact(u.visionSummary)}\n` : '';
+
+              const space = u.spaceType || 'room';
+              const isDining = String(space).includes('餐') || String(space).toLowerCase().includes('dining');
+              const diningMustHave = isDining
+                ? `\nDining must-have: place a dining table and chairs appropriately (clear circulation), add a dining sideboard / tall pantry storage as suitable.`
+                : '';
+
               const intake = {
-                  space: u.spaceType || 'room',
+                  space,
                   style,
                   color,
                   requirements:
                     `Priority: ${priority}. Focus area: ${focus}. Storage type: ${storage}. Intensity: ${intensity}.
-Do a noticeable redesign based on the user's selections. Add custom built-in cabinetry and a clear storage layout (full-height cabinets / TV wall unit / sideboard / shoe cabinet / window bench as suitable).
-Preserve original structure and perspective: DO NOT move windows/doors/balcony opening/beams/columns; keep camera viewpoint and geometry consistent.
-Hong Kong apartment practical layout (optimize circulation and storage). Materials: emphasize ENF-grade multi-layer wood/plywood cabinetry.
+INTERIOR ONLY: redesign the interior space only; do NOT redesign the outdoor balcony/exterior view. Keep balcony/exterior as background.
+Do a noticeable redesign based on the user's selections. Must include: ceiling design (simple false ceiling/cove lighting), finished flooring (wood/tiles), wall finish, built-in cabinetry plan, lighting plan, and soft furnishings.
+Custom cabinetry & storage: full-height cabinets / wall unit / sideboard / shoe cabinet / window bench as suitable. Provide a coherent layout and keep practical circulation.
+Preserve original structure and perspective: DO NOT move windows/doors/balcony opening/beams/columns; keep camera viewpoint and geometry consistent.${diningMustHave}
+Hong Kong apartment practical layout. Materials: emphasize ENF-grade multi-layer wood/plywood cabinetry.
 ${structureNotes}`,
                   baseImageBlobUrl: baseImage,
                   baseWidth: u.width,

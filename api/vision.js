@@ -71,7 +71,11 @@ ${spacePrompt}
   "lighting": "光線來源與色溫",
   "materials": "主要材質與質感",
   "hk_notes": "香港常見戶型特徵（例如：窗台深度、冷氣機位、樓底高度感）",
-  "suggestions": "針對此空間的3個重點『櫃體/收納』訂造建議（必須具體：放在哪一面牆/大概高度/開門方式/功能分區）"
+  "suggestions": [
+    "建議1：以櫃體/收納為主（要具體：位置/高度/開門方式/分區）",
+    "建議2：以櫃體/收納為主（要具體：位置/高度/開門方式/分區）",
+    "建議3：以櫃體/收納為主（要具體：位置/高度/開門方式/分區）"
+  ]
 }
 如果無法返回 JSON，請用列點方式詳細描述。`
                     },
@@ -100,8 +104,20 @@ ${spacePrompt}
             parsed = JSON.parse(cleanContent);
         } catch (e) {}
 
-        const summary = parsed 
-            ? `【視覺分析】\n視角：${parsed.perspective}\n結構：${parsed.structure}\n光線：${parsed.lighting}\n特徵：${parsed.hk_notes}\n建議：${parsed.suggestions}`
+        const formatMaybeArray = (v) => {
+            if (v == null) return "";
+            if (Array.isArray(v)) {
+                return v.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join('\n');
+            }
+            if (typeof v === 'object') return JSON.stringify(v);
+            return String(v);
+        };
+
+        const suggestionsText = formatMaybeArray(parsed?.suggestions);
+        const hkNotesText = formatMaybeArray(parsed?.hk_notes);
+
+        const summary = parsed
+            ? `【視覺分析】\n視角：${formatMaybeArray(parsed.perspective)}\n結構：${formatMaybeArray(parsed.structure)}\n光線：${formatMaybeArray(parsed.lighting)}\n特徵：${hkNotesText}\n建議：\n${suggestionsText}`
             : content;
 
         res.status(200).json({
