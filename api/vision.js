@@ -64,17 +64,13 @@ export default async function handler(req, res) {
                         role: "system",
                         content: `你是一位專業的「香港全屋訂造」視覺分析師，核心專長是：櫃體設計、收納規劃、動線與落地可施工方案。請嚴格根據上傳圖片的真實視覺內容進行分析，避免泛泛而談的軟裝建議（例如只講擺花/裝飾品）。
 ${spacePrompt}
-返回 JSON 格式（內容用繁體中文）：
+返回 JSON 格式（內容用繁體中文；只要以下欄位）：
 {
-  "perspective": "視角與鏡頭高度",
-  "structure": "空間結構（橫樑、柱位、窗台、假天花位置）",
-  "lighting": "光線來源與色溫",
-  "materials": "主要材質與質感",
-  "hk_notes": "香港常見戶型特徵（例如：窗台深度、冷氣機位、樓底高度感）",
+  "structure": "空間結構（只講：門窗/落地窗/陽台門/窗台、橫樑/柱位、假天花/冷氣機位等）",
+  "lighting": "光線來源與色溫（自然光/燈位不足等）",
   "suggestions": [
-    "建議1：以櫃體/收納為主（要具體：位置/高度/開門方式/分區）",
-    "建議2：以櫃體/收納為主（要具體：位置/高度/開門方式/分區）",
-    "建議3：以櫃體/收納為主（要具體：位置/高度/開門方式/分區）"
+    "建議1：櫃體/收納訂造（要具體：位置/高度/開門方式/分區）",
+    "建議2：櫃體/收納訂造（要具體：位置/高度/開門方式/分區）"
   ]
 }
 如果無法返回 JSON，請用列點方式詳細描述。`
@@ -119,10 +115,8 @@ ${spacePrompt}
         };
 
         const suggestionsText = formatMaybeArray(parsed?.suggestions);
-        const hkNotesText = formatMaybeArray(parsed?.hk_notes);
-
         const summary = parsed
-            ? `【視覺分析】\n視角：${shorten(parsed.perspective)}\n結構：${shorten(parsed.structure)}\n光線：${shorten(parsed.lighting)}\n特徵：${shorten(hkNotesText, 160)}\n建議：\n${suggestionsText}`
+            ? `【視覺分析】\n結構：${shorten(parsed.structure, 220)}\n光線：${shorten(parsed.lighting, 160)}\n建議：\n${suggestionsText}`
             : content;
 
         res.status(200).json({
