@@ -1,4 +1,5 @@
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 import { Message } from '../types';
 
 interface MessageCardProps {
@@ -27,9 +28,11 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
         ) : (
           <div className="whitespace-pre-wrap">
               {message.content}
-              {/* Blinking cursor ONLY during streaming */}
-              {!isUser && message.isStreaming && (
-                  <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[#8A8F79] animate-pulse align-middle" style={{animationDuration: '0.8s'}}></span>
+              {/* Spinner for streaming/loading */}
+              {!isUser && (message.isStreaming || message.meta?.loading) && (
+                <span className="inline-flex items-center ml-1 align-middle">
+                  <Loader2 size={14} className="animate-spin text-[#8A8F79]" />
+                </span>
               )}
           </div>
         )}

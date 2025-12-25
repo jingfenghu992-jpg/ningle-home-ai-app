@@ -43,6 +43,19 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, { id: Date.now().toString(), type: 'text', content: text, sender: 'ai', timestamp: Date.now(), options }]);
   };
 
+  const addLoadingToast = (text: string, meta: Message['meta']) => {
+      const id = `${Date.now()}-ai-loading`;
+      setMessages(prev => [
+          ...prev,
+          { id, type: 'text', content: text, sender: 'ai', timestamp: Date.now(), meta: { ...(meta || {}), loading: true } }
+      ]);
+      return id;
+  };
+
+  const stopLoadingToast = (id: string) => {
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, meta: { ...(m.meta || {}), loading: false } } : m));
+  };
+
   const typeOutAI = async (text: string, opts?: { options?: string[]; meta?: Message['meta'] }) => {
       const id = `${Date.now()}-ai-typed`;
       const meta = opts?.meta;
@@ -216,8 +229,8 @@ const App: React.FC = () => {
             return;
         }
 
-        // Polite status message before analysis starts (typed)
-        await typeOutAI("收到，圖片正在分析中，請稍等…");
+        // Polite status message before analysis starts (with spinner)
+        const analysisLoadingId = addLoadingToast("收到，圖片正在分析中，請稍等…", { loadingType: 'analyzing' });
         setAppState('ANALYZING');
         // Perform Analysis
         try {
@@ -240,6 +253,7 @@ const App: React.FC = () => {
             if (visionRes.ok && visionRes.vision_summary) {
                 setAnalysisSummary(visionRes.vision_summary);
                 setAppState('ANALYSIS_DONE');
+                stopLoadingToast(analysisLoadingId);
                 // Append analysis summary (typed) + action button, bound to this upload
                 await typeOutAI(
                     `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
@@ -249,11 +263,13 @@ const App: React.FC = () => {
                 // Optional: Short toast from AI
                 // addSystemToast("分析完成！可以睇下上面嘅摘要。");
             } else {
+                stopLoadingToast(analysisLoadingId);
                 await typeOutAI("分析失敗，請重試。");
                 setAppState('WAITING_FOR_SPACE');
             }
         } catch (e) {
             console.error(e);
+            stopLoadingToast(analysisLoadingId);
             await typeOutAI("系統錯誤，請重試。");
             setAppState('WAITING_FOR_SPACE');
         }
@@ -349,10 +365,7 @@ const App: React.FC = () => {
           // Lock this message after we confirm we can start the flow
           setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
 
-          // Prefer public URL; fallback to base64 if upload URL isn't ready/failed.
-          if (!u.blobUrl) {
-              await typeOutAI("相片仲上傳緊／或上傳失敗咗，我會先用本地相片直接生成（效果可能稍慢），之後你再試一次用 URL 會更穩～");
-          }
+          // Prefer public URL; silently fallback to base64 if upload URL isn't ready/failed.
 
           // Start clickable intake flow in chat
           await typeOutAI("想做咩風格先？你可以先揀一個～", {
@@ -408,7 +421,7 @@ const App: React.FC = () => {
               const color = u.render?.color || '淺木+米白';
               const priority = u.render?.priority || '性價比優先';
 
-              await typeOutAI("收到～我而家幫你生成效果圖，請稍等…");
+              const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
               setAppState('GENERATING');
 
               const baseImage = u.blobUrl || u.dataUrl;
@@ -417,13 +430,17 @@ const App: React.FC = () => {
                   style,
                   color,
                   requirements:
-                    `Priority: ${priority}. Preserve original structure, windows, doors, beams/columns, and perspective. Improve storage and lighting. Hong Kong apartment practical layout. Use ENF-grade plywood/multi-layer wood where applicable.`,
+                    `Priority: ${priority}. Do a noticeable redesign based on the user's selections. Add custom built-in cabinetry and storage plan (TV wall unit / tall cabinets / sideboard / window bench where suitable). Preserve original structure, windows, doors, beams/columns, and perspective. Hong Kong apartment practical layout. Use ENF-grade multi-layer wood/plywood where applicable.`,
                   baseImageBlobUrl: baseImage,
                   baseWidth: u.width,
                   baseHeight: u.height
               };
 
-              triggerGeneration(intake);
+              try {
+                  await triggerGeneration(intake);
+              } finally {
+                  stopLoadingToast(genLoadingId);
+              }
           }
       }
   };

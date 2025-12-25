@@ -14,6 +14,8 @@ export interface Message {
     uploadId?: string; // Bind actions to a specific uploaded image
     kind?: 'upload' | 'analysis' | 'generated' | 'render_flow';
     stage?: 'style' | 'color' | 'priority' | 'confirm';
+    loading?: boolean; // show spinner while executing
+    loadingType?: 'analyzing' | 'generating';
   };
   selectedOptions?: string[]; // To highlight selected options
   isLocked?: boolean; // If true, options are disabled
