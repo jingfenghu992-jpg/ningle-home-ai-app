@@ -335,18 +335,23 @@ const App: React.FC = () => {
       const u = uploadId ? uploads[uploadId] : undefined;
 
       if (opt === '生成智能效果圖') {
-          // Prevent repeated taps from spamming the same warning
-          if (message.isLocked) return;
-          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
+          // Prevent repeated taps from spamming; but don't make it "no response"
+          if (message.isLocked) {
+              await typeOutAI("收到～我已經開始處理緊，你等我幾秒先～");
+              return;
+          }
 
           // If blob URL not ready, guide user to wait to avoid "Missing baseImageBlobUrl"
           if (!uploadId || !u) {
               await typeOutAI("搵唔到對應嘅相片，麻煩你再上傳一次～");
               return;
           }
+          // Lock this message after we confirm we can start the flow
+          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
+
+          // Prefer public URL; fallback to base64 if upload URL isn't ready/failed.
           if (!u.blobUrl) {
-              await typeOutAI("相片仲上傳緊，請等幾秒再試～");
-              return;
+              await typeOutAI("相片仲上傳緊／或上傳失敗咗，我會先用本地相片直接生成（效果可能稍慢），之後你再試一次用 URL 會更穩～");
           }
 
           // Start clickable intake flow in chat
@@ -399,11 +404,6 @@ const App: React.FC = () => {
           }
 
           if (message.meta.stage === 'confirm' && opt === '開始生成效果圖') {
-              if (!u.blobUrl) {
-                  await typeOutAI("相片仲上傳緊，請等幾秒再試～");
-                  return;
-              }
-
               const style = u.render?.style || '現代簡約';
               const color = u.render?.color || '淺木+米白';
               const priority = u.render?.priority || '性價比優先';
@@ -411,13 +411,14 @@ const App: React.FC = () => {
               await typeOutAI("收到～我而家幫你生成效果圖，請稍等…");
               setAppState('GENERATING');
 
+              const baseImage = u.blobUrl || u.dataUrl;
               const intake = {
                   space: u.spaceType || 'room',
                   style,
                   color,
                   requirements:
                     `Priority: ${priority}. Preserve original structure, windows, doors, beams/columns, and perspective. Improve storage and lighting. Hong Kong apartment practical layout. Use ENF-grade plywood/multi-layer wood where applicable.`,
-                  baseImageBlobUrl: u.blobUrl,
+                  baseImageBlobUrl: baseImage,
                   baseWidth: u.width,
                   baseHeight: u.height
               };
