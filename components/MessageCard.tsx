@@ -17,8 +17,8 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
         className={`
           max-w-[85%] rounded-[20px] p-4 text-[15px] leading-relaxed shadow-sm
           ${isUser 
-            ? 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm' 
-            : 'bg-[#F3F0EA] text-[#4A453C] rounded-tl-sm'
+            ? 'bg-[var(--app-primary)] text-white rounded-tr-sm' 
+            : 'bg-white text-[var(--app-text-main)] rounded-tl-sm border border-[var(--app-border)]'
           }
         `}
       >
@@ -26,7 +26,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
             {message.content}
             {/* Blinking Cursor for AI streaming if last char is not punctuation or if needed */}
             {!isUser && message.content.length > 0 && (
-                <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[#8A8F79] animate-pulse align-middle" style={{animationDuration: '0.8s'}}></span>
+                <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[var(--app-primary)] animate-pulse align-middle" style={{animationDuration: '0.8s'}}></span>
             )}
         </div>
 
@@ -37,7 +37,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
               <button
                 key={i}
                 onClick={() => onOptionClick?.(opt)}
-                className="bg-white/50 hover:bg-white text-[#4A453C] border border-black/5 px-3 py-1.5 rounded-full text-xs font-medium transition-all shadow-sm active:scale-95"
+                className="bg-[var(--app-bg)] hover:bg-white text-[var(--app-text-main)] border border-[var(--app-border)] px-3 py-1.5 rounded-full text-xs font-medium transition-all shadow-sm active:scale-95"
               >
                 {opt}
               </button>
@@ -45,7 +45,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
           </div>
         )}
         
-        <div className={`text-[10px] mt-1.5 text-right ${isUser ? 'text-white/30' : 'text-black/30'}`}>
+        <div className={`text-[10px] mt-1.5 text-right ${isUser ? 'text-white/70' : 'text-black/35'}`}>
           {new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
         </div>
       </div>

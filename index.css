@@ -3,16 +3,26 @@
 @tailwind utilities;
 
 :root {
-  /* Warm Home Palette */
-  --app-bg: #2E2C29;          /* Warm Dark Gray */
-  --app-surface: #F3F0EA;     /* Warm Beige/Off-white (Card Bg) */
-  --app-text-main: #4A453C;   /* Deep Warm Gray (Text on Light) */
-  --app-text-light: #EBE8E3;  /* Text on Dark */
-  --app-accent: #8A8F79;      /* Olive Green */
-  --app-accent-dark: #6B705C;
-  
-  --card-radius: 20px;
-  --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  /* HK – Light Luxury Warm (B) */
+  --app-bg: #FAF7F2; /* warm mist white */
+  --app-surface: #FFFFFF;
+
+  --app-text-main: #1F2937; /* slate-800 */
+  --app-text-muted: #6B7280; /* gray-500 */
+  --app-text-inverse: #FFFFFF;
+
+  --app-primary: #14532D; /* deep green */
+  --app-primary-hover: #0F3F22;
+  --app-primary-pressed: #0B2F19;
+
+  --app-border: #E9E2D8; /* warm border */
+  --app-divider: #EFE7DD;
+
+  --elev-1: 0 10px 30px rgba(17, 24, 39, 0.08), 0 2px 8px rgba(17, 24, 39, 0.06);
+  --elev-0: 0 6px 18px rgba(17, 24, 39, 0.06);
+
+  --radius-card: 16px;
+  --radius-btn: 14px;
 }
 
 body {
@@ -29,6 +39,6 @@ body {
 
 /* Utilities */
 .text-warm-dark { color: var(--app-text-main); }
-.text-warm-light { color: var(--app-text-light); }
+.text-warm-light { color: var(--app-text-inverse); }
 .bg-warm-surface { background-color: var(--app-surface); }
 .bg-warm-dark { background-color: var(--app-bg); }

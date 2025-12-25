@@ -146,7 +146,7 @@ const App: React.FC = () => {
 
   return (
     <AppShell>
-      <AppBar />
+      <AppBar variant="light" />
       
       {appState === 'START' ? (
         <StartScreen 
@@ -185,13 +185,14 @@ const App: React.FC = () => {
                     <div className="flex gap-2 mt-3">
                         <button 
                             onClick={() => setAppState('RENDER_INTAKE')}
-                            className="flex-1 bg-[#8A8F79] text-white py-3 rounded-xl font-bold shadow-md active:scale-95 transition-transform"
+                            className="flex-1 text-white py-3 rounded-xl font-bold shadow-md active:scale-95 transition-transform"
+                            style={{ backgroundColor: 'var(--app-primary)' }}
                         >
                             生成智能效果圖
                         </button>
                         <button 
                             onClick={() => setAppState('START')}
-                            className="flex-1 bg-white text-[#4A453C] border border-[#EBE8E3] py-3 rounded-xl font-medium active:scale-95 transition-transform"
+                            className="flex-1 bg-white text-[var(--app-text-main)] border border-[var(--app-border)] py-3 rounded-xl font-medium active:scale-95 transition-transform"
                         >
                             再上傳另一張
                         </button>
@@ -205,8 +206,11 @@ const App: React.FC = () => {
 
             {appState === 'GENERATING' && (
                 <div className="mx-4 my-6 p-6 bg-white rounded-[24px] flex flex-col items-center justify-center space-y-4 animate-pulse">
-                    <div className="w-12 h-12 rounded-full border-4 border-[#8A8F79]/20 border-t-[#8A8F79] animate-spin"></div>
-                    <p className="text-[#4A453C] font-medium">正在生成智能效果圖...</p>
+                    <div
+                      className="w-12 h-12 rounded-full border-4 animate-spin"
+                      style={{ borderColor: 'rgba(20,83,45,0.18)', borderTopColor: 'var(--app-primary)' }}
+                    ></div>
+                    <p className="text-[var(--app-text-main)] font-medium">正在生成智能效果圖...</p>
                 </div>
             )}
 

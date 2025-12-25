@@ -2,11 +2,12 @@ import React from 'react';
 
 interface AppShellProps {
   children: React.ReactNode;
+  className?: string;
 }
 
-export const AppShell: React.FC<AppShellProps> = ({ children }) => {
+export const AppShell: React.FC<AppShellProps> = ({ children, className }) => {
   return (
-    <div className="flex flex-col h-[100dvh] w-full max-w-md mx-auto bg-warm-dark shadow-2xl overflow-hidden relative">
+    <div className={`flex flex-col h-[100dvh] w-full max-w-md mx-auto bg-warm-dark shadow-2xl overflow-hidden relative ${className ?? ''}`}>
       {children}
     </div>
   );
