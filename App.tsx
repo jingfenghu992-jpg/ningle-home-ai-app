@@ -89,6 +89,28 @@ const App: React.FC = () => {
     };
 
     if (appState === 'WAITING_FOR_SPACE') {
+        // Only treat the input as "space type" if it actually looks like one.
+        // Otherwise, keep waiting for space type and allow normal chat.
+        const normalized = text.replace(/\s+/g, '');
+        const isSpaceType =
+            [
+                '客廳','客厅',
+                '餐廳','餐厅',
+                '睡房','卧室','房間','房间','主人房','主卧','次卧',
+                '廚房','厨房',
+                '玄關','玄关',
+                '書房','书房',
+                '浴室','洗手間','洗手间','厕所','衛生間','卫生间',
+                '走廊','通道',
+                '露台','阳台',
+                '其他'
+            ].some(k => normalized.includes(k));
+
+        if (!isSpaceType) {
+            await runChat();
+            return;
+        }
+
         setAppState('ANALYZING');
         // Perform Analysis
         try {
