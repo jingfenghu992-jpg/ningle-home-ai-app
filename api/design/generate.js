@@ -338,7 +338,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
         }
 
         // If spec generation failed, fallback to heuristic prompt builder below
-        const { space, style, color, requirements, focus, storage, priority, intensity } = renderIntake;
+        const { space, style, color, requirements, focus, storage, vibe, decor, priority, intensity } = renderIntake;
 
         const normalize = (s) => String(s || '').trim();
         const compact = (s, max = 360) => {
@@ -420,6 +420,24 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             return `Storage: ${k}.`;
         };
 
+        const mapVibe = (kw) => {
+            const k = normalize(kw);
+            if (!k) return '';
+            if (k.includes('明亮')) return 'Vibe: bright and airy; balanced daylight + clean downlights.';
+            if (k.includes('酒店') || k.includes('高級') || k.includes('高级')) return 'Vibe: premium hotel-like mood; layered warm lighting and refined highlights.';
+            if (k.includes('暖')) return 'Vibe: warm cozy ambient lighting; comfortable and soft.';
+            return `Vibe: ${k}.`;
+        };
+
+        const mapDecor = (kw) => {
+            const k = normalize(kw);
+            if (!k) return '';
+            if (k.includes('克制') || k.includes('清爽')) return 'Soft furnishings: minimal, clean, a few key pieces only.';
+            if (k.includes('豐富') || k.includes('丰富')) return 'Soft furnishings: richer styling (curtains/rug/art/plants/cushions) but still tidy.';
+            if (k.includes('標準') || k.includes('标准') || k.includes('推薦') || k.includes('推荐')) return 'Soft furnishings: balanced standard styling, natural and livable.';
+            return `Soft furnishings: ${k}.`;
+        };
+
         const mapPriority = (kw) => {
             const k = normalize(kw);
             if (!k) return '';
@@ -439,6 +457,8 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
 
         const focusHint = mapFocus(focusKw, mapSpace(space));
         const storageHint = mapStorage(storageKw);
+        const vibeHint = mapVibe(vibe);
+        const decorHint = mapDecor(decor);
         const priorityHint = mapPriority(priorityKw);
         const intensityHint = mapIntensity(intensityKw);
 
@@ -484,11 +504,29 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
               `Color palette: ${colorEn}.`,
               focusHint,
               storageHint,
+              vibeHint,
+              decorHint,
               priorityHint,
               intensityHint,
               quality,
               extraReq ? `Constraints/notes: ${extraReq}` : ''
           ].filter(Boolean).join(' '));
+
+          // Ensure explanation is still aligned (same-source) even when spec JSON build fails
+          if (!designExplanation) {
+            const bullets = [
+              space ? `空间：${normalize(space)}` : '',
+              style ? `风格：${normalize(style)}` : '',
+              color ? `色系：${normalize(color)}` : '',
+              focus ? `重点方案：${normalize(focus)}` : '',
+              storage ? `收纳取向：${normalize(storage)}` : '',
+              vibe ? `氛围：${normalize(vibe)}` : '',
+              decor ? `软装丰富度：${normalize(decor)}` : '',
+              `完成面：天花＋墙面＋地面＋灯光已补齐，做成真实照片质感`,
+              `结构约束：不改门窗梁柱，保持原视角透视，默认保留冷气机位并预留检修`
+            ].filter(Boolean).slice(0, 7);
+            designExplanation = bullets.map(x => `- ${x}`).join('\n');
+          }
         }
     }
 
