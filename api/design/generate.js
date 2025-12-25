@@ -89,7 +89,7 @@ export default async function handler(req, res) {
       }
     };
 
-    const buildSpec = async (intake) => {
+    const buildSpec = async (intake, opts) => {
       const normalize = (s) => String(s || '').trim();
       const compact = (s, max = 420) => {
         const t = normalize(s).replace(/\s+/g, ' ');
@@ -107,15 +107,23 @@ export default async function handler(req, res) {
         constraints: compact(intake?.visionSummary || intake?.requirements || '', 520),
       };
 
+      const mustInclude = Array.isArray(opts?.mustInclude) ? opts.mustInclude : [];
       const system = `You are a senior HK interior designer. Produce a compact, executable design spec that will be used for image-to-image generation.
 Output MUST be valid JSON only, no extra text.
 Rules:
 - The generated image MUST look like a finished photorealistic interior render (V-Ray/Corona style).
 - INTERIOR ONLY: do NOT redesign balcony/outdoor view; keep balcony as background unchanged.
 - Do NOT move windows/doors/beams/columns; keep camera viewpoint/perspective.
+- Preserve object geometry: keep window frames, doors, sofa/coffee-table shapes (if present) and do NOT warp/melt objects.
 - Must include: ceiling detail (cove/false ceiling + downlights), finished flooring, finished wall surfaces, built-in cabinetry, lighting plan, and soft furnishings.
 - The spec MUST match the final render and also match the explanation.
 - Keep prompt_en <= 900 characters.
+
+Space-specific must-haves:
+- living room: MUST include TV + TV console + TV feature wall storage; sofa and coffee table (keep if present, otherwise add).
+- dining room: MUST include dining table for 4 + chairs + pendant above table + dining sideboard/tall pantry.
+- bedroom: MUST include bed + full-height wardrobe.
+- kitchen: MUST include base cabinets + wall cabinets + countertop + sink/cooktop zone.
 
 Return JSON schema:
 {
@@ -127,7 +135,10 @@ Return JSON schema:
       const user = `User selections (Chinese labels possible):
 ${JSON.stringify(payload)}
 
-Write a design that fits a typical Hong Kong apartment and the constraints. Make cabinetry placement explicit (e.g., right wall / left wall / opposite window) and keep balcony unchanged.`;
+Write a design that fits a typical Hong Kong apartment and the constraints.
+Make cabinetry placement explicit (e.g., right wall / left wall / opposite window).
+Keep balcony unchanged.
+MUST include these items in prompt_en and explain_zh (if applicable): ${mustInclude.join(', ') || '(none)'}.`;
 
       const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
         method: 'POST',
@@ -148,7 +159,9 @@ Write a design that fits a typical Hong Kong apartment and the constraints. Make
       const parsed = safeJsonParse(content);
       if (!parsed?.prompt_en) return null;
 
-      const promptEn = String(parsed.prompt_en || '').replace(/\s+/g, ' ').trim();
+      let promptEn = String(parsed.prompt_en || '').replace(/\s+/g, ' ').trim();
+      // Hard cap for StepFun prompt limit (keep extra headroom)
+      if (promptEn.length > 900) promptEn = promptEn.slice(0, 897) + '...';
       const explainArr = Array.isArray(parsed.explain_zh) ? parsed.explain_zh : [];
       const explainZh = explainArr
         .map(s => String(s).trim())
@@ -156,10 +169,40 @@ Write a design that fits a typical Hong Kong apartment and the constraints. Make
         .slice(0, 8);
 
       return {
-        prompt_en: promptEn.length > 1024 ? promptEn.slice(0, 1021) + '...' : promptEn,
+        prompt_en: promptEn,
         explain_zh: explainZh,
         checks: Array.isArray(parsed.checks) ? parsed.checks : []
       };
+    };
+
+    const inferSpaceKind = (spaceText) => {
+      const s = String(spaceText || '');
+      if (s.includes('客') || s.toLowerCase().includes('living')) return 'living';
+      if (s.includes('餐') || s.toLowerCase().includes('dining')) return 'dining';
+      if (s.includes('睡') || s.includes('卧') || s.includes('房') || s.toLowerCase().includes('bed')) return 'bedroom';
+      if (s.includes('廚') || s.includes('厨') || s.toLowerCase().includes('kitchen')) return 'kitchen';
+      return 'other';
+    };
+
+    const validateMustHave = (spaceKind, spec) => {
+      const p = String(spec?.prompt_en || '').toLowerCase();
+      if (!p) return false;
+      // universal
+      const universal = ['ceiling', 'floor', 'cabinet', 'lighting'];
+      if (!universal.every(k => p.includes(k))) return false;
+      if (spaceKind === 'living') {
+        if (!p.includes('tv')) return false;
+        if (!(p.includes('tv console') || p.includes('media console') || p.includes('tv cabinet'))) return false;
+        return true;
+      }
+      if (spaceKind === 'dining') {
+        if (!p.includes('dining table')) return false;
+        if (!p.includes('dining chair') && !p.includes('chairs')) return false;
+        return true;
+      }
+      if (spaceKind === 'bedroom') return p.includes('bed') && (p.includes('wardrobe') || p.includes('closet'));
+      if (spaceKind === 'kitchen') return (p.includes('countertop') || p.includes('worktop')) && p.includes('cabinet');
+      return true;
     };
 
     // Construct Prompt Server-Side if renderIntake is provided
@@ -169,7 +212,21 @@ Write a design that fits a typical Hong Kong apartment and the constraints. Make
     if (renderIntake) {
         // Build a spec first (prompt + explanation from same source) to keep them consistent
         try {
-          designSpec = await buildSpec(renderIntake);
+          const spaceKind = inferSpaceKind(renderIntake?.space);
+          const mustInclude = (() => {
+            const base = ['CEILING detail', 'FLOOR finish', 'BUILT-IN CABINETRY', 'SOFT FURNISHINGS', 'INTERIOR ONLY (do not change balcony)'];
+            if (spaceKind === 'living') return base.concat(['TV', 'TV console', 'TV feature wall storage', 'keep sofa and coffee table if present']);
+            if (spaceKind === 'dining') return base.concat(['dining table for 4', 'chairs', 'pendant above table', 'dining sideboard/tall pantry']);
+            if (spaceKind === 'bedroom') return base.concat(['bed', 'full-height wardrobe']);
+            if (spaceKind === 'kitchen') return base.concat(['base + wall cabinets', 'countertop', 'sink/cooktop zone']);
+            return base;
+          })();
+
+          designSpec = await buildSpec(renderIntake, { mustInclude });
+          // If missing critical items (e.g., living room without TV), retry once with stronger mustInclude
+          if (!validateMustHave(spaceKind, designSpec)) {
+            designSpec = await buildSpec(renderIntake, { mustInclude: mustInclude.concat(['DO NOT warp/melt objects', 'MUST mention TV explicitly if living room']) });
+          }
           if (designSpec?.prompt_en) {
             finalPrompt = designSpec.prompt_en;
             if (Array.isArray(designSpec.explain_zh) && designSpec.explain_zh.length) {

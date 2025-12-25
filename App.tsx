@@ -574,10 +574,11 @@ const App: React.FC = () => {
               const baseImage = u.dataUrl;
               // Tune parameters by intensity (StepFun doc: smaller source_weight => closer to source)
               const intensityParams = (() => {
-                  // We need visible, "real render" changes: slightly stronger defaults.
-                  if (intensity.includes('輕改')) return { source_weight: 0.46, cfg_scale: 6.8, steps: 45 };
-                  if (intensity.includes('大改造')) return { source_weight: 0.66, cfg_scale: 8.2, steps: 55 };
-                  return { source_weight: 0.58, cfg_scale: 7.8, steps: 52 }; // recommended
+                  // Goal: big visual change but keep geometry (avoid "melting" sofa/coffee table)
+                  // StepFun: smaller source_weight => closer to source (less deformation).
+                  if (intensity.includes('輕改')) return { source_weight: 0.42, cfg_scale: 7.0, steps: 44 };
+                  if (intensity.includes('大改造')) return { source_weight: 0.50, cfg_scale: 8.6, steps: 56 };
+                  return { source_weight: 0.46, cfg_scale: 7.8, steps: 52 }; // recommended
               })();
 
               const pickConstraints = (summary?: string) => {
