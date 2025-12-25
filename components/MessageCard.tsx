@@ -14,7 +14,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-6 px-4 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
       <div 
         className={`
-          max-w-[85%] rounded-[20px] p-4 text-[15px] leading-relaxed shadow-sm
+          max-w-[85%] rounded-[20px] p-4 text-[16px] leading-[1.7] shadow-sm
           ${isUser 
             ? 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm' 
             : 'bg-[#E6DED2] text-[#4A453C] rounded-tl-sm'

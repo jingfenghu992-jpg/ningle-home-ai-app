@@ -54,9 +54,9 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
         <button 
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className="p-3 text-[#1F4D3A] hover:bg-black/5 rounded-full transition-colors disabled:opacity-40"
+          className="p-3 text-[#EBE8E3] hover:bg-white/10 rounded-full transition-colors disabled:opacity-40"
         >
-          <ImageIcon size={24} />
+          <ImageIcon size={26} strokeWidth={2.25} />
         </button>
         
         <div className="flex-1 bg-white/70 rounded-[24px] border border-black/10 focus-within:border-[#1F4D3A]/35 transition-colors flex items-center min-h-[48px] px-4 py-2 shadow-sm">
@@ -77,7 +77,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
           disabled={!text.trim() || disabled}
           className="p-3 bg-[#1F4D3A] hover:bg-[#173C2D] text-white rounded-full shadow-md disabled:opacity-50 disabled:bg-black/10 transition-all"
         >
-          <Send size={20} className={text.trim() ? "translate-x-0.5" : ""} />
+          <Send size={22} strokeWidth={2.25} className={text.trim() ? "translate-x-0.5" : ""} />
         </button>
       </div>
     </div>
