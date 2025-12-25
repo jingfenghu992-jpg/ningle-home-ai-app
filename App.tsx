@@ -502,9 +502,10 @@ const App: React.FC = () => {
               const baseImage = u.blobUrl || u.dataUrl;
               // Tune parameters by intensity (StepFun doc: smaller source_weight => closer to source)
               const intensityParams = (() => {
-                  if (intensity.includes('輕改')) return { source_weight: 0.38, cfg_scale: 6.0, steps: 40 };
-                  if (intensity.includes('大改造')) return { source_weight: 0.58, cfg_scale: 7.5, steps: 45 };
-                  return { source_weight: 0.48, cfg_scale: 7.0, steps: 45 }; // recommended
+                  // We need visible, "real render" changes: slightly stronger defaults.
+                  if (intensity.includes('輕改')) return { source_weight: 0.46, cfg_scale: 6.8, steps: 45 };
+                  if (intensity.includes('大改造')) return { source_weight: 0.66, cfg_scale: 8.2, steps: 55 };
+                  return { source_weight: 0.58, cfg_scale: 7.8, steps: 52 }; // recommended
               })();
 
               const pickConstraints = (summary?: string) => {
@@ -537,6 +538,11 @@ const App: React.FC = () => {
                   space,
                   style,
                   color,
+                  // Send structured selections to backend for better prompt alignment
+                  focus,
+                  storage,
+                  priority,
+                  intensity,
                   requirements,
                   baseImageBlobUrl: baseImage,
                   baseWidth: u.width,

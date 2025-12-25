@@ -79,12 +79,17 @@ export default async function handler(req, res) {
     // Construct Prompt Server-Side if renderIntake is provided
     let finalPrompt = prompt;
     if (renderIntake) {
-        const { space, style, color, requirements } = renderIntake;
+        const { space, style, color, requirements, focus, storage, priority, intensity } = renderIntake;
 
         const normalize = (s) => String(s || '').trim();
         const compact = (s, max = 360) => {
             const t = normalize(s).replace(/\s+/g, ' ');
             return t.length > max ? t.slice(0, max) + '…' : t;
+        };
+        const trimPrompt = (s) => {
+            let t = String(s || '').replace(/\s+/g, ' ').trim();
+            if (t.length > 1024) t = t.slice(0, 1021) + '...';
+            return t;
         };
 
         // Map user-facing (mostly Chinese) selections into explicit English design constraints
@@ -126,26 +131,57 @@ export default async function handler(req, res) {
             return '';
         };
 
-        // These fields are currently embedded in requirements text on the client,
-        // so we infer keywords to steer the prompt harder.
+        // Prefer structured fields; fallback to inferring from requirements.
         const reqText = normalize(requirements);
-        const focusKw = inferFromRequirements(reqText, ['餐邊', '餐边', '餐桌', '動線', '动线', '電視', '电视', '衣櫃', '衣柜', '玄關', '玄关', '書枱', '书桌', '收納牆', '收纳墙']);
-        const storageKw = inferFromRequirements(reqText, ['隱藏', '隐藏', '展示', '工作位', '书桌', '書枱']);
-        const priorityKw = inferFromRequirements(reqText, ['性價比', '性价比', '耐用', '易打理']);
-        const intensityKw = inferFromRequirements(reqText, ['輕改', '轻改', '明顯', '明显', '大改造']);
+        const focusKw = normalize(focus) || inferFromRequirements(reqText, ['餐邊', '餐边', '餐桌', '動線', '动线', '電視', '电视', '衣櫃', '衣柜', '玄關', '玄关', '書枱', '书桌', '收納牆', '收纳墙']);
+        const storageKw = normalize(storage) || inferFromRequirements(reqText, ['隱藏', '隐藏', '展示', '工作位', '书桌', '書枱']);
+        const priorityKw = normalize(priority) || inferFromRequirements(reqText, ['性價比', '性价比', '耐用', '易打理']);
+        const intensityKw = normalize(intensity) || inferFromRequirements(reqText, ['輕改', '轻改', '明顯', '明显', '大改造']);
 
-        const focusHint = focusKw
-            ? `Focus area: ${focusKw.includes('餐') ? 'dining layout + dining sideboard / tall storage' : focusKw}.`
-            : '';
-        const storageHint = storageKw
-            ? `Storage direction: ${storageKw.includes('隱') || storageKw.includes('隐') ? 'mostly concealed storage with clean fronts' : storageKw.includes('展示') ? 'mix of display + concealed storage (glass/openshelf + closed cabinets)' : 'storage with a work desk / study nook integration'}.`
-            : '';
-        const priorityHint = priorityKw
-            ? `Priority: ${priorityKw.includes('耐用') ? 'durability' : priorityKw.includes('易') ? 'easy to clean' : 'value-for-money'}.`
-            : '';
-        const intensityHint = intensityKw
-            ? `Renovation intensity: ${intensityKw.includes('輕') || intensityKw.includes('轻') ? 'light refresh, keep closer to source' : intensityKw.includes('大') ? 'bolder redesign, more visible changes' : 'noticeable redesign with structure preserved'}.`
-            : '';
+        const mapFocus = (kw, spaceEn) => {
+            const k = normalize(kw);
+            if (!k) return '';
+            if (String(spaceEn).includes('dining') || k.includes('餐')) {
+                return 'Focus: dining circulation + dining table for 4 + dining sideboard/tall pantry storage as the main design feature.';
+            }
+            if (k.includes('電視') || k.includes('电视')) return 'Focus: TV wall built-in storage wall with concealed cabinets + open display niches.';
+            if (k.includes('衣櫃') || k.includes('衣柜')) return 'Focus: full-height wardrobe system with practical internal compartments.';
+            if (k.includes('玄關') || k.includes('玄关')) return 'Focus: entry shoe cabinet + bench + full-height storage + hidden clutter zone.';
+            if (k.includes('書枱') || k.includes('书桌') || k.includes('工作')) return 'Focus: built-in desk + storage wall integration (work/study corner).';
+            if (k.includes('牆') || k.includes('墙')) return 'Focus: feature storage wall with mix of concealed + display.';
+            return `Focus: ${k}.`;
+        };
+
+        const mapStorage = (kw) => {
+            const k = normalize(kw);
+            if (!k) return '';
+            if (k.includes('隱') || k.includes('隐')) return 'Storage: prioritize concealed storage (flat fronts), clean and uncluttered.';
+            if (k.includes('展示')) return 'Storage: mix of display (glass/open shelves with lighting) + concealed storage to keep tidy.';
+            if (k.includes('書枱') || k.includes('书桌') || k.includes('工作')) return 'Storage: integrate storage with a desk/work nook.';
+            return `Storage: ${k}.`;
+        };
+
+        const mapPriority = (kw) => {
+            const k = normalize(kw);
+            if (!k) return '';
+            if (k.includes('耐用')) return 'Priority: durability (scratch-resistant finishes, robust hardware).';
+            if (k.includes('易')) return 'Priority: easy to clean (matte anti-fingerprint surfaces, stain-resistant finishes).';
+            if (k.includes('性')) return 'Priority: value-for-money (simple, efficient cabinetry layout).';
+            return `Priority: ${k}.`;
+        };
+
+        const mapIntensity = (kw) => {
+            const k = normalize(kw);
+            if (!k) return '';
+            if (k.includes('輕') || k.includes('轻')) return 'Intensity: light refresh (still must look fully finished).';
+            if (k.includes('大')) return 'Intensity: bold redesign, visible changes while keeping structure.';
+            return 'Intensity: noticeable redesign (recommended), clearly different from the original bare room.';
+        };
+
+        const focusHint = mapFocus(focusKw, mapSpace(space));
+        const storageHint = mapStorage(storageKw);
+        const priorityHint = mapPriority(priorityKw);
+        const intensityHint = mapIntensity(intensityKw);
 
         const spaceEn = mapSpace(space);
         const styleEn = mapStyle(style);
@@ -153,36 +189,46 @@ export default async function handler(req, res) {
 
         // Hard constraints for HK apartment + balcony cases
         const hardRules = [
-            'Photorealistic interior design rendering (professional).',
+            'Photorealistic high-end interior design rendering, magazine quality, beautiful and finished.',
+            'This must look like a real interior design proposal render, NOT an empty room.',
             'Hong Kong apartment practicality, built-in cabinetry is the main change.',
             'INTERIOR ONLY: do NOT redesign the balcony or outdoor view; keep balcony/exterior as background unchanged.',
-            'Do NOT add balcony furniture; do NOT change balcony floor/walls/railings.',
+            'Do NOT add balcony furniture; do NOT change balcony floor/walls/railings/exterior facade.',
             'Keep the exact room structure and perspective: do NOT move windows/doors/beams/columns; keep camera viewpoint.',
+            'Do NOT leave bare concrete floor or unfinished walls; fully finish the interior.',
         ].join(' ');
 
         const mustHave = [
-            'Must include: a coherent cabinetry/storage plan; wall finish; floor finish; simple ceiling detail (cove/false ceiling); lighting plan; soft furnishings.',
-            spaceEn.includes('dining') ? 'Dining must-have: place a dining table and chairs with clear circulation, plus a dining sideboard/tall pantry storage.' : '',
+            'Must include: finished flooring (engineered wood or large-format porcelain tiles with skirting), finished wall surfaces, and a proper ceiling design (gypsum false ceiling / cove lighting + downlights).',
+            'Must include: built-in cabinetry plan with real details (full-height cabinets, toe-kick, shadow gap or integrated handles, internal compartments).',
+            'Must include: a complete furniture layout + soft furnishings (curtains, rug, artwork, plants), warm realistic lighting, coherent styling.',
+            spaceEn.includes('dining') ? 'Dining must-have: dining table for 4 + chairs with clear circulation, pendant light above table, and a dining sideboard/tall pantry storage with display niche lighting.' : '',
         ].filter(Boolean).join(' ');
 
-        const quality = 'Materials: ENF-grade multilayer wood/plywood cabinetry. Lighting: warm, natural, not oversharpened. Clean realistic textures, no cartoon look.';
+        const quality = [
+            'Materials: ENF-grade multilayer wood/plywood cabinetry.',
+            'Lighting: warm, natural; balanced exposure; not oversharpened.',
+            'Clean realistic textures; no cartoon/CGI look; no low-poly.',
+            'Avoid: empty room, blank walls, unfinished concrete, muddy textures.'
+        ].join(' ');
 
         const extraReq = compact(requirements, 380);
 
         // Keep prompt explicit and mostly English for better adherence.
-        finalPrompt = [
-            `Design a ${spaceEn}.`,
+        // Put hard constraints + must-have early to avoid being truncated away.
+        finalPrompt = trimPrompt([
+            hardRules,
+            mustHave,
+            `Space: ${spaceEn}.`,
             `Style: ${styleEn}.`,
             `Color palette: ${colorEn}.`,
-            hardRules,
             focusHint,
             storageHint,
             priorityHint,
             intensityHint,
-            mustHave,
             quality,
             extraReq ? `Constraints/notes: ${extraReq}` : ''
-        ].filter(Boolean).join(' ');
+        ].filter(Boolean).join(' '));
     }
 
     if (!finalPrompt) {
@@ -204,7 +250,14 @@ export default async function handler(req, res) {
     let sourceUrl = baseImageBlobUrl;
     let usedFallback = false;
 
-    const callStepFun = async (urlToUse, rf = finalResponseFormat) => {
+    const callStepFun = async ({
+        urlToUse,
+        rf = finalResponseFormat,
+        promptToUse = finalPrompt,
+        sw = finalSourceWeight,
+        st = finalSteps,
+        cfg = finalCfgScale
+    }) => {
         console.log(`[Design Gen] Calling StepFun image2image with ${urlToUse.slice(0, 50)}...`);
         return await fetch('https://api.stepfun.com/v1/images/image2image', {
           method: 'POST',
@@ -214,15 +267,15 @@ export default async function handler(req, res) {
           },
           body: JSON.stringify({
             model: 'step-1x-medium',
-            prompt: finalPrompt,
+            prompt: promptToUse,
             source_url: urlToUse,
-            source_weight: finalSourceWeight,
+            source_weight: sw,
             size: finalSize,
             n: 1,
             response_format: rf,
             seed: finalSeed,
-            steps: finalSteps,
-            cfg_scale: finalCfgScale
+            steps: st,
+            cfg_scale: cfg
           })
         });
     };
@@ -239,7 +292,7 @@ export default async function handler(req, res) {
         }
     }
 
-    let stepfunRes = await callStepFun(sourceUrl, finalResponseFormat);
+    let stepfunRes = await callStepFun({ urlToUse: sourceUrl, rf: finalResponseFormat });
     let lastUpstreamErrorText = null;
 
     // --- STRATEGY B: Fallback to Base64 if URL fails ---
@@ -261,7 +314,7 @@ export default async function handler(req, res) {
                     usedFallback = true;
                     
                     // Retry with Base64
-                    stepfunRes = await callStepFun(sourceUrl, finalResponseFormat);
+                    stepfunRes = await callStepFun({ urlToUse: sourceUrl, rf: finalResponseFormat });
                     if (!stepfunRes.ok) {
                         const errText2 = await stepfunRes.text();
                         lastUpstreamErrorText = errText2;
@@ -318,10 +371,59 @@ export default async function handler(req, res) {
     if (!hasImage) {
         const alt = finalResponseFormat === 'b64_json' ? 'url' : 'b64_json';
         console.warn(`[Design Gen] No image payload despite success; retrying with response_format=${alt}`);
-        const retryRes = await callStepFun(sourceUrl, alt);
+        const retryRes = await callStepFun({ urlToUse: sourceUrl, rf: alt });
         if (retryRes.ok) {
             data = await readStepFunJson(retryRes);
             ({ finishReason, resultSeed, resultImageB64, resultUrl } = extractResult(data));
+        }
+    }
+
+    // Optional second-pass refinement: keep structure, but make it look like slicing-ready design render.
+    // This helps cases where first pass is still too empty / not "designed".
+    const shouldRefine = (() => {
+        const norm = (s) => String(s || '').trim();
+        const k = norm(renderIntake?.intensity || '');
+        if (!k) return true;
+        return !(k.includes('輕') || k.includes('轻'));
+    })();
+
+    if (shouldRefine) {
+        try {
+            const refineSource =
+                resultUrl
+                    ? resultUrl
+                    : (resultImageB64 ? `data:image/jpeg;base64,${resultImageB64}` : null);
+            if (refineSource) {
+                const refinePrompt = (() => {
+                    const suffix = ' Refine into magazine-quality photorealistic interior render: add detailed cabinetry, ceiling cove lighting, finished flooring, wall finishes, and complete furniture + soft furnishings. Avoid empty room, avoid blank walls, avoid unfinished concrete.';
+                    const t = String(finalPrompt + suffix).replace(/\s+/g, ' ').trim();
+                    return t.length > 1024 ? t.slice(0, 1021) + '...' : t;
+                })();
+                const refineRes = await callStepFun({
+                    urlToUse: refineSource,
+                    rf: 'url',
+                    promptToUse: refinePrompt,
+                    // Lower weight to preserve the (already designed) first-pass image
+                    sw: Math.min(0.34, finalSourceWeight),
+                    st: Math.min(34, finalSteps),
+                    cfg: Math.min(6.4, finalCfgScale)
+                });
+                if (refineRes.ok) {
+                    const refineData = await readStepFunJson(refineRes);
+                    const refined = extractResult(refineData);
+                    if (refined.resultUrl || refined.resultImageB64) {
+                        // Replace outputs with refined result
+                        finishReason = refined.finishReason || finishReason;
+                        resultSeed = refined.resultSeed ?? resultSeed;
+                        resultImageB64 = refined.resultImageB64 || resultImageB64;
+                        resultUrl = refined.resultUrl || resultUrl;
+                    }
+                } else {
+                    console.warn(`[Design Gen] Refinement pass failed (${refineRes.status})`);
+                }
+            }
+        } catch (e) {
+            console.warn('[Design Gen] Refinement pass error:', e?.message || e);
         }
     }
 
