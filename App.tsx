@@ -3,8 +3,6 @@ import { AppShell } from './components/AppShell';
 import { AppBar } from './components/AppBar';
 import { StartScreen } from './components/StartScreen';
 import { PhotoCard } from './components/PhotoCard';
-import { NextStepCard } from './components/NextStepCard';
-import { AnalysisCard } from './components/AnalysisCard';
 import { RenderIntakeCard } from './components/RenderIntakeCard';
 import { RenderResultCard } from './components/RenderResultCard';
 import { MessageCard } from './components/MessageCard';
@@ -34,6 +32,18 @@ const App: React.FC = () => {
 
   // --- Handlers ---
 
+  const addSystemToast = (text: string, options?: string[]) => {
+      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'text', content: text, sender: 'ai', timestamp: Date.now(), options }]);
+  };
+
+  const resetToStart = () => {
+      setAppState('START');
+      setPendingImage(null);
+      setAnalysisSummary(null);
+      setLastGeneratedImage(null);
+      setMessages([]);
+  };
+
   const handleUpload = (file: File) => {
     compressImage(file, 1536, 0.8).then(blob => {
         const reader = new FileReader();
@@ -45,15 +55,18 @@ const App: React.FC = () => {
                 img.onload = () => {
                     setPendingImage({ dataUrl, blobUrl: '', width: img.width, height: img.height });
                     setAppState('WAITING_FOR_SPACE');
+                    addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
                 };
                 img.onerror = () => {
                     setPendingImage({ dataUrl, blobUrl: '' });
                     setAppState('WAITING_FOR_SPACE');
+                    addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
                 };
                 img.src = dataUrl;
             } catch {
                 setPendingImage({ dataUrl, blobUrl: '' });
                 setAppState('WAITING_FOR_SPACE');
+                addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
             }
             
             // Upload in background
@@ -139,8 +152,11 @@ const App: React.FC = () => {
             if (visionRes.ok && visionRes.vision_summary) {
                 setAnalysisSummary(visionRes.vision_summary);
                 setAppState('ANALYSIS_DONE');
-                // Also append analysis summary into chat flow so user doesn't need to scroll up
-                addSystemToast(`【圖片分析結果】\n${visionRes.vision_summary}`);
+                // Append analysis summary + action buttons into chat flow
+                addSystemToast(
+                    `【圖片分析結果】\n${visionRes.vision_summary}`,
+                    ["生成智能效果圖", "再上傳另一張"]
+                );
                 
                 // Optional: Short toast from AI
                 // addSystemToast("分析完成！可以睇下上面嘅摘要。");
@@ -166,10 +182,6 @@ const App: React.FC = () => {
         // Normal chat (generic)
         await runChat();
     }
-  };
-
-  const addSystemToast = (text: string) => {
-      setMessages(prev => [...prev, { id: Date.now().toString(), type: 'text', content: text, sender: 'ai', timestamp: Date.now() }]);
   };
 
   const handleRenderIntakeComplete = (data: any) => {
@@ -234,6 +246,22 @@ const App: React.FC = () => {
       return 'waiting';
   };
 
+  const handleOptionClick = (opt: string) => {
+      if (opt === '再上傳另一張') {
+          resetToStart();
+          return;
+      }
+      if (opt === '生成智能效果圖') {
+          // If blob URL not ready, guide user to wait to avoid "Missing baseImageBlobUrl"
+          if (!pendingImage?.blobUrl) {
+              addSystemToast("相片仲上傳緊，請等幾秒再試～");
+              return;
+          }
+          setAppState('RENDER_INTAKE');
+          return;
+      }
+  };
+
   return (
     <AppShell>
       <AppBar />
@@ -257,33 +285,7 @@ const App: React.FC = () => {
 
             {/* 2. State-based Cards */}
             
-            {appState === 'WAITING_FOR_SPACE' && (
-                <NextStepCard text="收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）" />
-            )}
-
-            {(appState === 'ANALYSIS_DONE' || appState === 'RENDER_INTAKE' || appState === 'GENERATING' || appState === 'RENDER_DONE') && (
-                <AnalysisCard summary={analysisSummary || ''} />
-            )}
-
-            {appState === 'ANALYSIS_DONE' && (
-                <div className="mx-4 mt-2">
-                    <NextStepCard text="想再準啲，可以答兩句：呢度係咩空間？幾多人住？" />
-                    <div className="flex gap-2 mt-3">
-                        <button 
-                            onClick={() => setAppState('RENDER_INTAKE')}
-                            className="flex-1 bg-[#8A8F79] text-white py-3 rounded-xl font-bold shadow-md active:scale-95 transition-transform"
-                        >
-                            生成智能效果圖
-                        </button>
-                        <button 
-                            onClick={() => setAppState('START')}
-                            className="flex-1 bg-white text-[#4A453C] border border-[#EBE8E3] py-3 rounded-xl font-medium active:scale-95 transition-transform"
-                        >
-                            再上傳另一張
-                        </button>
-                    </div>
-                </div>
-            )}
+            {/* Analysis + primary actions are now appended into chat flow; no need to render separate cards here */}
 
             {appState === 'RENDER_INTAKE' && (
                 <RenderIntakeCard onComplete={handleRenderIntakeComplete} />
@@ -307,7 +309,7 @@ const App: React.FC = () => {
             {/* 3. Small Chat Stream (Toasts/Short interaction) */}
             <div className="mt-4">
                 {messages.map((msg) => (
-                    <MessageCard key={msg.id} message={msg} />
+                    <MessageCard key={msg.id} message={msg} onOptionClick={handleOptionClick} />
                 ))}
                 <div ref={chatEndRef} />
             </div>
