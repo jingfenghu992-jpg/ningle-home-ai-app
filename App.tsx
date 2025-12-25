@@ -151,10 +151,6 @@ const App: React.FC = () => {
       {appState === 'START' ? (
         <StartScreen 
             onUpload={handleUpload} 
-            onCamera={() => {
-                const input = document.querySelector('input[type=file]') as HTMLInputElement;
-                input?.click();
-            }} 
         />
       ) : (
         <>
