@@ -42,7 +42,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
   }, [text]);
 
   return (
-    <div className="bg-[#2E2C29] border-t border-white/10 p-3 pb-6 shrink-0 z-20">
+    <div className="bg-[#EEE6DC] border-t border-black/5 px-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#EEE6DC]/90">
       <div className="max-w-md mx-auto flex items-end gap-2">
         <input 
           type="file" 
@@ -54,28 +54,28 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
         <button 
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className="p-3 text-[#EBE8E3]/60 hover:text-[#EBE8E3] hover:bg-white/5 rounded-full transition-colors disabled:opacity-50"
+          className="p-3 text-[#1F4D3A] hover:bg-black/5 rounded-full transition-colors disabled:opacity-40"
         >
           <ImageIcon size={24} />
         </button>
         
-        <div className="flex-1 bg-[#1B1917] rounded-[24px] border border-white/10 focus-within:border-[#8A8F79]/50 transition-colors flex items-center min-h-[48px] px-4 py-2">
+        <div className="flex-1 bg-white/70 rounded-[24px] border border-black/10 focus-within:border-[#1F4D3A]/35 transition-colors flex items-center min-h-[48px] px-4 py-2 shadow-sm">
           <textarea
             ref={textareaRef}
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="輸入訊息..."
+            placeholder="输入消息…"
             disabled={disabled}
             rows={1}
-            className="w-full bg-transparent text-[#EBE8E3] placeholder-white/30 outline-none resize-none text-[15px] leading-6 max-h-[120px] scrollbar-none"
+            className="w-full bg-transparent text-[#2F2A23] placeholder:text-[#4A453C]/55 outline-none resize-none text-[15px] leading-6 max-h-[120px] scrollbar-none"
           />
         </div>
 
         <button 
           onClick={handleSend}
           disabled={!text.trim() || disabled}
-          className="p-3 bg-[#8A8F79] hover:bg-[#6B705C] text-white rounded-full shadow-lg disabled:opacity-50 disabled:bg-white/10 transition-all"
+          className="p-3 bg-[#1F4D3A] hover:bg-[#173C2D] text-white rounded-full shadow-md disabled:opacity-50 disabled:bg-black/10 transition-all"
         >
           <Send size={20} className={text.trim() ? "translate-x-0.5" : ""} />
         </button>
