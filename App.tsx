@@ -369,6 +369,13 @@ const App: React.FC = () => {
               ? (lastGeneratedImage || (intakeData?.baseImageBlobUrl ?? ''))
               : (intakeData?.baseImageBlobUrl ?? '');
 
+              const jobId =
+                // @ts-ignore
+                (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+                  // @ts-ignore
+                  ? crypto.randomUUID()
+                  : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
               const payload = {
               prompt: '', 
               renderIntake: intakeData || {}, 
@@ -376,6 +383,9 @@ const App: React.FC = () => {
               size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
               // URL response is smaller and more stable; server will persist to Blob when possible.
               response_format: 'url',
+              clientId,
+              uploadId: intakeData?.uploadId,
+              jobId,
               // StepFun doc: smaller source_weight => more similar to source (less deformation)
                   source_weight: intakeData?.source_weight ?? 0.4,
                   steps: intakeData?.steps ?? 40,
@@ -413,6 +423,10 @@ const App: React.FC = () => {
               ].join('\n');
               await typeOutAI(explain);
           } else {
+              // Handle "already running" case (idempotency / concurrency)
+              if ((res as any)?.errorCode === 'IN_PROGRESS') {
+                  throw new Error('呢個效果圖仲生成緊，你等我幾秒先～');
+              }
               throw new Error(res.message);
           }
       } catch (e: any) {
@@ -608,6 +622,7 @@ const App: React.FC = () => {
                   priority,
                   intensity,
                   requirements,
+                  uploadId,
                   baseImageBlobUrl: baseImage,
                   baseWidth: u.width,
                   baseHeight: u.height,

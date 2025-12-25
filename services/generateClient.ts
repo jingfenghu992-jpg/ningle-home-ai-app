@@ -38,6 +38,9 @@ export async function generateDesignImage(params: {
   baseImageBlobUrl: string;
   size?: string;
   renderIntake?: any;
+  clientId?: string;
+  uploadId?: string;
+  jobId?: string;
   source_weight?: number;
   steps?: number;
   cfg_scale?: number;
