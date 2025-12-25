@@ -77,9 +77,110 @@ export default async function handler(req, res) {
   }
 
   try {
+    const safeJsonParse = (raw) => {
+      try {
+        const clean = String(raw || '').replace(/```json/g, '').replace(/```/g, '').trim();
+        const s = clean.indexOf('{');
+        const e = clean.lastIndexOf('}');
+        if (s >= 0 && e > s) return JSON.parse(clean.slice(s, e + 1));
+        return JSON.parse(clean);
+      } catch {
+        return null;
+      }
+    };
+
+    const buildSpec = async (intake) => {
+      const normalize = (s) => String(s || '').trim();
+      const compact = (s, max = 420) => {
+        const t = normalize(s).replace(/\s+/g, ' ');
+        return t.length > max ? t.slice(0, max) + '…' : t;
+      };
+
+      const payload = {
+        space: normalize(intake?.space),
+        style: normalize(intake?.style),
+        color: normalize(intake?.color),
+        focus: normalize(intake?.focus),
+        storage: normalize(intake?.storage),
+        priority: normalize(intake?.priority),
+        intensity: normalize(intake?.intensity),
+        constraints: compact(intake?.visionSummary || intake?.requirements || '', 520),
+      };
+
+      const system = `You are a senior HK interior designer. Produce a compact, executable design spec that will be used for image-to-image generation.
+Output MUST be valid JSON only, no extra text.
+Rules:
+- The generated image MUST look like a finished photorealistic interior render (V-Ray/Corona style).
+- INTERIOR ONLY: do NOT redesign balcony/outdoor view; keep balcony as background unchanged.
+- Do NOT move windows/doors/beams/columns; keep camera viewpoint/perspective.
+- Must include: ceiling detail (cove/false ceiling + downlights), finished flooring, finished wall surfaces, built-in cabinetry, lighting plan, and soft furnishings.
+- The spec MUST match the final render and also match the explanation.
+- Keep prompt_en <= 900 characters.
+
+Return JSON schema:
+{
+  "prompt_en": "English prompt for img2img, <= 900 chars, concrete items + placements",
+  "explain_zh": ["5-7 bullet points in Simplified Chinese, each directly reflected in prompt_en"],
+  "checks": ["list of must-have tokens like CEILING, FLOOR, CABINET, SOFT, INTERIOR_ONLY, NO_BALCONY_CHANGE"]
+}`;
+
+      const user = `User selections (Chinese labels possible):
+${JSON.stringify(payload)}
+
+Write a design that fits a typical Hong Kong apartment and the constraints. Make cabinetry placement explicit (e.g., right wall / left wall / opposite window) and keep balcony unchanged.`;
+
+      const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'step-1-8k',
+          temperature: 0.2,
+          max_tokens: 700,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: user }
+          ]
+        })
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const content = data.choices?.[0]?.message?.content || '';
+      const parsed = safeJsonParse(content);
+      if (!parsed?.prompt_en) return null;
+
+      const promptEn = String(parsed.prompt_en || '').replace(/\s+/g, ' ').trim();
+      const explainArr = Array.isArray(parsed.explain_zh) ? parsed.explain_zh : [];
+      const explainZh = explainArr
+        .map(s => String(s).trim())
+        .filter(Boolean)
+        .slice(0, 8);
+
+      return {
+        prompt_en: promptEn.length > 1024 ? promptEn.slice(0, 1021) + '...' : promptEn,
+        explain_zh: explainZh,
+        checks: Array.isArray(parsed.checks) ? parsed.checks : []
+      };
+    };
+
     // Construct Prompt Server-Side if renderIntake is provided
     let finalPrompt = prompt;
+    let designExplanation = '';
+    let designSpec = null;
     if (renderIntake) {
+        // Build a spec first (prompt + explanation from same source) to keep them consistent
+        try {
+          designSpec = await buildSpec(renderIntake);
+          if (designSpec?.prompt_en) {
+            finalPrompt = designSpec.prompt_en;
+            if (Array.isArray(designSpec.explain_zh) && designSpec.explain_zh.length) {
+              designExplanation = designSpec.explain_zh.map(x => `- ${x}`).join('\n');
+            }
+          }
+        } catch (e) {
+          console.warn('[Design Gen] buildSpec failed:', e?.message || e);
+        }
+
+        // If spec generation failed, fallback to heuristic prompt builder below
         const { space, style, color, requirements, focus, storage, priority, intensity } = renderIntake;
 
         const normalize = (s) => String(s || '').trim();
@@ -215,21 +316,23 @@ export default async function handler(req, res) {
 
         const extraReq = compact(requirements, 380);
 
-        // Keep prompt explicit and mostly English for better adherence.
-        // Put hard constraints + must-have early to avoid being truncated away.
-        finalPrompt = trimPrompt([
-            hardRules,
-            mustHave,
-            `Space: ${spaceEn}.`,
-            `Style: ${styleEn}.`,
-            `Color palette: ${colorEn}.`,
-            focusHint,
-            storageHint,
-            priorityHint,
-            intensityHint,
-            quality,
-            extraReq ? `Constraints/notes: ${extraReq}` : ''
-        ].filter(Boolean).join(' '));
+        if (!designSpec?.prompt_en) {
+          // Keep prompt explicit and mostly English for better adherence.
+          // Put hard constraints + must-have early to avoid being truncated away.
+          finalPrompt = trimPrompt([
+              hardRules,
+              mustHave,
+              `Space: ${spaceEn}.`,
+              `Style: ${styleEn}.`,
+              `Color palette: ${colorEn}.`,
+              focusHint,
+              storageHint,
+              priorityHint,
+              intensityHint,
+              quality,
+              extraReq ? `Constraints/notes: ${extraReq}` : ''
+          ].filter(Boolean).join(' '));
+        }
     }
 
     if (!finalPrompt) {
@@ -481,6 +584,8 @@ export default async function handler(req, res) {
       ok: true,
       resultBlobUrl: finalResult,
       isTemporaryUrl: finalResponseFormat === 'url',
+      designExplanation: designExplanation || undefined,
+      designSpec: designSpec || undefined,
       debug: {
         usedFallback,
         size: finalSize,

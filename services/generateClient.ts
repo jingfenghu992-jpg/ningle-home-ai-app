@@ -4,6 +4,8 @@ export interface GenerateResponse {
   ok: boolean;
   b64_json?: string; // Legacy
   resultBlobUrl?: string; // New img2img result
+  designExplanation?: string; // Human explanation aligned to prompt
+  designSpec?: any; // Optional: structured spec (debug)
   debug?: any;
   message?: string;
   errorCode?: string;
