@@ -78,6 +78,14 @@ const App: React.FC = () => {
             const dataUrl = e.target?.result as string;
             const uploadId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
             setActiveUploadId(uploadId);
+            // Create the upload record immediately to avoid races with async upload returning early
+            setUploads(prev => ({
+                ...prev,
+                [uploadId]: {
+                    dataUrl,
+                    blobUrl: prev[uploadId]?.blobUrl || ''
+                }
+            }));
 
             // Show the latest uploaded image in chat immediately (user bubble)
             setMessages(prev => [
@@ -89,18 +97,41 @@ const App: React.FC = () => {
             try {
                 const img = new Image();
                 img.onload = () => {
-                    setUploads(prev => ({ ...prev, [uploadId]: { dataUrl, blobUrl: '', width: img.width, height: img.height } }));
+                    setUploads(prev => ({
+                        ...prev,
+                        [uploadId]: {
+                            ...(prev[uploadId] || { dataUrl, blobUrl: '' }),
+                            dataUrl,
+                            blobUrl: prev[uploadId]?.blobUrl || '',
+                            width: img.width,
+                            height: img.height
+                        }
+                    }));
                     setAppState('WAITING_FOR_SPACE');
                     addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
                 };
                 img.onerror = () => {
-                    setUploads(prev => ({ ...prev, [uploadId]: { dataUrl, blobUrl: '' } }));
+                    setUploads(prev => ({
+                        ...prev,
+                        [uploadId]: {
+                            ...(prev[uploadId] || { dataUrl, blobUrl: '' }),
+                            dataUrl,
+                            blobUrl: prev[uploadId]?.blobUrl || ''
+                        }
+                    }));
                     setAppState('WAITING_FOR_SPACE');
                     addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
                 };
                 img.src = dataUrl;
             } catch {
-                setUploads(prev => ({ ...prev, [uploadId]: { dataUrl, blobUrl: '' } }));
+                setUploads(prev => ({
+                    ...prev,
+                    [uploadId]: {
+                        ...(prev[uploadId] || { dataUrl, blobUrl: '' }),
+                        dataUrl,
+                        blobUrl: prev[uploadId]?.blobUrl || ''
+                    }
+                }));
                 setAppState('WAITING_FOR_SPACE');
                 addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
             }
@@ -110,7 +141,15 @@ const App: React.FC = () => {
                 const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
                 const upRes = await uploadImage(compressedFile);
                 if (upRes?.url) {
-                    setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], blobUrl: upRes.url } }) : prev);
+                    // Always upsert; don't drop due to race
+                    setUploads(prev => ({
+                        ...prev,
+                        [uploadId]: {
+                            ...(prev[uploadId] || { dataUrl, blobUrl: '' }),
+                            dataUrl,
+                            blobUrl: upRes.url
+                        }
+                    }));
                 }
             } catch (err) { console.error(err); }
         };
@@ -296,6 +335,10 @@ const App: React.FC = () => {
       const u = uploadId ? uploads[uploadId] : undefined;
 
       if (opt === '生成智能效果圖') {
+          // Prevent repeated taps from spamming the same warning
+          if (message.isLocked) return;
+          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
+
           // If blob URL not ready, guide user to wait to avoid "Missing baseImageBlobUrl"
           if (!uploadId || !u) {
               await typeOutAI("搵唔到對應嘅相片，麻煩你再上傳一次～");
