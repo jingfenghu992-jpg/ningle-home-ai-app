@@ -344,6 +344,147 @@ const App: React.FC = () => {
       triggerGeneration(data);
   };
 
+  // --- HK-friendly i2i helpers (non-sensitive, photorealistic, keep structure) ---
+  const normalizeSpaceKey = (space?: string) => String(space || '').trim();
+
+  const getSuiteOptionsForSpace = (space?: string) => {
+      const s = normalizeSpaceKey(space);
+      const isDining = s.includes('餐');
+      const isKitchen = s.includes('廚') || s.includes('厨');
+      const isEntrance = s.includes('玄') || s.includes('關') || s.includes('关');
+      const isBathroom = s.includes('浴') || s.includes('衛') || s.includes('卫') || s.includes('洗手') || s.includes('厕所') || s.includes('廁');
+      const isBedroom = s.includes('卧') || s.includes('睡') || s.includes('房') || s.includes('床');
+
+      if (isKitchen) {
+          return [
+              "吊櫃到頂＋高櫃電器櫃",
+              "台面整潔收納（隱藏小家電）",
+              "轉角五金優化（轉角籃）",
+              "星盆區收納（分類/拉籃）",
+              "爐頭區調味收納（窄拉籃）",
+              "全屋統一質感（牆地頂＋燈光＋軟裝）"
+          ];
+      }
+      if (isBathroom) {
+          return [
+              "浴室櫃＋鏡櫃收納",
+              "高櫃毛巾/清潔收納",
+              "洗衣機高櫃一體（如可行）",
+              "乾濕分區質感（玻璃/暖光）",
+              "壁龕/置物收納",
+              "全屋統一質感（牆地頂＋燈光＋軟裝）"
+          ];
+      }
+      if (isEntrance) {
+          return [
+              "鞋櫃到頂＋換鞋凳",
+              "鞋櫃＋全身鏡＋雜物高櫃",
+              "清潔高櫃（吸塵器/拖把位）",
+              "走廊淺櫃收納（不壓迫）",
+              "展示＋收納（局部展示格）",
+              "全屋統一質感（牆地頂＋燈光＋軟裝）"
+          ];
+      }
+      if (isBedroom) {
+          return [
+              "到頂衣櫃（掛衣＋抽屜＋被鋪位）",
+              "榻榻米/地台床收納",
+              "活動床/隱形床（小房更實用）",
+              "衣櫃＋書枱一體（窗邊/轉角）",
+              "床頭收納牆（護牆＋壁燈）",
+              "全屋統一質感（牆地頂＋燈光＋軟裝）"
+          ];
+      }
+      // Living / Dining / Others
+      if (isDining) {
+          return [
+              "餐桌佈局＋動線（清晰通道）",
+              "餐邊櫃＋高櫃收納（咖啡/小家電）",
+              "展示＋收納牆（到頂）",
+              "玄關鞋櫃一體（如相連）",
+              "書枱/工作位（如需要）",
+              "全屋統一質感（牆地頂＋燈光＋軟裝）"
+          ];
+      }
+      return [
+          "電視牆收納（到頂＋展示格）",
+          "餐邊櫃＋高櫃收納（如合適）",
+          "收納牆（整面到頂）",
+          "玄關鞋櫃一體（如相連）",
+          "書枱/工作位（如需要）",
+          "全屋統一質感（牆地頂＋燈光＋軟裝）"
+      ];
+  };
+
+  const isBareShellFromSummary = (summary?: string) => {
+      const s = String(summary || '');
+      if (!s) return false;
+      return [
+          '毛坯', '清水', '未裝修', '未装修', '水泥', '批蕩', '批荡', '工地', '裸牆', '裸墙', '空置', '空房',
+          'bare', 'unfinished', 'construction', 'raw'
+      ].some(k => s.toLowerCase().includes(k.toLowerCase()));
+  };
+
+  const suiteToPrompt = (space: string, focus: string, storage: string) => {
+      const f = String(focus || '');
+      const s = String(space || '');
+      const isKitchen = s.includes('廚') || s.includes('厨');
+      const isBathroom = s.includes('浴') || s.includes('衛') || s.includes('卫') || s.includes('洗手') || s.includes('厕所') || s.includes('廁');
+      const isDining = s.includes('餐') || s.toLowerCase().includes('dining');
+      const storageHint = storage.includes('展示')
+        ? 'Mix closed cabinetry with a few open shelves/display niches; keep it balanced (not cluttered).'
+        : storage.includes('書枱') || storage.includes('书台') || storage.includes('工作位')
+          ? 'Include integrated desk/workstation + shelving where suitable; keep circulation clear.'
+          : 'Prioritize closed storage (hidden, clean look); minimize visual clutter.';
+
+      if (isKitchen) {
+          return [
+              'Kitchen cabinetry must be practical for HK homes: base cabinets + wall cabinets (prefer ceiling-height) + tall pantry/appliance tower when possible.',
+              'Keep sink/stove/plumbing/gas/exhaust positions unchanged; do not block access panels.',
+              f.includes('台面') ? 'Make countertop look clean: add hidden/organized small-appliance storage and proper task lighting.' : '',
+              f.includes('轉角') || f.includes('转角') ? 'Optimize corner with suitable corner hardware (lazy susan/magic corner) and avoid dead corners.' : '',
+              f.includes('星盆') || f.includes('洗') ? 'Optimize sink zone storage (pull-out bins, cleaning organizers) without moving plumbing.' : '',
+              f.includes('爐頭') || f.includes('炉') ? 'Add narrow pull-out spice rack near cooking zone; keep clearances safe.' : '',
+              storageHint
+          ].filter(Boolean).join(' ');
+      }
+
+      if (isBathroom) {
+          return [
+              'Bathroom must look realistic and buildable: vanity cabinet + mirror cabinet; moisture-resistant finishes.',
+              'Keep plumbing/drain locations unchanged; do not block access.',
+              f.includes('洗衣機') || f.includes('洗衣') ? 'If the photo layout allows, integrate washer tower/upper cabinet; keep ventilation.' : '',
+              f.includes('乾濕') || f.includes('干湿') ? 'Add simple wet/dry separation (glass partition) with warm lighting; keep it HK-practical.' : '',
+              f.includes('壁龕') || f.includes('壁龛') ? 'Add recessed niches/shelves where plausible (do not change structure).' : '',
+              storageHint
+          ].filter(Boolean).join(' ');
+      }
+
+      if (isDining) {
+          return [
+              'Include dining table and chairs with clear circulation (HK-sized, practical).',
+              f.includes('餐邊') ? 'Add dining sideboard + tall storage for small appliances/coffee corner.' : '',
+              f.includes('展示') ? 'Add a small display niche / glass cabinet section (not too much).' : '',
+              storageHint
+          ].filter(Boolean).join(' ');
+      }
+
+      // Living/Bedroom/Entrance/Other (use focus text heuristics)
+      return [
+          f.includes('電視') ? 'Add a TV feature wall with built-in storage: low TV cabinet + tall side cabinets to ceiling + a few display niches; conceal wiring.' : '',
+          f.includes('餐邊') ? 'Add a dining sideboard + tall cabinet for appliance storage when suitable for the space.' : '',
+          f.includes('玄關') || f.includes('鞋') ? 'Add entry shoe cabinet to ceiling + bench + full-length mirror; keep door swing clear.' : '',
+          f.includes('走廊') ? 'Use shallow corridor storage (reduce depth) to keep passage comfortable.' : '',
+          f.includes('衣櫃') || f.includes('衣柜') || f.includes('衣櫥') ? 'Add full-height wardrobe with balanced hanging/drawers/bedding storage; keep window/AC access.' : '',
+          f.includes('榻榻米') || f.includes('地台') ? 'Add tatami/platform bed storage (drawers/lift-up) integrated with wardrobe; keep it photorealistic.' : '',
+          (f.includes('活動') || f.includes('隐形') || f.includes('隱形')) ? 'If suitable, add a practical Murphy/hidden bed solution integrated with cabinetry.' : '',
+          f.includes('書枱') || f.includes('书台') || f.includes('工作位') ? 'Add integrated desk/workstation + shelving, aligned to the room layout; keep circulation.' : '',
+          f.includes('床頭') ? 'Add headboard feature with warm wall lights and slim storage (HK-friendly).' : '',
+          f.includes('全屋統一') || f.includes('全屋统一') ? 'Upgrade overall finishes: ceiling design + lighting + wall paint + flooring + soft furnishings; keep cabinetry coordinated.' : '',
+          storageHint
+      ].filter(Boolean).join(' ');
+  };
+
   const triggerGeneration = async (intakeData: any, revisionText?: string) => {
       try {
           const pickStepFunSize = (w?: number, h?: number) => {
@@ -486,18 +627,9 @@ const App: React.FC = () => {
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), color: opt } }
               }) : prev);
               const space = u.spaceType || '';
-              const isDining = String(space).includes('餐');
-              const isKitchen = String(space).includes('廚') || String(space).includes('厨');
-              const isEntrance = String(space).includes('玄') || String(space).includes('關') || String(space).includes('关');
-              const focusOptions = isDining
-                ? ["餐桌佈局+動線", "餐邊櫃/高櫃收納", "展示+收納牆", "全屋整體"]
-                : isKitchen
-                  ? ["廚櫃動線+收納", "高櫃電器櫃", "餐邊/島台", "全屋整體"]
-                  : isEntrance
-                    ? ["鞋櫃+換鞋位", "收納+展示", "雜物/清潔櫃", "全屋整體"]
-                    : ["電視牆收納", "高櫃/衣櫃收納", "書枱/工作位", "全屋整體"];
+              const focusOptions = getSuiteOptionsForSpace(space);
 
-              await typeOutAI("呢張圖你最想改邊個位置（重點做櫃體收納）？", {
+              await typeOutAI("呢張圖你最想做邊套方案（重點做櫃體＋整體質感）？", {
                   options: focusOptions,
                   meta: { kind: 'render_flow', stage: 'focus', uploadId }
               });
@@ -585,7 +717,20 @@ const App: React.FC = () => {
                   if (!summary) return '';
                   const lines = summary.split('\n').map(l => l.trim()).filter(Boolean);
                   // Prefer "結構/特徵/香港" lines only
-                  const picked = lines.filter(l => l.startsWith('結構：') || l.startsWith('特徵：') || l.includes('窗') || l.includes('梁') || l.includes('冷氣') || l.includes('柱') || l.includes('窗台'));
+                  const picked = lines.filter(l =>
+                    l.startsWith('結構：') ||
+                    l.startsWith('特徵：') ||
+                    l.includes('窗') ||
+                    l.includes('梁') ||
+                    l.includes('冷氣') ||
+                    l.includes('柱') ||
+                    l.includes('窗台') ||
+                    l.includes('電箱') ||
+                    l.includes('弱電') ||
+                    l.includes('水表') ||
+                    l.includes('煤氣') ||
+                    l.includes('煤气')
+                  );
                   const text = (picked.length ? picked : lines.slice(0, 6)).join('；');
                   return text.length > 220 ? text.slice(0, 220) + '…' : text;
               };
@@ -593,16 +738,33 @@ const App: React.FC = () => {
 
               const space = u.spaceType || 'room';
               const isDining = String(space).includes('餐') || String(space).toLowerCase().includes('dining');
-              const diningMustHave = isDining
-                ? `\nDining must-have: place a dining table and chairs appropriately (clear circulation), add a dining sideboard / tall pantry storage as suitable.`
+              const isKitchen = String(space).includes('廚') || String(space).includes('厨');
+              const isBathroom = String(space).includes('浴') || String(space).includes('衛') || String(space).includes('卫') || String(space).includes('洗手') || String(space).includes('厕所') || String(space).includes('廁');
+              const hkHardConstraints =
+                `Do NOT move windows/doors/beams/columns/window sills; keep camera perspective. ` +
+                `Do NOT move AC unit/vents; do NOT block electrical panels/access points. ` +
+                `${(isKitchen || isBathroom) ? 'Do NOT change plumbing/drain/gas/exhaust positions; keep access panels reachable. ' : ''}` +
+                `INTERIOR ONLY (ignore balcony/exterior).`;
+
+              const photorealisticSpec =
+                `Photorealistic interior render based on the uploaded photo, realistic materials and lighting. ` +
+                `Keep original lighting direction from windows and add warm ambient lighting.`;
+
+              const bareShellSpec = isBareShellFromSummary(u.visionSummary)
+                ? `If the room looks bare/unfinished, complete full fit-out: ceiling design (simple HK-style), lighting plan, wall paint, flooring, skirting, and appropriate soft furnishings.`
                 : '';
+
+              const suiteSpec = suiteToPrompt(space, focus, storage);
 
               // Keep requirements concise to avoid StepFun prompt >1024
               const requirements = [
                   `Priority: ${priority}. Focus: ${focus}. Storage: ${storage}. Intensity: ${intensity}.`,
-                  `INTERIOR ONLY (ignore balcony/exterior).`,
-                  `Must include: cabinetry/storage plan + dining table/sideboard if dining; ceiling + floor + wall finish + lighting + soft furnishings.`,
-                  `Do NOT move windows/doors/beams/columns; keep camera perspective.`,
+                  photorealisticSpec,
+                  hkHardConstraints,
+                  `Must include: cabinetry/storage plan; ceiling + floor + wall finishes; lighting; soft furnishings.`,
+                  isDining ? `Dining: include table+chairs with clear circulation; add dining sideboard/tall storage when suitable.` : '',
+                  suiteSpec ? `Package: ${suiteSpec}` : '',
+                  bareShellSpec,
                   `Material: ENF-grade multi-layer wood/plywood cabinetry.`,
                   structureNotes ? structureNotes : ''
               ].filter(Boolean).join(' ');
