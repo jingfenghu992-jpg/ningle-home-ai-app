@@ -12,10 +12,10 @@ export interface Message {
   options?: string[]; // For clickable options
   meta?: {
     uploadId?: string; // Bind actions to a specific uploaded image
-    kind?: 'upload' | 'analysis' | 'generated' | 'render_flow';
+    kind?: 'upload' | 'analysis' | 'generated' | 'render_flow' | 'space_pick';
     stage?: 'style' | 'color' | 'focus' | 'storage' | 'priority' | 'intensity' | 'confirm';
     loading?: boolean; // show spinner while executing
-    loadingType?: 'analyzing' | 'generating';
+    loadingType?: 'analyzing' | 'generating' | 'classifying';
   };
   selectedOptions?: string[]; // To highlight selected options
   isLocked?: boolean; // If true, options are disabled

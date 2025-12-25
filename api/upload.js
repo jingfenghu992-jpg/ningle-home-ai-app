@@ -18,9 +18,12 @@ export default async function handler(req, res) {
     }
 
     const filename = req.headers['x-vercel-filename'] || 'image.jpg';
+    const clientId = (req.headers['x-client-id'] || 'anon').toString().slice(0, 80);
+    const uploadId = (req.headers['x-upload-id'] || `${Date.now()}`).toString().slice(0, 120);
     
     // Upload to Vercel Blob - Pass `req` directly for streaming
-    const blob = await put(`ningle-temp-images/${Date.now()}-${filename}`, req, {
+    const safeFilename = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const blob = await put(`ningle-temp-images/${clientId}/${uploadId}-${safeFilename}`, req, {
       access: 'public',
     });
 

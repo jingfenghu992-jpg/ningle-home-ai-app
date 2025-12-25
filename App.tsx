@@ -9,10 +9,12 @@ import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
 import { generateDesignImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
+import { classifySpace } from './services/spaceClient';
 
 const App: React.FC = () => {
   // --- State ---
   const [appState, setAppState] = useState<'START' | 'WAITING_FOR_SPACE' | 'ANALYZING' | 'ANALYSIS_DONE' | 'RENDER_INTAKE' | 'GENERATING' | 'RENDER_DONE'>('START');
+  const [clientId, setClientId] = useState<string>(''); // per-device user id
   
   const [uploads, setUploads] = useState<Record<string, {
     dataUrl: string;
@@ -30,6 +32,28 @@ const App: React.FC = () => {
   // Chat history for context, but we display sparingly
   const [messages, setMessages] = useState<Message[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Ensure a stable clientId for session isolation (per device/browser)
+  useEffect(() => {
+    try {
+      const key = 'ningle_client_id';
+      const existing = window.localStorage.getItem(key);
+      if (existing) {
+        setClientId(existing);
+        return;
+      }
+      const id =
+        // @ts-ignore
+        (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+          // @ts-ignore
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      window.localStorage.setItem(key, id);
+      setClientId(id);
+    } catch {
+      setClientId(`${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    }
+  }, []);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -85,6 +109,50 @@ const App: React.FC = () => {
       setMessages([]);
   };
 
+  const runAnalysisForUpload = async (uploadId: string, spaceTypeText: string) => {
+    const active = uploads[uploadId];
+    if (!active?.dataUrl) {
+      await typeOutAI("搵唔到對應嘅相片，麻煩你再上傳一次～");
+      setAppState('START');
+      return;
+    }
+
+    const analysisLoadingId = addLoadingToast("收到，圖片正在分析中，請稍等…", { loadingType: 'analyzing', uploadId });
+    setAppState('ANALYZING');
+    try {
+      setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], spaceType: spaceTypeText } }) : prev);
+
+      const visionRes = await analyzeImage({
+        imageDataUrl: active.dataUrl,
+        imageUrl: active.blobUrl,
+        mode: 'consultant',
+        spaceType: spaceTypeText,
+        clientId
+      });
+
+      if (visionRes.ok && visionRes.vision_summary) {
+        setAnalysisSummary(visionRes.vision_summary);
+        setAppState('ANALYSIS_DONE');
+        stopLoadingToast(analysisLoadingId);
+        setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], visionSummary: visionRes.vision_summary } }) : prev);
+
+        await typeOutAI(
+          `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
+          { options: ["生成智能效果圖"], meta: { kind: 'analysis', uploadId } }
+        );
+      } else {
+        stopLoadingToast(analysisLoadingId);
+        await typeOutAI("分析失敗，請重試。");
+        setAppState('WAITING_FOR_SPACE');
+      }
+    } catch (e) {
+      console.error(e);
+      stopLoadingToast(analysisLoadingId);
+      await typeOutAI("系統錯誤，請重試。");
+      setAppState('WAITING_FOR_SPACE');
+    }
+  };
+
   const handleUpload = (file: File) => {
     // Smaller upload improves img2img stability and upload speed
     compressImage(file, 1280, 0.78).then(blob => {
@@ -123,7 +191,35 @@ const App: React.FC = () => {
                         }
                     }));
                     setAppState('WAITING_FOR_SPACE');
-                    addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
+                    // Auto classify space, then ask user to confirm with buttons (more robust than free text)
+                    (async () => {
+                      const classifyId = addLoadingToast("我先幫你判斷呢張相係咩空間，請稍等…", { loadingType: 'classifying', uploadId });
+                      try {
+                        const sres = await classifySpace({ imageDataUrl: dataUrl, clientId });
+                        stopLoadingToast(classifyId);
+                        const primary = (sres.ok && sres.primary) ? sres.primary : '其他';
+                        const options = (() => {
+                          const cand = (sres.candidates || []).map(c => String(c.space)).filter(Boolean);
+                          const base = [primary, ...cand, '客厅', '餐厅', '卧室', '厨房', '玄关', '书房', '卫生间', '走廊', '其他'];
+                          const uniq: string[] = [];
+                          for (const x of base) {
+                            const v = String(x).trim();
+                            if (!v) continue;
+                            if (!uniq.includes(v)) uniq.push(v);
+                            if (uniq.length >= 8) break;
+                          }
+                          return uniq;
+                        })();
+
+                        await typeOutAI(
+                          `我猜你呢張相係「${primary}」\n你點一下確認就得（唔啱都可以改）`,
+                          { options, meta: { kind: 'space_pick', uploadId } }
+                        );
+                      } catch (err) {
+                        stopLoadingToast(classifyId);
+                        addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客厅/餐厅/卧室/厨房/玄关/书房/其他）");
+                      }
+                    })();
                 };
                 img.onerror = () => {
                     setUploads(prev => ({
@@ -135,7 +231,7 @@ const App: React.FC = () => {
                         }
                     }));
                     setAppState('WAITING_FOR_SPACE');
-                    addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
+                    addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客厅/餐厅/卧室/厨房/玄关/书房/其他）");
                 };
                 img.src = dataUrl;
             } catch {
@@ -148,13 +244,13 @@ const App: React.FC = () => {
                     }
                 }));
                 setAppState('WAITING_FOR_SPACE');
-                addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客廳/睡房/廚房/玄關/書房/其他）");
+                addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客厅/餐厅/卧室/厨房/玄关/书房/其他）");
             }
             
             // Upload in background
             try {
                 const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
-                const upRes = await uploadImage(compressedFile);
+                const upRes = await uploadImage(compressedFile, { clientId, uploadId });
                 if (upRes?.url) {
                     // Always upsert; don't drop due to race
                     setUploads(prev => ({
@@ -230,53 +326,13 @@ const App: React.FC = () => {
             await runChat();
             return;
         }
-
-        // Polite status message before analysis starts (with spinner)
-        const analysisLoadingId = addLoadingToast("收到，圖片正在分析中，請稍等…", { loadingType: 'analyzing' });
-        setAppState('ANALYZING');
-        // Perform Analysis
-        try {
-            const uid = activeUploadId;
-            const active = uid ? uploads[uid] : undefined;
-            if (!uid || !active?.dataUrl) {
-                addSystemToast("搵唔到你最新上傳嗰張相，麻煩你再上傳一次～");
-                setAppState('START');
-                return;
-            }
-
-            setUploads(prev => prev[uid] ? ({ ...prev, [uid]: { ...prev[uid], spaceType: text } }) : prev);
-            const visionRes = await analyzeImage({ 
-                imageDataUrl: active.dataUrl, 
-                imageUrl: active.blobUrl, 
-                mode: 'consultant', 
-                spaceType: text 
-            });
-
-            if (visionRes.ok && visionRes.vision_summary) {
-                setAnalysisSummary(visionRes.vision_summary);
-                setAppState('ANALYSIS_DONE');
-                stopLoadingToast(analysisLoadingId);
-                // Save analysis summary to this upload for later img2img prompt grounding
-                setUploads(prev => prev[uid] ? ({ ...prev, [uid]: { ...prev[uid], visionSummary: visionRes.vision_summary } }) : prev);
-                // Append analysis summary (typed) + action button, bound to this upload
-                await typeOutAI(
-                    `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
-                    { options: ["生成智能效果圖"], meta: { kind: 'analysis', uploadId: uid } }
-                );
-                
-                // Optional: Short toast from AI
-                // addSystemToast("分析完成！可以睇下上面嘅摘要。");
-            } else {
-                stopLoadingToast(analysisLoadingId);
-                await typeOutAI("分析失敗，請重試。");
-                setAppState('WAITING_FOR_SPACE');
-            }
-        } catch (e) {
-            console.error(e);
-            stopLoadingToast(analysisLoadingId);
-            await typeOutAI("系統錯誤，請重試。");
-            setAppState('WAITING_FOR_SPACE');
+        const uid = activeUploadId;
+        if (!uid) {
+          addSystemToast("搵唔到你最新上傳嗰張相，麻煩你再上傳一次～");
+          setAppState('START');
+          return;
         }
+        await runAnalysisForUpload(uid, text);
     } else if (appState === 'RENDER_DONE' || lastGeneratedImage) {
         // Revision logic
         if (text.includes('改') || text.includes('換') || text.includes('唔好')) {
@@ -368,6 +424,14 @@ const App: React.FC = () => {
   const handleOptionClick = async (message: Message, opt: string) => {
       const uploadId = message.meta?.uploadId;
       const u = uploadId ? uploads[uploadId] : undefined;
+
+      if (message.meta?.kind === 'space_pick' && uploadId) {
+          // Lock this message to prevent double-trigger
+          if (message.isLocked) return;
+          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
+          await runAnalysisForUpload(uploadId, opt);
+          return;
+      }
 
       if (opt === '生成智能效果圖') {
           // Prevent repeated taps from spamming; but don't make it "no response"

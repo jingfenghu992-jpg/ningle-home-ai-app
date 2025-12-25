@@ -8,7 +8,7 @@ export interface VisionResponse {
   errorCode?: string;
 }
 
-export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: string; mode: string; spaceType?: string }): Promise<VisionResponse> {
+export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: string; mode: string; spaceType?: string; clientId?: string }): Promise<VisionResponse> {
   const payloadUrl = params.imageUrl || params.imageDataUrl;
   if (!payloadUrl) {
     console.error('[Vision Client] Invalid image payload');
@@ -23,7 +23,8 @@ export async function analyzeImage(params: { imageDataUrl?: string; imageUrl?: s
     // Optimization: If we have a remote URL, DO NOT send the base64 data.
     // This prevents hitting Vercel's 4.5MB request body limit and reduces latency.
     const body: any = {
-      mode: params.mode
+      mode: params.mode,
+      clientId: params.clientId
     };
     if (params.spaceType) body.spaceType = params.spaceType;
 

@@ -9,13 +9,18 @@ export interface GenerateResponse {
   errorCode?: string;
 }
 
-export async function uploadImage(file: File | Blob): Promise<{ url: string } | null> {
+export async function uploadImage(
+  file: File | Blob,
+  opts?: { clientId?: string; uploadId?: string }
+): Promise<{ url: string } | null> {
   try {
     const filename = (file as File).name || 'image.jpg';
     const response = await fetch('/api/upload', {
       method: 'POST',
       headers: {
         'x-vercel-filename': filename,
+        ...(opts?.clientId ? { 'x-client-id': opts.clientId } : {}),
+        ...(opts?.uploadId ? { 'x-upload-id': opts.uploadId } : {}),
       },
       body: file,
     });
