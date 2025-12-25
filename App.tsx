@@ -2,9 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AppShell } from './components/AppShell';
 import { AppBar } from './components/AppBar';
 import { StartScreen } from './components/StartScreen';
-import { PhotoCard } from './components/PhotoCard';
-import { RenderIntakeCard } from './components/RenderIntakeCard';
-import { RenderResultCard } from './components/RenderResultCard';
 import { MessageCard } from './components/MessageCard';
 import { Composer } from './components/Composer';
 import { Message } from './types';
@@ -20,6 +17,7 @@ const App: React.FC = () => {
   const [pendingImage, setPendingImage] = useState<{dataUrl: string, blobUrl?: string, width?: number, height?: number} | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
+  const [spaceTypeHint, setSpaceTypeHint] = useState<string | null>(null);
   
   // Chat history for context, but we display sparingly
   const [messages, setMessages] = useState<Message[]>([]);
@@ -41,6 +39,7 @@ const App: React.FC = () => {
       setPendingImage(null);
       setAnalysisSummary(null);
       setLastGeneratedImage(null);
+      setSpaceTypeHint(null);
       setMessages([]);
   };
 
@@ -49,6 +48,13 @@ const App: React.FC = () => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             const dataUrl = e.target?.result as string;
+
+            // Show the latest uploaded image in chat immediately (user bubble)
+            setMessages(prev => [
+                ...prev,
+                { id: `${Date.now()}-upload`, type: 'image', content: dataUrl, sender: 'user', timestamp: Date.now() }
+            ]);
+
             // Probe image dimensions (used to pick best StepFun output size)
             try {
                 const img = new Image();
@@ -139,6 +145,9 @@ const App: React.FC = () => {
             return;
         }
 
+        // Polite status message before analysis starts
+        addSystemToast("收到，圖片正在分析中，請稍等…");
+        setSpaceTypeHint(text);
         setAppState('ANALYZING');
         // Perform Analysis
         try {
@@ -154,8 +163,8 @@ const App: React.FC = () => {
                 setAppState('ANALYSIS_DONE');
                 // Append analysis summary + action buttons into chat flow
                 addSystemToast(
-                    `【圖片分析結果】\n${visionRes.vision_summary}`,
-                    ["生成智能效果圖", "再上傳另一張"]
+                    `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
+                    ["生成智能效果圖"]
                 );
                 
                 // Optional: Short toast from AI
@@ -237,27 +246,23 @@ const App: React.FC = () => {
       }
   };
 
-  // Determine Photo Status Badge
-  const getPhotoStatus = () => {
-      if (appState === 'WAITING_FOR_SPACE') return 'waiting';
-      if (appState === 'ANALYZING') return 'analyzing';
-      if (appState === 'GENERATING') return 'rendering';
-      if (appState === 'ANALYSIS_DONE' || appState === 'RENDER_INTAKE' || appState === 'RENDER_DONE') return 'done';
-      return 'waiting';
-  };
-
   const handleOptionClick = (opt: string) => {
-      if (opt === '再上傳另一張') {
-          resetToStart();
-          return;
-      }
       if (opt === '生成智能效果圖') {
           // If blob URL not ready, guide user to wait to avoid "Missing baseImageBlobUrl"
           if (!pendingImage?.blobUrl) {
               addSystemToast("相片仲上傳緊，請等幾秒再試～");
               return;
           }
-          setAppState('RENDER_INTAKE');
+          addSystemToast("收到～我而家幫你生成效果圖（會盡量保留原本門窗/梁柱/結構），請稍等…");
+          setAppState('GENERATING');
+          // Generate directly with a sane default intake to make the button always work
+          const defaultIntake = {
+              space: spaceTypeHint || 'room',
+              style: 'modern',
+              color: 'neutral',
+              requirements: 'Preserve the original structure, windows, doors, and perspective. Improve storage and lighting. Hong Kong apartment practical layout.'
+          };
+          triggerGeneration(defaultIntake);
           return;
       }
   };
@@ -273,38 +278,6 @@ const App: React.FC = () => {
       ) : (
         <>
           <div className="flex-1 overflow-y-auto overflow-x-hidden relative scrollbar-none pb-4">
-            
-            {/* 1. Main Photo Card */}
-            {pendingImage && (
-                <PhotoCard 
-                    imageUrl={lastGeneratedImage || pendingImage.dataUrl} 
-                    status={getPhotoStatus()}
-                    timestamp={Date.now()}
-                />
-            )}
-
-            {/* 2. State-based Cards */}
-            
-            {/* Analysis + primary actions are now appended into chat flow; no need to render separate cards here */}
-
-            {appState === 'RENDER_INTAKE' && (
-                <RenderIntakeCard onComplete={handleRenderIntakeComplete} />
-            )}
-
-            {appState === 'GENERATING' && (
-                <div className="mx-4 my-6 p-6 bg-white rounded-[24px] flex flex-col items-center justify-center space-y-4 animate-pulse">
-                    <div className="w-12 h-12 rounded-full border-4 border-[#8A8F79]/20 border-t-[#8A8F79] animate-spin"></div>
-                    <p className="text-[#4A453C] font-medium">正在生成智能效果圖...</p>
-                </div>
-            )}
-
-            {appState === 'RENDER_DONE' && lastGeneratedImage && (
-                <RenderResultCard 
-                    imageUrl={lastGeneratedImage} 
-                    onModify={() => addSystemToast("請直接輸入你想修改嘅地方（例如：轉做深木色）")}
-                    onWhatsApp={() => window.open('https://wa.me/85212345678', '_blank')}
-                />
-            )}
 
             {/* 3. Small Chat Stream (Toasts/Short interaction) */}
             <div className="mt-4">
