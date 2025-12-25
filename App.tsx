@@ -86,7 +86,8 @@ const App: React.FC = () => {
   };
 
   const handleUpload = (file: File) => {
-    compressImage(file, 1536, 0.8).then(blob => {
+    // Smaller upload improves img2img stability and upload speed
+    compressImage(file, 1280, 0.78).then(blob => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             const dataUrl = e.target?.result as string;
@@ -317,7 +318,8 @@ const App: React.FC = () => {
               renderIntake: intakeData || {}, 
               baseImageBlobUrl: baseUrl,
               size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
-              response_format: 'b64_json',
+              // URL response is smaller and more stable; server will persist to Blob when possible.
+              response_format: 'url',
               // StepFun doc: smaller source_weight => more similar to source (less deformation)
                   source_weight: intakeData?.source_weight ?? 0.4,
                   steps: intakeData?.steps ?? 40,

@@ -103,7 +103,7 @@ export default async function handler(req, res) {
     let sourceUrl = baseImageBlobUrl;
     let usedFallback = false;
 
-    const callStepFun = async (urlToUse) => {
+    const callStepFun = async (urlToUse, rf = finalResponseFormat) => {
         console.log(`[Design Gen] Calling StepFun image2image with ${urlToUse.slice(0, 50)}...`);
         return await fetch('https://api.stepfun.com/v1/images/image2image', {
           method: 'POST',
@@ -118,7 +118,7 @@ export default async function handler(req, res) {
             source_weight: finalSourceWeight,
             size: finalSize,
             n: 1,
-            response_format: finalResponseFormat,
+            response_format: rf,
             seed: finalSeed,
             steps: finalSteps,
             cfg_scale: finalCfgScale
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
         }
     }
 
-    let stepfunRes = await callStepFun(sourceUrl);
+    let stepfunRes = await callStepFun(sourceUrl, finalResponseFormat);
     let lastUpstreamErrorText = null;
 
     // --- STRATEGY B: Fallback to Base64 if URL fails ---
@@ -160,7 +160,7 @@ export default async function handler(req, res) {
                     usedFallback = true;
                     
                     // Retry with Base64
-                    stepfunRes = await callStepFun(sourceUrl);
+                    stepfunRes = await callStepFun(sourceUrl, finalResponseFormat);
                     if (!stepfunRes.ok) {
                         const errText2 = await stepfunRes.text();
                         lastUpstreamErrorText = errText2;
@@ -180,16 +180,65 @@ export default async function handler(req, res) {
         throw new Error(`StepFun API Error: ${stepfunRes.status} ${msg}`);
     }
 
-    const data = await stepfunRes.json();
-    const first = data.data?.[0];
-    const finishReason = first?.finish_reason;
-    const resultSeed = first?.seed ?? data.seed;
-    const resultUrl = first?.url;
-    const resultImageB64 = first?.image;
+    const readStepFunJson = async (r) => {
+        try {
+            return await r.json();
+        } catch (e) {
+            const t = await r.text().catch(() => '');
+            throw new Error(`StepFun invalid JSON response: ${t || '(empty)'}`);
+        }
+    };
+
+    const fetchUrlToB64 = async (url) => {
+        const imgRes = await fetch(url);
+        if (!imgRes.ok) return null;
+        const ab = await imgRes.arrayBuffer();
+        const mime = imgRes.headers.get('content-type') || 'image/jpeg';
+        const b64 = Buffer.from(ab).toString('base64');
+        return { mime, b64 };
+    };
+
+    const extractResult = (data) => {
+        const first = data?.data?.[0] || {};
+        const finishReason = first?.finish_reason;
+        const resultSeed = first?.seed ?? data?.seed;
+        // StepFun variants: b64_json / image / base64
+        const resultImageB64 = first?.b64_json || first?.image || first?.base64 || first?.b64;
+        // StepFun variants: url / image_url
+        const resultUrl = first?.url || first?.image_url;
+        return { first, finishReason, resultSeed, resultImageB64, resultUrl };
+    };
+
+    let data = await readStepFunJson(stepfunRes);
+    let { finishReason, resultSeed, resultImageB64, resultUrl } = extractResult(data);
+
+    // Some successful responses may omit the requested field; do one safe retry by flipping response_format.
+    const hasImage = Boolean(resultImageB64 || resultUrl);
+    if (!hasImage) {
+        const alt = finalResponseFormat === 'b64_json' ? 'url' : 'b64_json';
+        console.warn(`[Design Gen] No image payload despite success; retrying with response_format=${alt}`);
+        const retryRes = await callStepFun(sourceUrl, alt);
+        if (retryRes.ok) {
+            data = await readStepFunJson(retryRes);
+            ({ finishReason, resultSeed, resultImageB64, resultUrl } = extractResult(data));
+        }
+    }
+
+    // If client asked for base64 but only URL exists, fetch and convert.
+    let fetchedB64 = null;
+    if (finalResponseFormat === 'b64_json' && !resultImageB64 && resultUrl) {
+        fetchedB64 = await fetchUrlToB64(resultUrl);
+        if (fetchedB64?.b64) resultImageB64 = fetchedB64.b64;
+    }
+
+    // If client asked for URL but only base64 exists, just return data-url (still viewable).
+    if (finalResponseFormat === 'url' && !resultUrl && resultImageB64) {
+        // no-op: we will build data URL below
+    }
 
     if (finalResponseFormat === 'url') {
-        if (!resultUrl) {
-            throw new Error(`No image URL received from StepFun (finish_reason=${finishReason || 'unknown'})`);
+        if (!resultUrl && !resultImageB64) {
+            throw new Error(`No image received from StepFun (finish_reason=${finishReason || 'unknown'})`);
         }
     } else {
         if (!resultImageB64) {
@@ -200,7 +249,8 @@ export default async function handler(req, res) {
     // Try persistence (Non-fatal)
     let finalBlobUrl = null;
     try {
-        if (process.env.BLOB_READ_WRITE_TOKEN && finalResponseFormat === 'url') {
+        // Persist whenever we have a URL; if only base64 exists, skip persistence.
+        if (process.env.BLOB_READ_WRITE_TOKEN && resultUrl) {
             const imgRes = await fetch(resultUrl);
             if (imgRes.ok) {
                 const blob = await put(`ningle-results/${Date.now()}.jpg`, imgRes.body, { access: 'public' });
@@ -211,10 +261,17 @@ export default async function handler(req, res) {
         console.warn('Blob persistence failed:', e);
     }
 
-    const finalResult =
-      finalResponseFormat === 'url'
-        ? (finalBlobUrl || resultUrl)
-        : `data:image/jpeg;base64,${resultImageB64}`;
+    const finalResult = (() => {
+        if (finalResponseFormat === 'url') {
+            if (finalBlobUrl) return finalBlobUrl;
+            if (resultUrl) return resultUrl;
+            // fallback: return data url
+            return `data:image/jpeg;base64,${resultImageB64}`;
+        }
+        // b64_json: always return data url
+        const mime = fetchedB64?.mime || 'image/jpeg';
+        return `data:${mime};base64,${resultImageB64}`;
+    })();
 
     res.status(200).json({
         ok: true,
