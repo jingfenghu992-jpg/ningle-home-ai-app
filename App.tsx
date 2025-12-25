@@ -317,6 +317,7 @@ const App: React.FC = () => {
               renderIntake: intakeData || {}, 
               baseImageBlobUrl: baseUrl,
               size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
+              response_format: 'b64_json',
               // StepFun doc: smaller source_weight => more similar to source (less deformation)
                   source_weight: intakeData?.source_weight ?? 0.4,
                   steps: intakeData?.steps ?? 40,
@@ -340,6 +341,19 @@ const App: React.FC = () => {
                   ...prev,
                   { id: `${Date.now()}-img`, type: 'image', content: resultUrl!, sender: 'ai', timestamp: Date.now() }
               ]);
+
+              // Design explanation + WhatsApp follow-up
+              const explain = [
+                  `【設計說明】`,
+                  `- 風格：${intakeData?.style || '（按你選擇）'}；色系：${intakeData?.color || '（按你選擇）'}`,
+                  `- 佈局重點：${intakeData?.requirements ? '已按你選擇的重點區域/收納取向去做櫃體規劃' : '以收納與動線為主做櫃體規劃'}`,
+                  `- 櫃體/收納：建議做全高櫃/餐邊櫃/收納牆，分區包含展示＋封閉收納（避免雜亂）`,
+                  `- 天花/燈光：用簡單吊頂或燈槽，餐桌位加主燈＋輔助射燈，提升層次`,
+                  `- 地面/牆面：地面用木地板或耐磨磚；牆面用淺色耐污材質更易打理`,
+                  ``,
+                  `想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
+              ].join('\n');
+              await typeOutAI(explain);
           } else {
               throw new Error(res.message);
           }

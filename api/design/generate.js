@@ -57,7 +57,7 @@ export default async function handler(req, res) {
   const finalResponseFormat =
     response_format === 'b64_json' || response_format === 'url'
       ? response_format
-      : 'url';
+      : 'b64_json';
 
   if (!baseImageBlobUrl) {
     res.status(400).json({ ok: false, message: 'Missing baseImageBlobUrl' });
@@ -129,10 +129,12 @@ export default async function handler(req, res) {
     }
 
     let stepfunRes = await callStepFun(sourceUrl);
+    let lastUpstreamErrorText = null;
 
     // --- STRATEGY B: Fallback to Base64 if URL fails ---
     if (!stepfunRes.ok) {
         const errText = await stepfunRes.text();
+        lastUpstreamErrorText = errText;
         console.warn(`[Design Gen] Strategy A failed (${stepfunRes.status}): ${errText}`);
         
         // If it's not a data URL already, try to fetch and convert
@@ -149,6 +151,11 @@ export default async function handler(req, res) {
                     
                     // Retry with Base64
                     stepfunRes = await callStepFun(sourceUrl);
+                    if (!stepfunRes.ok) {
+                        const errText2 = await stepfunRes.text();
+                        lastUpstreamErrorText = errText2;
+                        console.warn(`[Design Gen] Strategy B failed (${stepfunRes.status}): ${errText2}`);
+                    }
                 } else {
                     console.error('[Design Gen] Failed to fetch image for fallback');
                 }
@@ -159,7 +166,8 @@ export default async function handler(req, res) {
     }
 
     if (!stepfunRes.ok) {
-        throw new Error(`StepFun API Error: ${stepfunRes.status} ${await stepfunRes.text()}`);
+        const msg = lastUpstreamErrorText || '(no upstream body)';
+        throw new Error(`StepFun API Error: ${stepfunRes.status} ${msg}`);
     }
 
     const data = await stepfunRes.json();
