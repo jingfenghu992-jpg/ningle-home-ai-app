@@ -655,10 +655,42 @@ const App: React.FC = () => {
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), storage: opt } }
               }) : prev);
 
-              await typeOutAI("你更重視邊個取向？", {
-                  options: ["性價比優先", "耐用優先", "易打理優先"],
-                  meta: { kind: 'render_flow', stage: 'priority', uploadId }
+              await typeOutAI("想要咩感覺／氛圍？（影響燈光同質感）", {
+                  options: ["明亮通透", "溫馨暖光", "高級氛圍（酒店感）"],
+                  meta: { kind: 'render_flow', stage: 'vibe', uploadId }
               });
+              return;
+          }
+
+          if (message.meta.stage === 'vibe') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), vibe: opt } }
+              }) : prev);
+
+              await typeOutAI("軟裝想要幾豐富？（越豐富越有氣氛）", {
+                  options: ["克制簡潔（更清爽）", "標準搭配（推薦）", "豐富氛圍（更有層次）"],
+                  meta: { kind: 'render_flow', stage: 'decor', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'decor') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), decor: opt } }
+              }) : prev);
+
+              const style = u.render?.style || '現代簡約';
+              const color = u.render?.color || '淺木+米白';
+              const focus = u.render?.focus || '全屋統一質感（牆地頂＋燈光＋軟裝）';
+              const storage = u.render?.storage || '隱藏收納為主';
+              const vibe = (u.render as any)?.vibe || '溫馨暖光';
+              const decor = (u.render as any)?.decor || '標準搭配（推薦）';
+              await typeOutAI(
+                `好，我幫你用「${style}｜${color}｜${focus}｜${storage}｜${vibe}｜${decor}」出一張效果圖（保留原本門窗/梁柱/冷氣機位）。準備好就按下面開始生成～`,
+                { options: ["開始生成效果圖"], meta: { kind: 'render_flow', stage: 'confirm', uploadId } }
+              );
               return;
           }
 
@@ -695,23 +727,17 @@ const App: React.FC = () => {
           if (message.meta.stage === 'confirm' && opt === '開始生成效果圖') {
               const style = u.render?.style || '現代簡約';
               const color = u.render?.color || '淺木+米白';
-              const priority = u.render?.priority || '性價比優先';
               const focus = u.render?.focus || '全屋整體';
               const storage = u.render?.storage || '隱藏收納為主';
-              const intensity = u.render?.intensity || '明顯改造（推薦）';
+              const vibe = (u.render as any)?.vibe || '溫馨暖光';
+              const decor = (u.render as any)?.decor || '標準搭配（推薦）';
 
               const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
               setAppState('GENERATING');
 
               const baseImage = u.dataUrl;
-              // Tune parameters by intensity (StepFun doc: smaller source_weight => closer to source)
-              const intensityParams = (() => {
-                  // Goal: big visual change but keep geometry (avoid "melting" sofa/coffee table)
-                  // StepFun: smaller source_weight => closer to source (less deformation).
-                  if (intensity.includes('輕改')) return { source_weight: 0.42, cfg_scale: 7.0, steps: 44 };
-                  if (intensity.includes('大改造')) return { source_weight: 0.50, cfg_scale: 8.6, steps: 56 };
-                  return { source_weight: 0.46, cfg_scale: 7.8, steps: 52 }; // recommended
-              })();
+              // Default params tuned for "photorealistic, noticeable upgrade, keep structure"
+              const genParams = { source_weight: 0.46, cfg_scale: 7.8, steps: 52 };
 
               const pickConstraints = (summary?: string) => {
                   if (!summary) return '';
@@ -755,15 +781,29 @@ const App: React.FC = () => {
                 : '';
 
               const suiteSpec = suiteToPrompt(space, focus, storage);
+              const vibeSpec = (() => {
+                const v = String(vibe || '');
+                if (v.includes('明亮')) return 'Lighting mood: bright, airy, clean daylight + balanced downlights.';
+                if (v.includes('酒店') || v.includes('高級') || v.includes('高级')) return 'Lighting mood: premium hotel-like layered lighting, warm accents, elegant highlights.';
+                return 'Lighting mood: warm cozy ambient lighting, soft highlights, comfortable.';
+              })();
+              const decorSpec = (() => {
+                const d = String(decor || '');
+                if (d.includes('克制') || d.includes('清爽')) return 'Soft furnishing density: minimal and clean; a few key pieces only.';
+                if (d.includes('豐富') || d.includes('丰富')) return 'Soft furnishing density: richer styling with rug, curtains, artwork, plants, cushions; still tidy.';
+                return 'Soft furnishing density: balanced standard styling (recommended), natural and livable.';
+              })();
 
               // Keep requirements concise to avoid StepFun prompt >1024
               const requirements = [
-                  `Priority: ${priority}. Focus: ${focus}. Storage: ${storage}. Intensity: ${intensity}.`,
+                  `Focus: ${focus}. Storage: ${storage}. Vibe: ${vibe}. Decor: ${decor}.`,
                   photorealisticSpec,
                   hkHardConstraints,
                   `Must include: cabinetry/storage plan; ceiling + floor + wall finishes; lighting; soft furnishings.`,
                   isDining ? `Dining: include table+chairs with clear circulation; add dining sideboard/tall storage when suitable.` : '',
                   suiteSpec ? `Package: ${suiteSpec}` : '',
+                  vibeSpec,
+                  decorSpec,
                   bareShellSpec,
                   `Material: ENF-grade multi-layer wood/plywood cabinetry.`,
                   structureNotes ? structureNotes : ''
@@ -776,8 +816,8 @@ const App: React.FC = () => {
                   // Send structured selections to backend for better prompt alignment
                   focus,
                   storage,
-                  priority,
-                  intensity,
+                  vibe,
+                  decor,
                   requirements,
                   // Pass vision summary for layout constraints (no persistence; used for this generation only)
                   visionSummary: u.visionSummary,
@@ -785,9 +825,9 @@ const App: React.FC = () => {
                   baseImageBlobUrl: baseImage,
                   baseWidth: u.width,
                   baseHeight: u.height,
-                  source_weight: intensityParams.source_weight,
-                  cfg_scale: intensityParams.cfg_scale,
-                  steps: intensityParams.steps
+                  source_weight: genParams.source_weight,
+                  cfg_scale: genParams.cfg_scale,
+                  steps: genParams.steps
               };
 
               try {

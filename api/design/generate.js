@@ -43,12 +43,12 @@ export default async function handler(req, res) {
   const finalSteps =
     Number.isInteger(steps) && steps >= 1 && steps <= 100
       ? steps
-      : 40;
+      : 44;
 
   const finalCfgScale =
     typeof cfg_scale === 'number' && cfg_scale >= 1 && cfg_scale <= 10
       ? cfg_scale
-      : 6.0;
+      : 7.2;
 
   const finalSeed =
     Number.isInteger(seed) && seed > 0
@@ -102,6 +102,8 @@ export default async function handler(req, res) {
         color: normalize(intake?.color),
         focus: normalize(intake?.focus),
         storage: normalize(intake?.storage),
+        vibe: normalize(intake?.vibe),
+        decor: normalize(intake?.decor),
         priority: normalize(intake?.priority),
         intensity: normalize(intake?.intensity),
         constraints: compact(intake?.visionSummary || intake?.requirements || '', 520),
@@ -118,6 +120,7 @@ Rules:
 - Preserve object geometry: keep window frames, doors, sofa/coffee-table shapes (if present) and do NOT warp/melt objects.
 - Must include: ceiling detail (cove/false ceiling + downlights), finished flooring, finished wall surfaces, built-in cabinetry, lighting plan, and soft furnishings.
 - The spec MUST match the final render and also match the explanation.
+- The explanation MUST reflect the user's selections (style/color/focus/storage/vibe/decor) and be visually verifiable.
 - Keep prompt_en <= 900 characters.
 
 Space-specific must-haves:
@@ -185,9 +188,26 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
       };
     };
 
-    const inferSpaceKind = (spaceText) => {
+    const inferSpaceKind = (spaceText, focusText, reqText) => {
       const s0 = String(spaceText || '');
       const s = s0.toLowerCase();
+      const f0 = String(focusText || '');
+      const f = f0.toLowerCase();
+      const r0 = String(reqText || '');
+      const r = r0.toLowerCase();
+
+      // If user picked "其他/other", infer from focus/requirements to avoid missing must-haves.
+      const hint = `${f0} ${r0}`;
+      const hintL = `${f} ${r}`;
+      const has = (arr) => arr.some(k => hint.includes(k) || hintL.includes(String(k).toLowerCase()));
+      if (has(['廚', '厨', '廚櫃', '橱柜', '吊櫃', '吊柜', '星盆', '爐頭', '炉头', 'kitchen', 'cooktop', 'sink'])) return 'kitchen';
+      if (has(['浴', '厕', '衛', '卫', '洗手', '浴室櫃', '浴室柜', '鏡櫃', '镜柜', 'bath', 'vanity', 'shower'])) return 'bath';
+      if (has(['玄', '關', '关', '鞋', '鞋櫃', '鞋柜', 'entry', 'shoe cabinet'])) return 'entry';
+      if (has(['書', '书', '書枱', '书台', '書桌', '书桌', '工作位', 'study', 'desk', 'bookcase'])) return 'study';
+      if (has(['床', '睡', '卧', '房', '衣櫃', '衣柜', '榻榻米', '地台', 'bed', 'wardrobe', 'closet'])) return 'bedroom';
+      if (has(['餐', '餐桌', '餐邊', '餐边', 'dining', 'dining table'])) return 'dining';
+      if (has(['電視', '电视', 'tv', 'sofa', '客厅', '客廳', 'living'])) return 'living';
+
       // Living / dining
       if (s0.includes('客') || s.includes('living')) return 'living';
       if (s0.includes('餐') || s.includes('dining')) return 'dining';
@@ -267,7 +287,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
     if (renderIntake) {
         // Build a spec first (prompt + explanation from same source) to keep them consistent
         try {
-          const spaceKind = inferSpaceKind(renderIntake?.space);
+          const spaceKind = inferSpaceKind(renderIntake?.space, renderIntake?.focus, renderIntake?.requirements);
           const mustInclude = (() => {
             const base = [
               'CEILING detail (cove/false ceiling + downlights)',
@@ -653,7 +673,8 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
                     : (resultImageB64 ? `data:image/jpeg;base64,${resultImageB64}` : null);
             if (refineSource) {
                 const refinePrompt = (() => {
-                    const suffix = ' Refine into magazine-quality photorealistic interior render: add detailed cabinetry, ceiling cove lighting, finished flooring, wall finishes, and complete furniture + soft furnishings. Avoid empty room, avoid blank walls, avoid unfinished concrete.';
+                    const suffix =
+                      ' Refine into magazine-quality photorealistic interior render: strengthen lighting layers (ceiling cove + downlights), improve material realism, add coherent soft furnishings (curtains/rug/art/plants) matching the chosen style/palette, and increase cabinetry detailing. Keep structure and perspective unchanged. Avoid empty room, blank walls, unfinished concrete.';
                     const t = String(finalPrompt + suffix).replace(/\s+/g, ' ').trim();
                     return t.length > 1024 ? t.slice(0, 1021) + '...' : t;
                 })();
@@ -662,7 +683,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
                     rf: 'url',
                     promptToUse: refinePrompt,
                     // Lower weight to preserve the (already designed) first-pass image
-                    sw: Math.min(0.34, finalSourceWeight),
+                    sw: Math.min(0.38, finalSourceWeight),
                     st: Math.min(34, finalSteps),
                     cfg: Math.min(6.4, finalCfgScale)
                 });
