@@ -9,16 +9,16 @@ interface MessageCardProps {
 
 export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick }) => {
   const isUser = message.sender === 'user';
+  const isUploadImage = isUser && message.type === 'image';
   
   return (
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-6 px-4 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
       <div 
         className={`
           max-w-[85%] rounded-[20px] p-4 text-[16px] leading-[1.7] shadow-sm
-          ${isUser 
-            ? 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm' 
-            : 'bg-[#E6DED2] text-[#4A453C] rounded-tl-sm'
-          }
+          ${isUser
+            ? (isUploadImage ? 'bg-[#1F4D3A] text-[#EBE8E3] rounded-tr-sm' : 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm')
+            : 'bg-[#E6DED2] text-[#4A453C] rounded-tl-sm'}
         `}
       >
         {message.type === 'image' ? (
@@ -44,7 +44,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
               <button
                 key={i}
                 onClick={() => onOptionClick?.(message, opt)}
-                className="bg-white/50 hover:bg-white text-[#4A453C] border border-black/5 px-3 py-1.5 rounded-full text-xs font-medium transition-all shadow-sm active:scale-95"
+                className="bg-white/60 hover:bg-white text-[#4A453C] border border-black/5 px-4 py-2 rounded-full text-[14px] font-medium transition-all shadow-sm active:scale-95"
               >
                 {opt}
               </button>

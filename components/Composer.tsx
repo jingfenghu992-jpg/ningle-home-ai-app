@@ -42,7 +42,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
   }, [text]);
 
   return (
-    <div className="bg-[#3E3C38] border-t border-black/5 px-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#3E3C38]/90">
+    <div className="bg-[#1F4D3A] border-t border-black/5 px-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#1F4D3A]/90">
       <div className="max-w-md mx-auto flex items-end gap-2">
         <input 
           type="file" 
