@@ -1,5 +1,6 @@
 // Dynamic import handling is now inside the handler to prevent cold start crashes
 // but we keep the file structure clean.
+import { searchKnowledge, shouldUseKnowledge } from '../services/kbFromBlob.js';
 
 export default async function handler(req, res) {
   // Simple Environment Check
@@ -19,6 +20,10 @@ export default async function handler(req, res) {
 
   try {
     const { messages, visionSummary, spaceType } = req.body;
+    const lastUserText =
+      (Array.isArray(messages)
+        ? [...messages].reverse().find(m => m?.role === 'user' && typeof m?.content === 'string')?.content
+        : null) || '';
     
     // Core Persona (Hong Kong Home Design Consultant)
     const CORE_PERSONA = `你係「寧樂家居」嘅資深全屋訂造設計顧問。
@@ -43,8 +48,21 @@ export default async function handler(req, res) {
         visionContext += `以下是視覺分析報告，請必須引用此內容回答用戶問題：\n${visionSummary}\n\n請針對此空間提供 3-4 個具體、可落地的訂造傢俬建議（例如C字櫃、地台床、窗台書枱等），保持簡短精煉，格式適合在手機卡片閱讀。\n`;
     }
 
+    // Knowledge Base Context
+    let kbContext = "";
+    try {
+        if (shouldUseKnowledge(lastUserText)) {
+            const kb = await searchKnowledge(lastUserText);
+            if (kb?.excerpt) {
+                kbContext = `\n\n【內部知識庫（只可根據以下資料回答，避免亂估）】\n${kb.excerpt}\n\n【引用規則】\n- 只要涉及：價錢/報價/套餐、板材五金等級、保養交期、門店地址等公司資料，必須優先引用上面知識庫；\n- 若知識庫冇提及，就引導用戶點右上角「免費跟進」。\n`;
+            }
+        }
+    } catch (e) {
+        console.warn('[Chat API] KB lookup failed:', e?.message || e);
+    }
+
     // Final System Prompt
-    const systemPrompt = `${CORE_PERSONA}${visionContext}`;
+    const systemPrompt = `${CORE_PERSONA}${kbContext}${visionContext}`;
 
     const apiMessages = [
         { role: "system", content: systemPrompt },

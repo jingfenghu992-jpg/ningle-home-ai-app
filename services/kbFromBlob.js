@@ -5,7 +5,11 @@ import mammoth from 'mammoth';
 let kbCache = {};
 let kbIndexLoaded = false;
 
-const KB_PREFIX = 'app知识库/';
+// Blob path prefix for knowledge base documents.
+// Default aligns with current Vercel Blob folder structure:
+// `ningle-temp-images/app知识库/`
+const KB_PREFIX_RAW = process.env.KB_BLOB_PREFIX || 'ningle-temp-images/app知识库/';
+const KB_PREFIX = KB_PREFIX_RAW.endsWith('/') ? KB_PREFIX_RAW : `${KB_PREFIX_RAW}/`;
 
 // Business Keywords for Strict Trigger (Merged from your requirements)
 export const BUSINESS_KEYWORDS = {

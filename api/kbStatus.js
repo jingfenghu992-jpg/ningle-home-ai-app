@@ -1,5 +1,4 @@
 import { list } from '@vercel/blob';
-import { shouldUseKnowledge } from '../services/kbFromBlob.js'; // Just reuse the util for keyword check if helpful
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') {
@@ -17,11 +16,14 @@ export default async function handler(req, res) {
 
     try {
         // Check list files
-        const { blobs } = await list({ prefix: '应用知识库/' });
+        const prefixRaw = process.env.KB_BLOB_PREFIX || 'ningle-temp-images/app知识库/';
+        const prefix = prefixRaw.endsWith('/') ? prefixRaw : `${prefixRaw}/`;
+        const { blobs } = await list({ prefix });
         const docxFiles = blobs.filter(b => b.pathname.endsWith('.docx'));
 
         res.status(200).json({
             ok: true,
+            prefix,
             files: docxFiles.length,
             loaded: docxFiles.length > 0,
             fileNames: docxFiles.map(b => b.pathname.split('/').pop()) // Show names for verification
