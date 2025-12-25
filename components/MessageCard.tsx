@@ -17,7 +17,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
           max-w-[85%] rounded-[20px] p-4 text-[15px] leading-relaxed shadow-sm
           ${isUser 
             ? 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm' 
-            : 'bg-[#F3F0EA] text-[#4A453C] rounded-tl-sm'
+            : 'bg-[#E6DED2] text-[#4A453C] rounded-tl-sm'
           }
         `}
       >
