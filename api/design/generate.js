@@ -1,8 +1,5 @@
-import { put, list } from '@vercel/blob';
-import { createHash } from 'crypto';
-
-// Bump this whenever prompt logic changes, to avoid returning stale cached renders.
-const PROMPT_VERSION = 'v4-render-20251225';
+// NOTE: We intentionally do NOT persist user images/results.
+// This endpoint returns StepFun temporary URLs (or base64 data URLs) only.
 
 export const config = {
     api: {
@@ -23,9 +20,6 @@ export default async function handler(req, res) {
     baseImageBlobUrl,
     size,
     renderIntake,
-    clientId,
-    uploadId,
-    jobId,
     // StepFun image2image params (optional overrides)
     source_weight,
     steps,
@@ -33,55 +27,6 @@ export default async function handler(req, res) {
     seed,
     response_format
   } = req.body;
-
-  const safeClientId = String(clientId || 'anon').slice(0, 80);
-  const safeUploadId = String(uploadId || '').slice(0, 120);
-  const safeJobId = String(jobId || '').slice(0, 120);
-
-  const stableStringify = (obj) => {
-    const seen = new WeakSet();
-    const helper = (v) => {
-      if (v === null || typeof v !== 'object') return v;
-      if (seen.has(v)) return '[Circular]';
-      seen.add(v);
-      if (Array.isArray(v)) return v.map(helper);
-      const out = {};
-      for (const k of Object.keys(v).sort()) out[k] = helper(v[k]);
-      return out;
-    };
-    return JSON.stringify(helper(obj));
-  };
-
-  const normalizeUrlForKey = (u) => {
-    const s = String(u || '');
-    if (s.startsWith('data:')) return `data:${createHash('sha1').update(s).digest('hex')}`;
-    try {
-      const url = new URL(s);
-      return `${url.origin}${url.pathname}`;
-    } catch {
-      return s.slice(0, 512);
-    }
-  };
-
-  const hashKey = (s) => createHash('sha256').update(String(s)).digest('hex');
-
-  const getLatestByExactPath = async (pathname) => {
-    try {
-      const result = await list({ prefix: pathname, limit: 10 });
-      const items = (result?.blobs || []).filter(b => b.pathname === pathname);
-      if (!items.length) return null;
-      items.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
-      return items[0];
-    } catch {
-      return null;
-    }
-  };
-
-  const readJsonFromUrl = async (url) => {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    try { return await r.json(); } catch { return null; }
-  };
 
   const allowedSizes = new Set([
     "256x256", "512x512", "768x768", "1024x1024",
@@ -132,69 +77,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // --- Job idempotency + cache (for large-scale public usage) ---
-    const cacheKeyPayload = stableStringify({
-      promptVersion: PROMPT_VERSION,
-      base: normalizeUrlForKey(baseImageBlobUrl),
-      size: String(size || ''),
-      renderIntake: renderIntake || null,
-      source_weight,
-      steps,
-      cfg_scale,
-      seed
-    });
-    const cacheKey = hashKey(cacheKeyPayload);
-    const cachePath = `ningle-cache/${cacheKey}.json`;
-
-    // 1) If this exact jobId was already completed, return it.
-    if (safeClientId && safeJobId) {
-      const jobPath = `ningle-jobs/${safeClientId}/${safeJobId}.json`;
-      const jobBlob = await getLatestByExactPath(jobPath);
-      if (jobBlob?.url) {
-        const job = await readJsonFromUrl(jobBlob.url);
-        if (job?.status === 'done' && job?.resultBlobUrl) {
-          res.status(200).json({ ok: true, resultBlobUrl: job.resultBlobUrl, debug: { ...(job.debug || {}), jobId: safeJobId, cacheHit: true } });
-          return;
-        }
-        if (job?.status === 'running') {
-          const startedAt = Number(job.startedAt || 0);
-          if (startedAt && Date.now() - startedAt < 3 * 60 * 1000) {
-            res.status(200).json({ ok: false, errorCode: 'IN_PROGRESS', message: 'Job is running', jobId: safeJobId });
-            return;
-          }
-        }
-      }
-
-      // Mark job running (best-effort)
-      try {
-        const running = {
-          status: 'running',
-          startedAt: Date.now(),
-          clientId: safeClientId,
-          uploadId: safeUploadId || undefined,
-          cacheKey
-        };
-        await put(jobPath, Buffer.from(JSON.stringify(running)), { access: 'public', contentType: 'application/json' });
-      } catch (e) {
-        console.warn('[Design Gen] Failed to write running job record:', e?.message || e);
-      }
-    }
-
-    // 2) Content-addressed cache: if same image+intake already generated, return instantly.
-    const cacheBlob = await getLatestByExactPath(cachePath);
-    if (cacheBlob?.url) {
-      const cached = await readJsonFromUrl(cacheBlob.url);
-      if (cached?.resultBlobUrl) {
-        res.status(200).json({
-          ok: true,
-          resultBlobUrl: cached.resultBlobUrl,
-          isTemporaryUrl: !!cached.isTemporaryUrl,
-          debug: { ...(cached.debug || {}), cacheHit: true, jobId: safeJobId || undefined }
-        });
-        return;
-      }
-    }
-
     // Construct Prompt Server-Side if renderIntake is provided
     let finalPrompt = prompt;
     if (renderIntake) {
@@ -585,27 +467,8 @@ export default async function handler(req, res) {
         }
     }
 
-    // Try persistence (Non-fatal)
-    let finalBlobUrl = null;
-    try {
-        // Persist whenever we have a URL; if only base64 exists, skip persistence.
-        if (process.env.BLOB_READ_WRITE_TOKEN && resultUrl) {
-            const imgRes = await fetch(resultUrl);
-            if (imgRes.ok) {
-                const resultPath = safeClientId
-                  ? `ningle-results/${safeClientId}/${Date.now()}-${cacheKey.slice(0, 8)}.jpg`
-                  : `ningle-results/${Date.now()}-${cacheKey.slice(0, 8)}.jpg`;
-                const blob = await put(resultPath, imgRes.body, { access: 'public' });
-                finalBlobUrl = blob.url;
-            }
-        }
-    } catch (e) {
-        console.warn('Blob persistence failed:', e);
-    }
-
     const finalResult = (() => {
         if (finalResponseFormat === 'url') {
-            if (finalBlobUrl) return finalBlobUrl;
             if (resultUrl) return resultUrl;
             // fallback: return data url
             return `data:image/jpeg;base64,${resultImageB64}`;
@@ -614,11 +477,10 @@ export default async function handler(req, res) {
         const mime = fetchedB64?.mime || 'image/jpeg';
         return `data:${mime};base64,${resultImageB64}`;
     })();
-
-    const responseBody = {
+    res.status(200).json({
       ok: true,
       resultBlobUrl: finalResult,
-      isTemporaryUrl: finalResponseFormat === 'url' ? !finalBlobUrl : true,
+      isTemporaryUrl: finalResponseFormat === 'url',
       debug: {
         usedFallback,
         size: finalSize,
@@ -626,61 +488,12 @@ export default async function handler(req, res) {
         steps: finalSteps,
         cfg_scale: finalCfgScale,
         seed: resultSeed,
-        finish_reason: finishReason,
-        cacheKey,
-        jobId: safeJobId || undefined
+        finish_reason: finishReason
       }
-    };
-
-    // Write cache + finalize job (best-effort)
-    try {
-      await put(cachePath, Buffer.from(JSON.stringify({
-        resultBlobUrl: finalResult,
-        isTemporaryUrl: responseBody.isTemporaryUrl,
-        debug: responseBody.debug,
-        createdAt: Date.now()
-      })), { access: 'public', contentType: 'application/json' });
-    } catch (e) {
-      console.warn('[Design Gen] Failed to write cache:', e?.message || e);
-    }
-
-    if (safeClientId && safeJobId) {
-      try {
-        const jobPath = `ningle-jobs/${safeClientId}/${safeJobId}.json`;
-        await put(jobPath, Buffer.from(JSON.stringify({
-          status: 'done',
-          startedAt: Date.now(),
-          finishedAt: Date.now(),
-          clientId: safeClientId,
-          uploadId: safeUploadId || undefined,
-          cacheKey,
-          resultBlobUrl: finalResult,
-          debug: responseBody.debug
-        })), { access: 'public', contentType: 'application/json' });
-      } catch (e) {
-        console.warn('[Design Gen] Failed to write done job record:', e?.message || e);
-      }
-    }
-
-    res.status(200).json(responseBody);
+    });
 
   } catch (error) {
     console.error('[Design Gen] Error:', error);
-    // Mark job failed (best-effort)
-    try {
-      if (safeClientId && safeJobId && process.env.BLOB_READ_WRITE_TOKEN) {
-        const jobPath = `ningle-jobs/${safeClientId}/${safeJobId}.json`;
-        await put(jobPath, Buffer.from(JSON.stringify({
-          status: 'failed',
-          finishedAt: Date.now(),
-          clientId: safeClientId,
-          uploadId: safeUploadId || undefined,
-          message: error.message || 'Generation failed'
-        })), { access: 'public', contentType: 'application/json' });
-      }
-    } catch (e) {
-      console.warn('[Design Gen] Failed to write failed job record:', e?.message || e);
-    }
     res.status(500).json({
       ok: false,
       message: error.message

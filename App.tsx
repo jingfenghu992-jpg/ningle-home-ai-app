@@ -7,7 +7,7 @@ import { Composer } from './components/Composer';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateDesignImage, uploadImage } from './services/generateClient';
+import { generateDesignImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
@@ -18,7 +18,6 @@ const App: React.FC = () => {
   
   const [uploads, setUploads] = useState<Record<string, {
     dataUrl: string;
-    blobUrl?: string;
     width?: number;
     height?: number;
     spaceType?: string;
@@ -136,7 +135,6 @@ const App: React.FC = () => {
 
       const visionRes = await analyzeImage({
         imageDataUrl: active.dataUrl,
-        imageUrl: active.blobUrl,
         mode: 'consultant',
         spaceType: spaceTypeText,
         clientId
@@ -168,8 +166,8 @@ const App: React.FC = () => {
   };
 
   const handleUpload = (file: File) => {
-    // Smaller upload improves img2img stability and upload speed
-    compressImage(file, 1280, 0.78).then(blob => {
+    // No Blob storage: keep payload smaller for stability (base64 only, in-session)
+    compressImage(file, 1024, 0.75).then(blob => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             const dataUrl = e.target?.result as string;
@@ -180,7 +178,6 @@ const App: React.FC = () => {
                 ...prev,
                 [uploadId]: {
                     dataUrl,
-                    blobUrl: prev[uploadId]?.blobUrl || ''
                 }
             }));
 
@@ -197,9 +194,8 @@ const App: React.FC = () => {
                     setUploads(prev => ({
                         ...prev,
                         [uploadId]: {
-                            ...(prev[uploadId] || { dataUrl, blobUrl: '' }),
+                            ...(prev[uploadId] || { dataUrl }),
                             dataUrl,
-                            blobUrl: prev[uploadId]?.blobUrl || '',
                             width: img.width,
                             height: img.height
                         }
@@ -239,9 +235,8 @@ const App: React.FC = () => {
                     setUploads(prev => ({
                         ...prev,
                         [uploadId]: {
-                            ...(prev[uploadId] || { dataUrl, blobUrl: '' }),
+                            ...(prev[uploadId] || { dataUrl }),
                             dataUrl,
-                            blobUrl: prev[uploadId]?.blobUrl || ''
                         }
                     }));
                     setAppState('WAITING_FOR_SPACE');
@@ -252,31 +247,13 @@ const App: React.FC = () => {
                 setUploads(prev => ({
                     ...prev,
                     [uploadId]: {
-                        ...(prev[uploadId] || { dataUrl, blobUrl: '' }),
+                        ...(prev[uploadId] || { dataUrl }),
                         dataUrl,
-                        blobUrl: prev[uploadId]?.blobUrl || ''
                     }
                 }));
                 setAppState('WAITING_FOR_SPACE');
                 addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客厅/餐厅/卧室/厨房/玄关/书房/其他）");
             }
-            
-            // Upload in background
-            try {
-                const compressedFile = new File([blob], file.name, { type: 'image/jpeg' });
-                const upRes = await uploadImage(compressedFile, { clientId, uploadId });
-                if (upRes?.url) {
-                    // Always upsert; don't drop due to race
-                    setUploads(prev => ({
-                        ...prev,
-                        [uploadId]: {
-                            ...(prev[uploadId] || { dataUrl, blobUrl: '' }),
-                            dataUrl,
-                            blobUrl: upRes.url
-                        }
-                    }));
-                }
-            } catch (err) { console.error(err); }
         };
         reader.readAsDataURL(blob);
     });
@@ -591,7 +568,7 @@ const App: React.FC = () => {
               const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
               setAppState('GENERATING');
 
-              const baseImage = u.blobUrl || u.dataUrl;
+              const baseImage = u.dataUrl;
               // Tune parameters by intensity (StepFun doc: smaller source_weight => closer to source)
               const intensityParams = (() => {
                   // We need visible, "real render" changes: slightly stronger defaults.
