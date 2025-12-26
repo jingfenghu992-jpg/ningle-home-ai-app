@@ -6,6 +6,7 @@ import visionHandler from './api/vision'
 import generateHandler from './api/generate'
 import designGenerateHandler from './api/design/generate'
 import designQaHandler from './api/design/qa'
+import designInspireHandler from './api/design/inspire'
 import kbStatusHandler from './api/kbStatus'
 import visionHealthHandler from './api/vision-health'
 import envCheckHandler from './api/env-check'
@@ -28,6 +29,7 @@ const apiMockPlugin = (): Plugin => ({
       if (pathname === '/api/generate') return generateHandler(req, res)
       if (pathname === '/api/design/generate') return designGenerateHandler(req, res)
       if (pathname === '/api/design/qa') return designQaHandler(req, res)
+      if (pathname === '/api/design/inspire') return designInspireHandler(req, res)
       if (pathname === '/api/kb-status') return kbStatusHandler(req, res)
       if (pathname === '/api/env-check') return envCheckHandler(req, res)
 

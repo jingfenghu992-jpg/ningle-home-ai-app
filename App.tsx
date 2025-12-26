@@ -7,7 +7,7 @@ import { Composer } from './components/Composer';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateDesignImage, qaDesignImage } from './services/generateClient';
+import { generateDesignImage, generateInspireImage, qaDesignImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
@@ -569,6 +569,33 @@ const App: React.FC = () => {
           if (revisionText) {
               payload.baseImageBlobUrl = lastGeneratedImage || undefined;
               payload.renderIntake = { requirements: `Modification: ${revisionText}` } as any; 
+          }
+
+          // Fire a fast text-to-image inspiration render in parallel (does NOT block i2i).
+          // This is a style reference only (not tied to user's exact structure).
+          if (!revisionText) {
+            (async () => {
+              try {
+                const hintId = addLoadingToast("我順便幫你出一張「風格靈感圖」（唔一定同你間房結構一樣），等你唔使乾等～", { loadingType: 'generating', uploadId: intakeData?.uploadId });
+                const insp = await generateInspireImage({
+                  renderIntake: intakeData || {},
+                  size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
+                  response_format: 'url',
+                  steps: 28,
+                  cfg_scale: 6.6,
+                });
+                stopLoadingToast(hintId);
+                if (insp.ok && insp.resultUrl) {
+                  setMessages(prev => [
+                    ...prev,
+                    { id: `${Date.now()}-inspire-img`, type: 'image', content: insp.resultUrl!, sender: 'ai', timestamp: Date.now() }
+                  ]);
+                  await typeOutAI("【風格靈感圖】\n- 呢張係方向參考圖（唔一定同你間房門窗結構一樣）\n- 真正「保留你間房結構」嘅效果圖我仍然繼續生成緊～");
+                }
+              } catch {
+                // ignore inspiration failure
+              }
+            })();
           }
 
           const res = await generateDesignImage(payload as any);

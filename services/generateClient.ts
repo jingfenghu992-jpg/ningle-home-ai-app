@@ -19,6 +19,14 @@ export interface DesignQaResponse {
   message?: string;
 }
 
+export interface InspireResponse {
+  ok: boolean;
+  resultUrl?: string;
+  debug?: any;
+  message?: string;
+  errorCode?: string;
+}
+
 export async function uploadImage(
   file: File | Blob,
   opts?: { clientId?: string; uploadId?: string }
@@ -87,6 +95,25 @@ export async function qaDesignImage(params: {
       ok: false,
       message: error.message || 'QA failed',
     };
+  }
+}
+
+export async function generateInspireImage(params: {
+  renderIntake: any;
+  size?: string;
+  response_format?: 'b64_json' | 'url';
+  steps?: number;
+  cfg_scale?: number;
+  seed?: number;
+}): Promise<InspireResponse> {
+  try {
+    return await fetchJSON<InspireResponse>('/api/design/inspire', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  } catch (error: any) {
+    console.error('[Inspire Client] Error:', error);
+    return { ok: false, message: error.message || 'Inspiration generation failed', errorCode: error.code || 'NETWORK_ERROR' };
   }
 }
 
