@@ -348,6 +348,102 @@ const App: React.FC = () => {
   // --- HK-friendly i2i helpers (non-sensitive, photorealistic, keep structure) ---
   const normalizeSpaceKey = (space?: string) => String(space || '').trim();
 
+  const getPaletteOptionsForStyle = (style?: string) => {
+      const s = String(style || '').trim();
+      if (s.includes('奶油')) {
+          return ["奶油白+浅木", "奶油白+暖灰", "奶油白+浅胡桃"];
+      }
+      if (s.includes('日式') || s.includes('木')) {
+          return ["浅木+米白", "原木+暖白", "胡桃木+米白"];
+      }
+      if (s.includes('輕奢') || s.includes('轻奢')) {
+          return ["胡桃木+灰白（香槟金点缀）", "深木+暖白（黑钛点缀）", "纯白+浅灰（香槟金点缀）"];
+      }
+      // 现代简约 / 默认
+      return ["浅木+米白", "胡桃木+灰白", "纯白+浅灰", "深木+暖白"];
+  };
+
+  const inferBedTypeFromLayout = (layoutText?: string) => {
+      const t = String(layoutText || '');
+      if (!t) return '';
+      if (t.includes('榻榻米')) return '榻榻米';
+      if (t.includes('地台')) return '地台床';
+      if (t.includes('活动床') || t.includes('活動床')) return '活动床/隐形床';
+      if (t.includes('隐形床') || t.includes('隱形床') || t.includes('Murphy')) return '活动床/隐形床';
+      if (t.includes('标准') || t.includes('標準')) return '标准双人床';
+      return '';
+  };
+
+  const getLayoutOptionsForSpace = (space?: string) => {
+      const s = normalizeSpaceKey(space);
+      const isLivingDining = s.includes('客餐');
+      const isKitchen = s.includes('厨房') || s.includes('廚') || s.includes('厨');
+      const isEntrance = s.includes('入户') || s.includes('玄') || s.includes('關') || s.includes('关');
+      const isCorridor = s.includes('走廊') || s.includes('通道');
+      const isBathroom = s.includes('卫') || s.includes('衛') || s.includes('卫生间') || s.includes('洗手') || s.includes('厕所') || s.includes('廁');
+      const isMasterBed = s.includes('大睡房') || s.includes('主人房') || s.includes('主卧');
+      const isSmallBed = s.includes('小睡房') || s.includes('次卧') || s.includes('儿童房') || s.includes('眼镜房');
+      const isBedroom = isMasterBed || isSmallBed || s.includes('卧') || s.includes('睡') || s.includes('房');
+
+      if (isLivingDining) {
+          return [
+              "客餐厅：电视墙在对窗墙｜沙发对电视｜餐桌靠窗侧｜餐边柜靠近餐桌",
+              "客餐厅：电视墙在长墙｜沙发L型靠墙｜餐桌靠入户侧｜餐边高柜靠近厨房/过道",
+              "客餐厅：餐区主导（餐桌居中）｜餐边高柜到顶｜电视墙做薄柜不压迫",
+              "客餐厅：电视墙+展示酒柜一体｜餐边柜做电器高柜（咖啡角）｜动线留通道"
+          ];
+      }
+      if (isKitchen) {
+          return [
+              "厨房：一字型（水槽-备餐-炉头）｜吊柜到顶＋底灯",
+              "厨房：L型转角（水槽与炉头分开）｜转角五金＋吊柜到顶",
+              "厨房：U型（如空间允许）｜台面最大化＋高柜电器位"
+          ];
+      }
+      if (isBathroom) {
+          return [
+              "卫生间：干湿分离｜淋浴屏靠里｜浴室柜＋镜柜在门口侧",
+              "卫生间：一字型布局｜浴室柜对门｜淋浴区靠窗/靠里｜壁龛收纳",
+              "卫生间：浴室柜外侧更干爽（如可行）｜镜前灯＋防滑砖"
+          ];
+      }
+      if (isEntrance) {
+          return [
+              "入户：进门侧到顶鞋柜＋换鞋凳｜全身镜靠近出门动线｜杂物位内收",
+              "入户：鞋柜到顶＋中段开放格（钥匙/包）｜底部留空放常穿鞋",
+              "入户：薄鞋柜＋高柜清洁位（吸尘器/拖把）｜保留净通道"
+          ];
+      }
+      if (isCorridor) {
+          return [
+              "走廊：单侧25–30cm浅柜到顶｜不压迫｜端头做展示格＋灯带",
+              "走廊：墙面同色隐形门＋局部壁龛｜线性灯/洗墙光拉长空间",
+              "走廊：清洁高柜＋杂物浅柜组合｜净通道优先"
+          ];
+      }
+      if (isBedroom) {
+          if (isSmallBed) {
+              return [
+                  "小睡房：地台床＋到顶衣柜（薄柜）｜窗边转角书桌一体（省位）",
+                  "小睡房：榻榻米（升降/抽屉）＋衣柜到顶｜书桌靠窗不挡窗帘",
+                  "小睡房：活动床/隐形床＋衣柜到顶｜白天留出工作区/通道",
+                  "小睡房：标准床靠墙｜衣柜做趟门｜床尾留净通道"
+              ];
+          }
+          // 大睡房/通用睡房
+          return [
+              "睡房：床头靠实墙｜两侧留床头位｜到顶衣柜在侧墙",
+              "睡房：床靠窗侧（避开窗帘轨）｜衣柜做趟门不占通道",
+              "睡房：衣柜＋梳妆/书桌一体（窗边）｜床头背景＋壁灯",
+          ];
+      }
+      // default fallback
+      return [
+          "布置：主功能靠墙摆放｜通道清晰｜柜体到顶收纳＋分层灯光",
+          "布置：收纳优先（到顶高柜）｜留净通道｜局部展示格+灯带"
+      ];
+  };
+
   const getSuiteOptionsForSpace = (space?: string) => {
       const s = normalizeSpaceKey(space);
       const isLivingDining = s.includes('客餐') || (s.includes('客') && s.includes('餐'));
@@ -708,120 +804,145 @@ const App: React.FC = () => {
 
           // Prefer public URL; silently fallback to base64 if upload URL isn't ready/failed.
 
-          // Start clickable intake flow in chat
-          await typeOutAI("想做咩風格先？你可以先揀一個～", {
-              options: ["現代簡約", "奶油風", "日式木系", "輕奢"],
-              meta: { kind: 'render_flow', stage: 'style', uploadId }
+          // Start clickable intake flow in chat (designer-first workflow: layout -> storage/cabinet -> style -> palette -> lighting -> soft)
+          const space = u.spaceType || '';
+          await typeOutAI("先定「布置/动线」先（呢步最影响落地同出图准确）\n你想走边个摆位方案？", {
+              options: getLayoutOptionsForSpace(space),
+              meta: { kind: 'render_flow', stage: 'layout', uploadId }
           });
           return;
       }
 
       // Render flow steps (bound to the analysis/upload)
       if (message.meta?.kind === 'render_flow' && uploadId && u) {
-          if (message.meta.stage === 'style') {
+          // 1) Layout first (stores into focus). Bed type is part of layout; infer it if mentioned.
+          if (message.meta.stage === 'layout') {
+              const inferredBed = inferBedTypeFromLayout(opt);
               setUploads(prev => prev[uploadId] ? ({
                   ...prev,
-                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), style: opt } }
+                  [uploadId]: {
+                      ...prev[uploadId],
+                      render: {
+                          ...(prev[uploadId].render || {}),
+                          focus: opt,
+                          ...(inferredBed ? { bedType: inferredBed } : {})
+                      }
+                  }
               }) : prev);
-              await typeOutAI("色系想走邊種？", {
-                  options: ["淺木+米白", "胡桃木+灰白", "純白+淺灰", "深木+暖白"],
-                  meta: { kind: 'render_flow', stage: 'color', uploadId }
-              });
-              return;
-          }
 
-          if (message.meta.stage === 'color') {
-              setUploads(prev => prev[uploadId] ? ({
-                  ...prev,
-                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), color: opt } }
-              }) : prev);
               const space = u.spaceType || '';
-              const focusOptions = getSuiteOptionsForSpace(space);
+              const storageOptions = (() => {
+                  const s = normalizeSpaceKey(space);
+                  if (s.includes('厨房')) return ["台面整洁收纳（隐藏小家电）", "高柜电器位/储物高柜", "转角五金优化"];
+                  if (s.includes('卫生间')) return ["隐藏收纳为主", "镜柜+壁龛（更好用）", "毛巾/清洁高柜"];
+                  if (s.includes('走廊') || s.includes('入户')) return ["隐藏收纳为主", "隐藏+局部展示（少量）"];
+                  return ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"];
+              })();
 
-              await typeOutAI("呢張圖你最想做邊套方案（重點做櫃體＋整體質感）？", {
-                  options: focusOptions,
-                  meta: { kind: 'render_flow', stage: 'focus', uploadId }
-              });
-              return;
-          }
-
-          if (message.meta.stage === 'focus') {
-              setUploads(prev => prev[uploadId] ? ({
-                  ...prev,
-                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), focus: opt } }
-              }) : prev);
-
-              // Bedroom needs one extra non-sensitive choice to avoid weird bed outputs.
-              if (isBedroomLike(u.spaceType || '', opt)) {
-                  await typeOutAI("睡房想做咩床型？（會影響出圖同擺位）", {
-                      options: ["標準雙人床", "地台床", "榻榻米", "活動床/隱形床"],
-                      meta: { kind: 'render_flow', stage: 'bed', uploadId }
-                  });
-              } else {
-                  await typeOutAI("你想收納取向係邊種？", {
-                      options: ["隱藏收納為主", "收納+展示", "收納+書枱/工作位"],
-                      meta: { kind: 'render_flow', stage: 'storage', uploadId }
-                  });
-              }
-              return;
-          }
-
-          if (message.meta.stage === 'bed') {
-              setUploads(prev => prev[uploadId] ? ({
-                  ...prev,
-                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), bedType: opt } }
-              }) : prev);
-
-              await typeOutAI("你想收納取向係邊種？", {
-                  options: ["隱藏收納為主", "收納+展示", "收納+書枱/工作位"],
+              await typeOutAI("收纳取向你想偏边种？（会影响柜体比例与细节）", {
+                  options: storageOptions,
                   meta: { kind: 'render_flow', stage: 'storage', uploadId }
               });
               return;
           }
 
+          // Backward compatibility: if old stage 'focus' is clicked from history, treat it as layout.
+          if (message.meta.stage === 'focus') {
+              const inferredBed = inferBedTypeFromLayout(opt);
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), focus: opt, ...(inferredBed ? { bedType: inferredBed } : {}) } }
+              }) : prev);
+              await typeOutAI("收纳取向你想偏边种？（会影响柜体比例与细节）", {
+                  options: ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"],
+                  meta: { kind: 'render_flow', stage: 'storage', uploadId }
+              });
+              return;
+          }
+
+          // 2) Storage/cabinet direction
           if (message.meta.stage === 'storage') {
               setUploads(prev => prev[uploadId] ? ({
                   ...prev,
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), storage: opt } }
               }) : prev);
+              await typeOutAI("风格想走边种？（会决定线条语言与材质）", {
+                  options: ["現代簡約", "奶油風", "日式木系", "輕奢"],
+                  meta: { kind: 'render_flow', stage: 'style', uploadId }
+              });
+              return;
+          }
 
-              await typeOutAI("想要咩感覺／氛圍？（影響燈光同質感）", {
+          // 3) Style -> palette (color board depends on style)
+          if (message.meta.stage === 'style') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), style: opt } }
+              }) : prev);
+              await typeOutAI("色系/色板想走边套？（会跟风格联动）", {
+                  options: getPaletteOptionsForStyle(opt),
+                  meta: { kind: 'render_flow', stage: 'color', uploadId }
+              });
+              return;
+          }
+
+          // 4) Palette -> lighting vibe
+          if (message.meta.stage === 'color') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), color: opt } }
+              }) : prev);
+              await typeOutAI("想要咩燈光氛圍？（會直接影響效果圖質感）", {
                   options: ["明亮通透", "溫馨暖光", "高級氛圍（酒店感）"],
                   meta: { kind: 'render_flow', stage: 'vibe', uploadId }
               });
               return;
           }
 
+          // 5) Lighting vibe -> soft furnishing density
           if (message.meta.stage === 'vibe') {
               setUploads(prev => prev[uploadId] ? ({
                   ...prev,
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), vibe: opt } }
               }) : prev);
-
-              await typeOutAI("軟裝想要幾豐富？（越豐富越有氣氛）", {
+              await typeOutAI("软装丰富度想要几多？（越丰富越有气氛，但也更容易显乱）", {
                   options: ["克制簡潔（更清爽）", "標準搭配（推薦）", "豐富氛圍（更有層次）"],
                   meta: { kind: 'render_flow', stage: 'decor', uploadId }
               });
               return;
           }
 
+          // 6) Soft -> confirm
           if (message.meta.stage === 'decor') {
               setUploads(prev => prev[uploadId] ? ({
                   ...prev,
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), decor: opt } }
               }) : prev);
 
-              const style = u.render?.style || '現代簡約';
-              const color = u.render?.color || '淺木+米白';
-              const focus = u.render?.focus || '全屋統一質感（牆地頂＋燈光＋軟裝）';
-              const storage = u.render?.storage || '隱藏收納為主';
-              const bedType = (u.render as any)?.bedType || '';
-              const vibe = (u.render as any)?.vibe || '溫馨暖光';
-              const decor = (u.render as any)?.decor || '標準搭配（推薦）';
+              const r = (u.render as any) || {};
+              const style = r.style || '現代簡約';
+              const color = r.color || '淺木+米白';
+              const layout = r.focus || '布置方案（按你选择）';
+              const storage = r.storage || '隐藏收纳为主';
+              const vibe = r.vibe || '溫馨暖光';
+              const decor = r.decor || opt;
               await typeOutAI(
-                `好，我幫你用「${style}｜${color}｜${focus}${bedType ? `｜${bedType}` : ''}｜${storage}｜${vibe}｜${decor}」出一張效果圖（保留原本門窗/梁柱/冷氣機位）。準備好就按下面開始生成～`,
+                `好，我幫你用「布置：${layout}｜收纳：${storage}｜风格：${style}｜色板：${color}｜灯光：${vibe}｜软装：${decor}」出一张效果图（保留原本门窗/梁柱/冷气机位）。\n准备好就按下面开始生成～`,
                 { options: ["開始生成效果圖"], meta: { kind: 'render_flow', stage: 'confirm', uploadId } }
               );
+              return;
+          }
+
+          // Backward compatibility: old 'bed' stage just maps into storage step
+          if (message.meta.stage === 'bed') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), bedType: opt } }
+              }) : prev);
+              await typeOutAI("收纳取向你想偏边种？（会影响柜体比例与细节）", {
+                  options: ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"],
+                  meta: { kind: 'render_flow', stage: 'storage', uploadId }
+              });
               return;
           }
 

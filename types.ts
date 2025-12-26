@@ -13,7 +13,7 @@ export interface Message {
   meta?: {
     uploadId?: string; // Bind actions to a specific uploaded image
     kind?: 'upload' | 'analysis' | 'generated' | 'render_flow' | 'space_pick';
-    stage?: 'style' | 'color' | 'focus' | 'bed' | 'storage' | 'vibe' | 'decor' | 'priority' | 'intensity' | 'confirm';
+    stage?: 'layout' | 'style' | 'color' | 'focus' | 'bed' | 'storage' | 'vibe' | 'decor' | 'priority' | 'intensity' | 'confirm';
     loading?: boolean; // show spinner while executing
     loadingType?: 'analyzing' | 'generating' | 'classifying';
   };
