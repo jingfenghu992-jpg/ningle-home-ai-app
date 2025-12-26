@@ -989,9 +989,23 @@ const App: React.FC = () => {
               setAppState('GENERATING');
 
               const baseImage = u.dataUrl;
-              // Reliability-first defaults (Vercel 60s limit): fewer steps to avoid 504.
-              // StepFun doc: smaller source_weight => closer to source (less deformation)
-              const genParams = { source_weight: 0.44, cfg_scale: 6.4, steps: 32 };
+              // Default goal: "明显改造、像设计效果图" (stronger than previous conservative preset).
+              // StepFun doc: smaller source_weight => closer to source (less deformation).
+              const inferIntensityPreset = (t?: string) => {
+                const s = String(t || '').trim();
+                if (!s) return 'recommended';
+                if (s.includes('輕') || s.includes('轻') || s.includes('保留')) return 'light';
+                if (s.includes('大')) return 'bold';
+                if (s.includes('明顯') || s.includes('明显') || s.includes('推薦') || s.includes('推荐')) return 'recommended';
+                return 'recommended';
+              };
+              const preset = inferIntensityPreset((u.render as any)?.intensity);
+              const genParams =
+                preset === 'light'
+                  ? { source_weight: 0.45, cfg_scale: 6.6, steps: 34 }
+                  : preset === 'bold'
+                    ? { source_weight: 0.82, cfg_scale: 7.6, steps: 46 }
+                    : { source_weight: 0.70, cfg_scale: 7.2, steps: 42 };
 
               const pickConstraints = (summary?: string) => {
                   if (!summary) return '';
@@ -1075,6 +1089,8 @@ const App: React.FC = () => {
                   storage,
                   vibe,
                   decor,
+                  // intensity influences i2i defaults on server too; default to recommended if not collected in the new flow
+                  intensity: (u.render as any)?.intensity || '明顯改造（推薦）',
                   requirements,
                   // Pass vision summary for layout constraints (no persistence; used for this generation only)
                   visionSummary: u.visionSummary,

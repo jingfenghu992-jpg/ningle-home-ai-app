@@ -40,27 +40,54 @@ export default async function handler(req, res) {
   ]);
   const finalSize = (typeof size === 'string' && allowedSizes.has(size)) ? size : "1024x1024";
 
-  // StepFun doc: smaller source_weight => closer to source (less deformation)
+  // StepFun doc: smaller source_weight => closer to source (less deformation).
+  // Our product goal: "明显改造、像设计效果图" by default, while still keeping structure constraints.
+  // So default source_weight should be higher than the previous conservative preset.
+  const inferIntensityPreset = (intensityText) => {
+    const t = String(intensityText || '').trim();
+    // UI options seen in App.tsx:
+    // - 保留結構（輕改）
+    // - 明顯改造（推薦）
+    // - 大改造（更大變化）
+    if (!t) return 'recommended';
+    if (t.includes('輕') || t.includes('轻') || t.includes('保留')) return 'light';
+    if (t.includes('大')) return 'bold';
+    if (t.includes('明顯') || t.includes('明显') || t.includes('推薦') || t.includes('推荐')) return 'recommended';
+    return 'recommended';
+  };
+
+  const intensityPreset = inferIntensityPreset(renderIntake?.intensity);
+
+  const defaultI2I = (() => {
+    if (intensityPreset === 'light') {
+      return { sw: 0.45, st: 34, cfg: 6.6 };
+    }
+    if (intensityPreset === 'bold') {
+      return { sw: 0.82, st: 46, cfg: 7.6 };
+    }
+    // recommended (明显改造)
+    return { sw: 0.70, st: 42, cfg: 7.2 };
+  })();
+
   const finalSourceWeight =
     typeof source_weight === 'number' && source_weight > 0 && source_weight <= 1
       ? source_weight
-      : 0.4;
+      : defaultI2I.sw;
 
-  // IMPORTANT: Vercel maxDuration is 60s (see vercel.json).
-  // Keep i2i fast and reliable: clamp steps/cfg to avoid 504 timeouts.
+  // Keep i2i stable: clamp steps/cfg to avoid runaway latency.
   const requestedSteps = Number.isInteger(steps) ? steps : undefined;
   const requestedCfg = (typeof cfg_scale === 'number') ? cfg_scale : undefined;
 
-  // Default to a faster preset. 32 steps is usually sufficient for "proposal render" look.
+  // Default to a "proposal render" preset (more designed & photoreal than the previous conservative preset).
   const finalSteps =
     typeof requestedSteps === 'number' && requestedSteps >= 1
-      ? Math.min(Math.max(requestedSteps, 1), 36)
-      : 32;
+      ? Math.min(Math.max(requestedSteps, 1), 50)
+      : Math.min(Math.max(defaultI2I.st, 1), 50);
 
   const finalCfgScale =
     typeof requestedCfg === 'number' && requestedCfg >= 1
-      ? Math.min(Math.max(requestedCfg, 1), 6.8)
-      : 6.4;
+      ? Math.min(Math.max(requestedCfg, 1), 8.5)
+      : Math.min(Math.max(defaultI2I.cfg, 1), 8.5);
 
   const finalSeed =
     Number.isInteger(seed) && seed > 0
@@ -633,55 +660,46 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         const spaceKindFallback = inferSpaceKind(space, focus, requirements, renderIntake?.bedType);
         const lightingScript = getLightingScriptEn({ spaceKind: spaceKindFallback, vibe });
 
-        // Hard constraints for HK apartment + balcony cases
+        // Keep prompt within StepFun's 1024 chars.
+        // Prioritize user selections + executable layout/cabinet instructions first, THEN constraints.
         const hardRules = [
-            'Photorealistic high-end interior design rendering, V-Ray/Corona render style, magazine quality, beautiful and finished.',
-            'This must look like a real interior design proposal render, NOT an empty room.',
-            'Hong Kong apartment practicality, built-in cabinetry is the main change.',
-            'INTERIOR ONLY: do NOT redesign the balcony or outdoor view; keep balcony/exterior as background unchanged.',
-            'Do NOT add balcony furniture; do NOT change balcony floor/walls/railings/exterior facade.',
-            'Keep the exact room structure and perspective: do NOT move windows/doors/beams/columns; keep camera viewpoint.',
-            'Do NOT generate office grid ceiling / mineral fiber ceiling tiles; use gypsum board ceiling with slim cove lighting instead.',
-            'Bedroom bed must be residential; avoid hospital bed / medical rails.',
-            'Do NOT leave bare concrete floor or unfinished walls; fully finish the interior.',
+            'Photorealistic NEW interior design proposal render, V-Ray/Corona style, magazine quality (not a site photo).',
+            'Keep exact structure & camera perspective; do NOT move windows/doors/beams/columns; keep straight lines (no warping/fisheye).',
+            'INTERIOR ONLY: do NOT change balcony/outdoor view; keep exterior as background unchanged.',
+            'No office grid ceiling; use slim gypsum ceiling with cove lighting + downlights.',
+            'Must look fully finished (ceiling + walls + flooring + skirting + curtains as applicable).',
         ].join(' ');
 
         const mustHave = [
-            'Must include: finished flooring (engineered wood or large-format porcelain tiles with skirting), finished wall surfaces, and a proper ceiling design (gypsum board flat ceiling / slim cove lighting + downlights).',
-            'Must include: built-in cabinetry plan with real details (full-height cabinets, toe-kick, shadow gap or integrated handles, internal compartments).',
-            'Must include: a complete furniture layout + soft furnishings (curtains, rug, artwork, plants), warm realistic lighting, coherent styling.',
-            'Must include: a layered lighting script (cove/indirect + downlights + accent) with warm white 2700-3000K, CRI90+, dimmable, realistic GI and balanced exposure.',
-            spaceEn.includes('dining') ? 'Dining must-have: dining table for 4 + chairs with clear circulation, pendant light above table, and a dining sideboard/tall pantry storage with display niche lighting.' : '',
+            'Must include: full design finishes (ceiling+walls+floor), built-in cabinetry with details (full-height, toe-kick, integrated handles/shadow gaps), and a complete furniture layout + soft furnishings.',
+            'Lighting MUST be layered: ceiling cove/indirect + recessed downlights + space-appropriate accent lights, warm white 2700-3000K, CRI 90+, dimmable, realistic GI, balanced exposure.',
+            spaceEn.includes('dining') ? 'Dining: table for 4 + chairs + pendant above table + dining sideboard/tall pantry.' : '',
         ].filter(Boolean).join(' ');
 
         const quality = [
-            'Materials: ENF-grade multilayer wood/plywood cabinetry.',
-            'Lighting: warm, natural; balanced exposure; not oversharpened.',
-            'Clean realistic textures; no cartoon/CGI look; no low-poly.',
-            'Avoid: empty room, blank walls, unfinished concrete, muddy textures, toy-like 3D, distorted straight lines, fisheye, bent walls, melted objects, overexposed highlights.'
+            'Materials: ENF-grade multi-layer wood/plywood cabinetry, realistic matte finishes, clean textures.',
+            'Avoid: empty room, unfinished concrete, muddy textures, toy-like CGI, distorted straight lines, fisheye, melted objects, overexposed highlights.'
         ].join(' ');
 
         const extraReq = compact(requirements, 380);
 
         if (!designSpec?.prompt_en) {
-          // Keep prompt explicit and mostly English for better adherence.
-          // Put hard constraints + must-have early to avoid being truncated away.
+          // Make the first ~250 chars fully reflect user selections, so they won't be truncated.
           finalPrompt = trimPrompt([
-              hardRules,
-              mustHave,
-              finishPolicy,
-              lightingScript,
-              `Space: ${spaceEn}.`,
-              `Style: ${styleEn}.`,
-              `Color palette: ${colorEn}.`,
+              `Space: ${spaceEn}. Style: ${styleEn}. Color palette: ${colorEn}.`,
+              // User intent as executable instructions (placement/cabinet emphasis)
               focusHint,
               storageHint,
               vibeHint,
               decorHint,
               priorityHint,
               intensityHint,
+              mustHave,
+              finishPolicy,
+              lightingScript,
+              hardRules,
               quality,
-              extraReq ? `Constraints/notes: ${extraReq}` : ''
+              extraReq ? `Notes: ${extraReq}` : ''
           ].filter(Boolean).join(' '));
 
           // Ensure explanation is still aligned (same-source) even when spec JSON build fails
@@ -846,8 +864,8 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
                 urlToUse: sourceUrl,
                 rf: finalResponseFormat,
                 sw: Math.min(0.52, finalSourceWeight),
-                st: Math.min(32, finalSteps),
-                cfg: Math.min(6.6, finalCfgScale)
+            st: Math.min(36, finalSteps),
+            cfg: Math.min(7.2, finalCfgScale)
             });
             if (retryRes.ok) {
                 stepfunRes = retryRes;
