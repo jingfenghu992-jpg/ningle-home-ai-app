@@ -46,15 +46,21 @@ export default async function handler(req, res) {
       ? source_weight
       : 0.4;
 
+  // IMPORTANT: Vercel maxDuration is 60s (see vercel.json).
+  // Keep i2i fast and reliable: clamp steps/cfg to avoid 504 timeouts.
+  const requestedSteps = Number.isInteger(steps) ? steps : undefined;
+  const requestedCfg = (typeof cfg_scale === 'number') ? cfg_scale : undefined;
+
+  // Default to a faster preset. 32 steps is usually sufficient for "proposal render" look.
   const finalSteps =
-    Number.isInteger(steps) && steps >= 1 && steps <= 100
-      ? steps
-      : 44;
+    typeof requestedSteps === 'number' && requestedSteps >= 1
+      ? Math.min(Math.max(requestedSteps, 1), 36)
+      : 32;
 
   const finalCfgScale =
-    typeof cfg_scale === 'number' && cfg_scale >= 1 && cfg_scale <= 10
-      ? cfg_scale
-      : 7.2;
+    typeof requestedCfg === 'number' && requestedCfg >= 1
+      ? Math.min(Math.max(requestedCfg, 1), 6.8)
+      : 6.4;
 
   const finalSeed =
     Number.isInteger(seed) && seed > 0
@@ -397,61 +403,64 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
     let designExplanation = '';
     let designSpec = null;
     if (renderIntake) {
-        // Build a spec first (prompt + explanation from same source) to keep them consistent
-        try {
-          const spaceKind = inferSpaceKind(renderIntake?.space, renderIntake?.focus, renderIntake?.requirements, renderIntake?.bedType);
-          const finishLevel =
-            normalizeFinishLevel(renderIntake?.finishLevel) !== 'unknown'
-              ? normalizeFinishLevel(renderIntake?.finishLevel)
-              : extractFinishLevelFromText(renderIntake?.visionSummary || renderIntake?.requirements || '');
-          const mustInclude = (() => {
-            const base = [
-              'CEILING detail (cove/false ceiling + downlights)',
-              'FLOOR finish (engineered wood / porcelain tile)',
-              'WALL finish',
-              'BUILT-IN CABINETRY',
-              'LIGHTING plan',
-              'SOFT FURNISHINGS',
-              'Layered lighting (cove/indirect + downlights + accent), warm white 2700-3000K, CRI90+',
-              'INTERIOR ONLY (do not change balcony/outdoor view)',
-              'DO NOT warp/melt objects'
-            ];
-            if (spaceKind === 'living') return base.concat(['TV', 'TV console', 'TV feature wall storage', 'sofa', 'coffee table', 'rug', 'curtains']);
-            if (spaceKind === 'dining') return base.concat(['dining table for 4', 'chairs', 'pendant above table', 'dining sideboard/tall pantry']);
-            if (spaceKind === 'bedroom') return base.concat(['residential bed (no hospital bed, no metal rails)', 'full-height wardrobe', 'bedside', 'curtains']);
-            if (spaceKind === 'study') return base.concat(['desk', 'bookcase/storage', 'task lighting']);
-            if (spaceKind === 'kitchen') return base.concat(['base cabinets', 'wall cabinets', 'countertop/worktop', 'sink', 'cooktop', 'backsplash tiles', 'under-cabinet task lighting']);
-            if (spaceKind === 'bath') return base.concat(['vanity cabinet', 'mirror cabinet', 'shower screen/zone', 'anti-slip floor tiles', 'mirror vanity light']);
-            if (spaceKind === 'entry') return base.concat(['shoe cabinet', 'bench/seat', 'full-length mirror', 'concealed clutter storage', 'niche lighting']);
-            if (spaceKind === 'corridor') return base.concat(['shallow cabinets along corridor', 'clear walkway/circulation', 'wall wash / linear lighting']);
-            return base;
-          })();
+        // Reliability-first: avoid extra LLM calls inside /api/design/generate to keep under 60s.
+        // We rely on deterministic prompt templates (below) and async /api/design/qa for explanation.
+        const ENABLE_SPEC_LLM = process.env.ENABLE_DESIGN_SPEC_LLM === '1';
+        if (ENABLE_SPEC_LLM) {
+          // Build a spec first (prompt + explanation from same source) to keep them consistent
+          try {
+            const spaceKind = inferSpaceKind(renderIntake?.space, renderIntake?.focus, renderIntake?.requirements, renderIntake?.bedType);
+            const finishLevel =
+              normalizeFinishLevel(renderIntake?.finishLevel) !== 'unknown'
+                ? normalizeFinishLevel(renderIntake?.finishLevel)
+                : extractFinishLevelFromText(renderIntake?.visionSummary || renderIntake?.requirements || '');
+            const mustInclude = (() => {
+              const base = [
+                'CEILING detail (cove/false ceiling + downlights)',
+                'FLOOR finish (engineered wood / porcelain tile)',
+                'WALL finish',
+                'BUILT-IN CABINETRY',
+                'LIGHTING plan',
+                'SOFT FURNISHINGS',
+                'Layered lighting (cove/indirect + downlights + accent), warm white 2700-3000K, CRI90+',
+                'INTERIOR ONLY (do not change balcony/outdoor view)',
+                'DO NOT warp/melt objects'
+              ];
+              if (spaceKind === 'living') return base.concat(['TV', 'TV console', 'TV feature wall storage', 'sofa', 'coffee table', 'rug', 'curtains']);
+              if (spaceKind === 'dining') return base.concat(['dining table for 4', 'chairs', 'pendant above table', 'dining sideboard/tall pantry']);
+              if (spaceKind === 'bedroom') return base.concat(['residential bed (no hospital bed, no metal rails)', 'full-height wardrobe', 'bedside', 'curtains']);
+              if (spaceKind === 'study') return base.concat(['desk', 'bookcase/storage', 'task lighting']);
+              if (spaceKind === 'kitchen') return base.concat(['base cabinets', 'wall cabinets', 'countertop/worktop', 'sink', 'cooktop', 'backsplash tiles', 'under-cabinet task lighting']);
+              if (spaceKind === 'bath') return base.concat(['vanity cabinet', 'mirror cabinet', 'shower screen/zone', 'anti-slip floor tiles', 'mirror vanity light']);
+              if (spaceKind === 'entry') return base.concat(['shoe cabinet', 'bench/seat', 'full-length mirror', 'concealed clutter storage', 'niche lighting']);
+              if (spaceKind === 'corridor') return base.concat(['shallow cabinets along corridor', 'clear walkway/circulation', 'wall wash / linear lighting']);
+              return base;
+            })();
 
-          designSpec = await buildSpec({ ...(renderIntake || {}), finishLevel }, { mustInclude, spaceKind });
-          // If missing critical items, retry once with stronger mustInclude
-          if (!validateMustHave(spaceKind, designSpec, finishLevel)) {
-            const retryExtra =
-              spaceKind === 'living'
-                ? ['MUST mention TV explicitly', 'MUST include TV feature wall with storage', 'MUST include cove lighting + downlights + wall wash/cabinet accent lights']
-                : spaceKind === 'kitchen'
-                  ? ['MUST include sink + cooktop triangle workflow', 'MUST include tall pantry/electrical cabinet if space allows', 'MUST include under-cabinet task lighting']
-                  : spaceKind === 'bath'
-                    ? ['MUST include dry-wet separation', 'MUST include anti-slip floor tiles', 'MUST include mirror vanity light + soft downlights']
-                    : spaceKind === 'entry'
-                      ? ['MUST include shoe storage with bench + mirror', 'MUST include niche lighting / soft mirror light']
-                      : spaceKind === 'corridor'
-                        ? ['MUST keep clear circulation width', 'use shallow storage only', 'MUST include wall wash / linear lighting to avoid dark corners']
-                        : ['Ensure all must-haves are explicitly present in prompt', 'Include layered lighting with 2700-3000K'];
-            designSpec = await buildSpec({ ...(renderIntake || {}), finishLevel }, { mustInclude: mustInclude.concat(retryExtra), spaceKind });
-          }
-          if (designSpec?.prompt_en) {
-            finalPrompt = designSpec.prompt_en;
-            if (Array.isArray(designSpec.explain_zh) && designSpec.explain_zh.length) {
-              designExplanation = designSpec.explain_zh.map(x => `- ${x}`).join('\n');
+            designSpec = await buildSpec({ ...(renderIntake || {}), finishLevel }, { mustInclude, spaceKind });
+            // If missing critical items, retry once with stronger mustInclude
+            if (!validateMustHave(spaceKind, designSpec, finishLevel)) {
+              const retryExtra =
+                spaceKind === 'living'
+                  ? ['MUST mention TV explicitly', 'MUST include TV feature wall with storage', 'MUST include cove lighting + downlights + wall wash/cabinet accent lights']
+                  : spaceKind === 'kitchen'
+                    ? ['MUST include sink + cooktop triangle workflow', 'MUST include tall pantry/electrical cabinet if space allows', 'MUST include under-cabinet task lighting']
+                    : spaceKind === 'bath'
+                      ? ['MUST include dry-wet separation', 'MUST include anti-slip floor tiles', 'MUST include mirror vanity light + soft downlights']
+                      : spaceKind === 'entry'
+                        ? ['MUST include shoe storage with bench + mirror', 'MUST include niche lighting / soft mirror light']
+                        : spaceKind === 'corridor'
+                          ? ['MUST keep clear circulation width', 'use shallow storage only', 'MUST include wall wash / linear lighting to avoid dark corners']
+                          : ['Ensure all must-haves are explicitly present in prompt', 'Include layered lighting with 2700-3000K'];
+              designSpec = await buildSpec({ ...(renderIntake || {}), finishLevel }, { mustInclude: mustInclude.concat(retryExtra), spaceKind });
             }
+            if (designSpec?.prompt_en) {
+              finalPrompt = designSpec.prompt_en;
+              // NOTE: explanation is handled by async /api/design/qa to match the final image.
+            }
+          } catch (e) {
+            console.warn('[Design Gen] buildSpec failed:', e?.message || e);
           }
-        } catch (e) {
-          console.warn('[Design Gen] buildSpec failed:', e?.message || e);
         }
 
         // If spec generation failed, fallback to heuristic prompt builder below
@@ -961,7 +970,11 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         return !(k.includes('輕') || k.includes('轻'));
     })();
 
-    if (shouldRefine) {
+    // Under 60s limit, only refine if we still have enough time budget.
+    // Otherwise return first-pass image and let user request "再精修" explicitly.
+    const allowRefineNow = shouldRefine && timeLeftMs() > 22000;
+
+    if (allowRefineNow) {
         try {
             const refineSource =
                 resultUrl

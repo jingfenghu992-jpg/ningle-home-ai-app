@@ -827,9 +827,9 @@ const App: React.FC = () => {
               setAppState('GENERATING');
 
               const baseImage = u.dataUrl;
-              // Default params tuned for: keep structure first, then add beauty in refine pass
+              // Reliability-first defaults (Vercel 60s limit): fewer steps to avoid 504.
               // StepFun doc: smaller source_weight => closer to source (less deformation)
-              const genParams = { source_weight: 0.42, cfg_scale: 7.2, steps: 48 };
+              const genParams = { source_weight: 0.44, cfg_scale: 6.4, steps: 32 };
 
               const pickConstraints = (summary?: string) => {
                   if (!summary) return '';
