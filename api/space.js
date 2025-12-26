@@ -45,11 +45,11 @@ export default async function handler(req, res) {
       }
     }
 
-    const system = `你是一位香港家居空間分類專家。請只根據相片內容判斷空間類型。
+    const system = `你是一位香港家居空間分類專家。請只根據相片內容判斷空間類型（香港常見戶型）。
 
 輸出必須是 JSON（不要多余文字），格式如下：
 {
-  "primary": "客厅/餐厅/卧室/厨房/玄关/书房/卫生间/走廊/阳台/其他",
+  "primary": "客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他",
   "candidates": [
     { "space": "xxx", "confidence": 0.0 },
     { "space": "yyy", "confidence": 0.0 },
@@ -60,7 +60,8 @@ export default async function handler(req, res) {
 规则：
 1) candidates 最多 3 个，confidence 0~1，按高到低
 2) 如果不确定，primary 用“其他”，并给出最可能 2-3 个 candidates
-3) 用简体中文`;
+3) 用简体中文
+4) 香港常见：客餐厅经常同一空间；卧室请尽量区分大睡房/小睡房（空间窄小、眼镜房、榻榻米/地台可能性高 -> 小睡房）`;
 
     const response = await fetch('https://api.stepfun.com/v1/chat/completions', {
       method: 'POST',

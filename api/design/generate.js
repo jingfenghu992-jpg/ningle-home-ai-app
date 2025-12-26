@@ -154,7 +154,9 @@ export default async function handler(req, res) {
 
       if (spaceKind === 'living') base.push('Accent lighting: TV wall wash / grazing light + cabinet display niche lighting (subtle).');
       if (spaceKind === 'dining') base.push('Accent lighting: pendant lights centered above dining table (warm glow) + sideboard niche lighting.');
+      if (spaceKind === 'living_dining') base.push('Accent lighting: TV wall wash + cabinet niche lighting + pendant lights centered above dining table, unified warm glow.');
       if (spaceKind === 'bedroom') base.push('Accent lighting: bedside wall lights + headboard wash light, warm and calm.');
+      if (spaceKind === 'bedroom_small') base.push('Accent lighting: slim bedside wall lights + wardrobe edge lighting, keep it space-saving and calm.');
       if (spaceKind === 'study') base.push('Accent lighting: desk task lamp + shelf lighting to add depth.');
       if (spaceKind === 'kitchen') base.push('Accent lighting: under-cabinet task lighting + subtle toe-kick strip, keep worktop bright but not blown-out.');
       if (spaceKind === 'entry') base.push('Accent lighting: shoe cabinet niche lighting + soft mirror light, welcoming.');
@@ -298,10 +300,15 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
       const hint = `${f0} ${r0} ${b0}`;
       const hintL = `${f} ${r} ${b}`;
       const has = (arr) => arr.some(k => hint.includes(k) || hintL.includes(String(k).toLowerCase()));
+      // HK combined living+dining
+      const isLivingDiningText = s0.includes('客餐') || s.includes('living') && s.includes('dining') || (s0.includes('客') && s0.includes('餐'));
+      if (isLivingDiningText) return 'living_dining';
       if (has(['廚', '厨', '廚櫃', '橱柜', '吊櫃', '吊柜', '星盆', '爐頭', '炉头', 'kitchen', 'cooktop', 'sink'])) return 'kitchen';
       if (has(['浴', '厕', '衛', '卫', '洗手', '浴室櫃', '浴室柜', '鏡櫃', '镜柜', 'bath', 'vanity', 'shower'])) return 'bath';
-      if (has(['玄', '關', '关', '鞋', '鞋櫃', '鞋柜', 'entry', 'shoe cabinet'])) return 'entry';
+      if (has(['入户', '玄', '關', '关', '鞋', '鞋櫃', '鞋柜', 'entry', 'shoe cabinet'])) return 'entry';
       if (has(['書', '书', '書枱', '书台', '書桌', '书桌', '工作位', 'study', 'desk', 'bookcase'])) return 'study';
+      if (has(['大睡房', '主人房', '主卧', 'master'])) return 'bedroom';
+      if (has(['小睡房', '次卧', '眼镜房', '儿童房', 'small bedroom'])) return 'bedroom_small';
       if (has(['床', '睡', '卧', '房', '衣櫃', '衣柜', '榻榻米', '地台', 'bed', 'wardrobe', 'closet'])) return 'bedroom';
       if (has(['餐', '餐桌', '餐邊', '餐边', 'dining', 'dining table'])) return 'dining';
       if (has(['電視', '电视', 'tv', 'sofa', '客厅', '客廳', 'living'])) return 'living';
@@ -311,12 +318,14 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
       if (s0.includes('餐') || s.includes('dining')) return 'dining';
       // Bedroom / study
       if (s0.includes('書') || s0.includes('书') || s.includes('study')) return 'study';
+      if (s0.includes('大睡房') || s0.includes('主人房') || s.includes('master')) return 'bedroom';
+      if (s0.includes('小睡房') || s0.includes('次卧') || s0.includes('眼镜房') || s.includes('small bedroom')) return 'bedroom_small';
       if (s0.includes('睡') || s0.includes('卧') || s0.includes('房') || s.includes('bed')) return 'bedroom';
       // Kitchen / bath
       if (s0.includes('廚') || s0.includes('厨') || s.includes('kitchen')) return 'kitchen';
       if (s0.includes('浴') || s0.includes('厕') || s0.includes('衛') || s0.includes('卫') || s.includes('bath')) return 'bath';
       // Entry / corridor / hallway
-      if (s0.includes('玄') || s0.includes('关') || s0.includes('關') || s.includes('entry')) return 'entry';
+      if (s0.includes('入户') || s0.includes('玄') || s0.includes('关') || s0.includes('關') || s.includes('entry')) return 'entry';
       if (s0.includes('走廊') || s0.includes('通道') || s.includes('corridor') || s.includes('hallway')) return 'corridor';
       return 'other';
     };
@@ -348,6 +357,18 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         if (!hasAny(['wall wash', 'grazing light', 'accent lighting', 'niche lighting', 'cabinet lighting'])) return false;
         return true;
       }
+      if (spaceKind === 'living_dining') {
+        // Must satisfy BOTH living and dining essentials
+        if (!p.includes('tv')) return false;
+        if (!(p.includes('tv console') || p.includes('media console') || p.includes('tv cabinet'))) return false;
+        if (!(p.includes('sofa') || p.includes('sectional'))) return false;
+        if (!p.includes('dining table')) return false;
+        if (!(p.includes('chairs') || p.includes('dining chair'))) return false;
+        if (!(p.includes('pendant') || p.includes('chandelier'))) return false;
+        if (!hasAny(['sideboard', 'pantry', 'buffet'])) return false;
+        if (!hasAny(['wall wash', 'grazing light', 'accent lighting', 'niche lighting', 'cabinet lighting'])) return false;
+        return true;
+      }
       if (spaceKind === 'dining') {
         if (!p.includes('dining table')) return false;
         if (!(p.includes('chairs') || p.includes('dining chair'))) return false;
@@ -359,6 +380,13 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         if (!p.includes('bed')) return false;
         if (!(p.includes('wardrobe') || p.includes('closet'))) return false;
         if (!hasAny(['bedside', 'wall light', 'sconce'])) return false;
+        return true;
+      }
+      if (spaceKind === 'bedroom_small') {
+        if (!p.includes('bed')) return false;
+        if (!(p.includes('wardrobe') || p.includes('closet'))) return false;
+        // Encourage space-saving solutions
+        if (!hasAny(['platform bed', 'tatami', 'murphy', 'hidden bed', 'storage bed', 'space-saving'])) return false;
         return true;
       }
       if (spaceKind === 'study') {
@@ -427,8 +455,10 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
                 'DO NOT warp/melt objects'
               ];
               if (spaceKind === 'living') return base.concat(['TV', 'TV console', 'TV feature wall storage', 'sofa', 'coffee table', 'rug', 'curtains']);
+              if (spaceKind === 'living_dining') return base.concat(['TV', 'TV console', 'TV feature wall storage', 'sofa', 'coffee table', 'rug', 'curtains', 'dining table for 4', 'chairs', 'pendant above table', 'dining sideboard/tall pantry']);
               if (spaceKind === 'dining') return base.concat(['dining table for 4', 'chairs', 'pendant above table', 'dining sideboard/tall pantry']);
               if (spaceKind === 'bedroom') return base.concat(['residential bed (no hospital bed, no metal rails)', 'full-height wardrobe', 'bedside', 'curtains']);
+              if (spaceKind === 'bedroom_small') return base.concat(['space-saving residential bed (platform/tatami/murphy)', 'full-height wardrobe (slim)', 'integrated desk/shelves (if suitable)', 'curtains']);
               if (spaceKind === 'study') return base.concat(['desk', 'bookcase/storage', 'task lighting']);
               if (spaceKind === 'kitchen') return base.concat(['base cabinets', 'wall cabinets', 'countertop/worktop', 'sink', 'cooktop', 'backsplash tiles', 'under-cabinet task lighting']);
               if (spaceKind === 'bath') return base.concat(['vanity cabinet', 'mirror cabinet', 'shower screen/zone', 'anti-slip floor tiles', 'mirror vanity light']);

@@ -210,7 +210,8 @@ const App: React.FC = () => {
                         const primary = (sres.ok && sres.primary) ? sres.primary : '其他';
                         const options = (() => {
                           const cand = (sres.candidates || []).map(c => String(c.space)).filter(Boolean);
-                          const base = [primary, ...cand, '客厅', '餐厅', '卧室', '厨房', '玄关', '书房', '卫生间', '走廊', '其他'];
+                          // HK-friendly fixed taxonomy
+                          const base = [primary, ...cand, '客餐厅', '大睡房', '小睡房', '厨房', '卫生间', '入户', '走廊', '其他'];
                           const uniq: string[] = [];
                           for (const x of base) {
                             const v = String(x).trim();
@@ -227,7 +228,7 @@ const App: React.FC = () => {
                         );
                       } catch (err) {
                         stopLoadingToast(classifyId);
-                        addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客厅/餐厅/卧室/厨房/玄关/书房/其他）");
+                        addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
                       }
                     })();
                 };
@@ -240,7 +241,7 @@ const App: React.FC = () => {
                         }
                     }));
                     setAppState('WAITING_FOR_SPACE');
-                    addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客厅/餐厅/卧室/厨房/玄关/书房/其他）");
+                    addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
                 };
                 img.src = dataUrl;
             } catch {
@@ -252,7 +253,7 @@ const App: React.FC = () => {
                     }
                 }));
                 setAppState('WAITING_FOR_SPACE');
-                addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客厅/餐厅/卧室/厨房/玄关/书房/其他）");
+                addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
             }
         };
         reader.readAsDataURL(blob);
@@ -349,11 +350,14 @@ const App: React.FC = () => {
 
   const getSuiteOptionsForSpace = (space?: string) => {
       const s = normalizeSpaceKey(space);
-      const isDining = s.includes('餐');
-      const isKitchen = s.includes('廚') || s.includes('厨');
-      const isEntrance = s.includes('玄') || s.includes('關') || s.includes('关');
-      const isBathroom = s.includes('浴') || s.includes('衛') || s.includes('卫') || s.includes('洗手') || s.includes('厕所') || s.includes('廁');
-      const isBedroom = s.includes('卧') || s.includes('睡') || s.includes('房') || s.includes('床');
+      const isLivingDining = s.includes('客餐') || (s.includes('客') && s.includes('餐'));
+      const isKitchen = s.includes('廚') || s.includes('厨') || s.includes('厨房');
+      const isEntrance = s.includes('入户') || s.includes('玄') || s.includes('關') || s.includes('关');
+      const isCorridor = s.includes('走廊') || s.includes('通道');
+      const isBathroom = s.includes('卫') || s.includes('衛') || s.includes('卫生间') || s.includes('洗手') || s.includes('厕所') || s.includes('廁');
+      const isMasterBed = s.includes('大睡房') || s.includes('主人房') || s.includes('主卧');
+      const isSmallBed = s.includes('小睡房') || s.includes('次卧') || s.includes('儿童房') || s.includes('眼镜房');
+      const isBedroom = isMasterBed || isSmallBed || s.includes('卧') || s.includes('睡') || s.includes('房') || s.includes('床');
 
       if (isKitchen) {
           return [
@@ -377,32 +381,42 @@ const App: React.FC = () => {
       }
       if (isEntrance) {
           return [
-              "鞋櫃到頂＋換鞋凳",
+              "入戶鞋櫃到頂＋換鞋凳＋全身鏡",
               "鞋櫃＋全身鏡＋雜物高櫃",
               "清潔高櫃（吸塵器/拖把位）",
-              "走廊淺櫃收納（不壓迫）",
+              "入戶收納一體（雨傘/包包/鑰匙位）",
               "展示＋收納（局部展示格）",
+              "全屋統一質感（牆地頂＋燈光＋軟裝）"
+          ];
+      }
+      if (isCorridor) {
+          return [
+              "走廊淺櫃收納（不壓迫）",
+              "走廊牆面收納＋展示格（局部）",
+              "清潔高櫃（吸塵器/拖把位）",
+              "隱藏門/同色牆面（視覺更整齊）",
+              "線性燈＋洗牆光（拉長空間）",
               "全屋統一質感（牆地頂＋燈光＋軟裝）"
           ];
       }
       if (isBedroom) {
           return [
-              "到頂衣櫃（掛衣＋抽屜＋被鋪位）",
-              "榻榻米/地台床收納",
-              "活動床/隱形床（小房更實用）",
+              isMasterBed ? "大睡房：到頂衣櫃（掛衣＋抽屜＋被鋪位）" : "小睡房：到頂衣櫃＋床/書枱一體（省位）",
+              isSmallBed ? "小睡房：榻榻米/地台床收納" : "床底收納/床箱（提升收納）",
+              isSmallBed ? "小睡房：活動床/隱形床（更實用）" : "梳妝/書枱位（如需要）",
               "衣櫃＋書枱一體（窗邊/轉角）",
               "床頭收納牆（護牆＋壁燈）",
               "全屋統一質感（牆地頂＋燈光＋軟裝）"
           ];
       }
-      // Living / Dining / Others
-      if (isDining) {
+      // Living-dining combined (HK common)
+      if (isLivingDining) {
           return [
-              "餐桌佈局＋動線（清晰通道）",
-              "餐邊櫃＋高櫃收納（咖啡/小家電）",
-              "展示＋收納牆（到頂）",
-              "玄關鞋櫃一體（如相連）",
-              "書枱/工作位（如需要）",
+              "客餐厅：電視牆收納（到頂＋展示格）",
+              "客餐厅：餐桌佈局＋動線（清晰通道）",
+              "客餐厅：餐邊櫃＋高櫃收納（咖啡/小家電）",
+              "客餐厅：酒櫃/展示櫃（局部＋燈帶）",
+              "客餐厅：收納牆（整面到頂）",
               "全屋統一質感（牆地頂＋燈光＋軟裝）"
           ];
       }

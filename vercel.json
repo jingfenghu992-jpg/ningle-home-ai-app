@@ -1,9 +1,8 @@
 {
   "functions": {
-    "api/**/*": {
-      "maxDuration": 60,
-      "includeFiles": "knowledge/**"
-    }
+    "api/design/generate.js": { "maxDuration": 300 },
+    "api/design/qa.js": { "maxDuration": 120 },
+    "api/**/*": { "maxDuration": 60, "includeFiles": "knowledge/**" }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" }
