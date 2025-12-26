@@ -731,23 +731,33 @@ const App: React.FC = () => {
           // Strategy: generate inspiration first (fast), then start the final i2i.
           // Inspiration is optional; if it fails, we still proceed with i2i.
           let progressId: string | null = null;
-          if (!revisionText) {
+          let inspireDelivered = false;
+          let inspireNeedsRetry = false;
+          const tryInspire = async (phase: 'before' | 'after') => {
             try {
-              const hintId = addLoadingToast(
-                "我順便幫你出一張「風格靈感圖」（唔一定同你間房結構一樣），等你唔使乾等～",
-                { loadingType: 'generating', uploadId: intakeData?.uploadId }
-              );
+              const hintId =
+                phase === 'before'
+                  ? addLoadingToast(
+                      "我順便幫你出一張「風格靈感圖」（唔一定同你間房結構一樣），等你唔使乾等～",
+                      { loadingType: 'generating', uploadId: intakeData?.uploadId }
+                    )
+                  : addLoadingToast(
+                      "我再補發一張「風格靈感圖」畀你參考～",
+                      { loadingType: 'generating', uploadId: intakeData?.uploadId }
+                    );
+
               const insp = await generateInspireImage({
                 renderIntake: intakeData || {},
                 size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
                 response_format: 'url',
                 // Keep inspiration fast to avoid blocking final i2i under concurrency=1
-                steps: 18,
+                steps: phase === 'before' ? 18 : 16,
                 cfg_scale: 6.4,
               });
               stopLoadingToast(hintId);
 
               if (insp.ok && insp.resultUrl) {
+                inspireDelivered = true;
                 setMessages(prev => [
                   ...prev,
                   { id: `${Date.now()}-inspire-img`, type: 'image', content: insp.resultUrl!, sender: 'ai', timestamp: Date.now() }
@@ -757,13 +767,24 @@ const App: React.FC = () => {
                   "【風格靈感圖】\n- 呢張係方向參考圖（唔一定同你間房門窗結構一樣）\n- 真正「保留你間房結構」嘅效果圖我仍然生成緊～",
                   { loadingType: 'generating', uploadId: intakeData?.uploadId }
                 );
-              } else if ((insp as any)?.errorCode === 'RATE_LIMITED') {
-                // If inspiration is queued, do not block the main i2i.
-                addSystemToast("靈感圖而家排隊中，我先幫你出最終效果圖～");
+                return;
+              }
+
+              if ((insp as any)?.errorCode === 'RATE_LIMITED') {
+                inspireNeedsRetry = true;
+                if (phase === 'before') {
+                  addSystemToast("靈感圖而家排隊中，我先幫你出最終效果圖～");
+                } else {
+                  addSystemToast("靈感圖仲排隊中～等我哋空咗會再補發。");
+                }
               }
             } catch {
-              // ignore inspiration failure; continue to final i2i
+              // ignore inspiration failure
             }
+          };
+
+          if (!revisionText) {
+            await tryInspire('before');
           }
 
           const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -788,63 +809,67 @@ const App: React.FC = () => {
                   { id: `${Date.now()}-img`, type: 'image', content: resultUrl!, sender: 'ai', timestamp: Date.now() }
               ]);
 
-              // Explanation should match the final image. If backend skipped QA due to timeout budget,
-              // do a background QA call (separate endpoint) so we don't block the render.
-              const gotExplain = Boolean(res.designExplanation && String(res.designExplanation).trim());
-              const qaSkipped = Boolean((res as any)?.debug?.qa_skipped);
+              // If inspiration didn't show (rate-limited/failed), try once more after final i2i.
+              if (!revisionText && !inspireDelivered && inspireNeedsRetry) {
+                // Fire-and-forget: do not block UX
+                (async () => {
+                  await sleep(1200);
+                  await tryInspire('after');
+                })();
+              }
+
+              // ALWAYS prefer explanation derived from the FINAL image (most consistent).
               const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：减少变形"];
+              const bgId = addLoadingToast("效果圖已出，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId: intakeData?.uploadId });
+              try {
+                const qaRes = await qaDesignImage({
+                  imageUrl: resultUrl!,
+                  renderIntake: intakeData || {},
+                });
+                stopLoadingToast(bgId);
 
-              if (gotExplain && !qaSkipped) {
-                await typeOutAI(
-                  `【設計說明】\n${res.designExplanation}\n\n想再精修？點下面一個：`,
-                  { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
-                );
-              } else {
-                const bgId = addLoadingToast("效果圖已出，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId: intakeData?.uploadId });
-                // Show quick placeholder to keep conversation responsive
-                await typeOutAI(`【設計說明】\n- 效果圖已生成，我正幫你做智能复核补充说明，请稍等…`);
+                if (qaRes.ok && qaRes.designExplanation) {
+                  const pass = Boolean((qaRes as any)?.qa?.pass);
+                  const issues = Array.isArray((qaRes as any)?.qa?.issues) ? (qaRes as any).qa.issues : [];
+                  const missing = Array.isArray((qaRes as any)?.qa?.missing) ? (qaRes as any).qa.missing : [];
 
-                try {
-                  const qaRes = await qaDesignImage({
-                    imageUrl: resultUrl!,
-                    renderIntake: intakeData || {},
-                  });
-                  stopLoadingToast(bgId);
+                  const extra =
+                    pass
+                      ? ''
+                      : [
+                          '',
+                          '【智能复核】',
+                          missing.length ? `- 缺失：${missing.slice(0, 5).join('、')}` : '',
+                          issues.length ? `- 问题：${issues.slice(0, 5).join('；')}` : '',
+                        ].filter(Boolean).join('\n');
 
-                  if (qaRes.ok && qaRes.designExplanation) {
-                    const pass = Boolean((qaRes as any)?.qa?.pass);
-                    const issues = Array.isArray((qaRes as any)?.qa?.issues) ? (qaRes as any).qa.issues : [];
-                    const missing = Array.isArray((qaRes as any)?.qa?.missing) ? (qaRes as any).qa.missing : [];
-
-                    const extra =
-                      pass
-                        ? ''
-                        : [
-                            '',
-                            '【智能复核】',
-                            missing.length ? `- 缺失：${missing.slice(0, 5).join('、')}` : '',
-                            issues.length ? `- 问题：${issues.slice(0, 5).join('；')}` : '',
-                            '你想我再精修一次就回覆：「再精修：灯光更有层次／床+衣柜更清晰／减少变形」'
-                          ].filter(Boolean).join('\n');
-
-                    await typeOutAI(
-                      `【設計說明（按最终效果图）】\n${qaRes.designExplanation}${extra}\n\n想再精修？點下面一個：`,
-                      { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
-                    );
-                  } else {
-                    await typeOutAI(
-                      gotExplain
-                        ? `【設計說明】\n${res.designExplanation}`
-                        : `【設計說明】\n- 智能复核暂时失败，但效果图已生成；你可以直接回覆想改咩位，我再帮你精修。`
-                    );
-                  }
-                } catch (e: any) {
-                  stopLoadingToast(bgId);
                   await typeOutAI(
-                    gotExplain
-                      ? `【設計說明】\n${res.designExplanation}`
-                      : `【設計說明】\n- 智能复核暂时失败，但效果图已生成；你可以直接回覆想改咩位，我再帮你精修。`
+                    `【設計說明（按最终效果图）】\n${qaRes.designExplanation}${extra}\n\n想再精修？點下面一個：`,
+                    { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
                   );
+                } else if (res.designExplanation) {
+                  await typeOutAI(
+                    `【設計說明】\n${res.designExplanation}\n\n想再精修？點下面一個：`,
+                    { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
+                  );
+                } else {
+                  await typeOutAI(`【設計說明】\n- 复核暂时失败，但效果图已生成；你可直接点下面精修。`, {
+                    options: refineOptions,
+                    meta: { kind: 'generated', uploadId: intakeData?.uploadId }
+                  });
+                }
+              } catch (e: any) {
+                stopLoadingToast(bgId);
+                if (res.designExplanation) {
+                  await typeOutAI(
+                    `【設計說明】\n${res.designExplanation}\n\n想再精修？點下面一個：`,
+                    { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
+                  );
+                } else {
+                  await typeOutAI(`【設計說明】\n- 复核暂时失败，但效果图已生成；你可直接点下面精修。`, {
+                    options: refineOptions,
+                    meta: { kind: 'generated', uploadId: intakeData?.uploadId }
+                  });
                 }
               }
           } else {
