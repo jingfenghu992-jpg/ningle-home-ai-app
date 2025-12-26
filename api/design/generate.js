@@ -221,6 +221,7 @@ export default async function handler(req, res) {
         intensity: normalize(intake?.intensity),
         housingType: normalize(intake?.housingType),
         needsWorkstation: normalize(intake?.needsWorkstation),
+        hallType: normalize(intake?.hallType),
         finishLevel,
         constraints: compact(intake?.visionSummary || intake?.requirements || '', 520),
       };

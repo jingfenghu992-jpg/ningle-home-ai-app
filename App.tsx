@@ -32,6 +32,7 @@ const App: React.FC = () => {
       intensity?: string;
       housingType?: '公屋' | '居屋' | '私楼' | '不确定';
       needsWorkstation?: '需要' | '不需要';
+      hallType?: '标准厅' | '钻石厅' | '长厅' | '不确定';
     };
   }>>({});
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
@@ -382,6 +383,43 @@ const App: React.FC = () => {
       if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return "台面整洁收纳（隐藏小家电）";
       if (s.includes('卫') || s.includes('衛') || s.includes('卫生间') || s.includes('洗手') || s.includes('厕') || s.includes('廁')) return "镜柜+壁龛（更好用）";
       return "隐藏收纳为主";
+  };
+
+  const isLivingDiningSpace = (space?: string) => {
+      const s = normalizeSpaceKey(space);
+      return s.includes('客餐') || s === '客餐厅' || (s.includes('客') && s.includes('餐'));
+  };
+
+  const pickLayoutOptionsHK = (space?: string, hallType?: string) => {
+      const options = getLayoutOptionsForSpace(space);
+      const h = String(hallType || '').trim();
+      if (!options.length) return options;
+      if (!h || h.includes('不确定') || h.includes('标准')) return options.slice(0, 3);
+
+      const score = (opt: string) => {
+          const t = String(opt || '');
+          let s = 0;
+          // Diamond living-dining: avoid heavy TV wall, prefer thinner cabinets & clear circulation
+          if (h.includes('钻石')) {
+              if (t.includes('不压迫') || t.includes('薄柜') || t.includes('動線') || t.includes('动线') || t.includes('通道')) s += 3;
+              if (t.includes('餐区主导') || t.includes('餐桌居中')) s += 2;
+              if (t.includes('L型') || t.includes('長牆') || t.includes('长墙')) s += 1;
+          }
+          // Long hall: prioritize long-wall TV + clear corridor
+          if (h.includes('长')) {
+              if (t.includes('長牆') || t.includes('长墙') || t.includes('動線') || t.includes('动线') || t.includes('留通道') || t.includes('通道')) s += 3;
+              if (t.includes('餐边高柜') || t.includes('餐邊高櫃') || t.includes('靠近厨房') || t.includes('过道')) s += 2;
+          }
+          return s;
+      };
+
+      const ranked = options
+          .map(o => ({ o, s: score(o) }))
+          .sort((a, b) => b.s - a.s)
+          .map(x => x.o);
+      // If scoring didn't help, fall back to first 3
+      const top = ranked.slice(0, 3);
+      return top.every(x => score(x) === 0) ? options.slice(0, 3) : top;
   };
 
   const inferBedTypeFromLayout = (layoutText?: string) => {
@@ -878,8 +916,37 @@ const App: React.FC = () => {
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), needsWorkstation: opt as any } }
               }) : prev);
               const space = u.spaceType || '';
+              // Living-dining needs one more HK-specific split: diamond hall vs long hall.
+              if (isLivingDiningSpace(space)) {
+                  await typeOutAI("客餐厅再确认一下（更贴合香港常见户型）：你屋企偏边种厅？", {
+                      options: ["标准厅（推荐）", "钻石厅", "长厅", "不确定"],
+                      meta: { kind: 'render_flow', stage: 'hall', uploadId }
+                  });
+                  return;
+              }
+
               // Show <=3 layout options (recommended + 2 alternatives)
-              const layouts = getLayoutOptionsForSpace(space).slice(0, 3);
+              const layouts = pickLayoutOptionsHK(space, (u.render as any)?.hallType);
+              await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
+                  options: layouts,
+                  meta: { kind: 'render_flow', stage: 'layout', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'hall') {
+              const hallType =
+                  opt.includes('钻石') ? '钻石厅'
+                  : opt.includes('长') ? '长厅'
+                  : opt.includes('标准') ? '标准厅'
+                  : '不确定';
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), hallType: hallType as any } }
+              }) : prev);
+
+              const space = u.spaceType || '';
+              const layouts = pickLayoutOptionsHK(space, hallType);
               await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
                   options: layouts,
                   meta: { kind: 'render_flow', stage: 'layout', uploadId }
@@ -913,9 +980,10 @@ const App: React.FC = () => {
               const intensity0 = r0.intensity || getDefaultIntensityForHK();
               const housing0 = r0.housingType || '不确定';
               const work0 = r0.needsWorkstation || '不需要';
+              const hall0 = r0.hallType || '不确定';
 
               await typeOutAI(
-                `我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n- 單位：${housing0}｜工作位：${work0}\n- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
+                `我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n- 單位：${housing0}｜工作位：${work0}${isLivingDiningSpace(space) ? `｜厅型：${hall0}` : ''}\n- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
                 { options: ["直接生成（推薦）", "继续细调"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
               );
               return;
@@ -933,6 +1001,7 @@ const App: React.FC = () => {
                   const intensity0 = r0.intensity || getDefaultIntensityForHK();
                   const housing0 = r0.housingType || '不确定';
                   const work0 = r0.needsWorkstation || '不需要';
+                  const hall0 = r0.hallType || '不确定';
 
                   setUploads(prev => prev[uploadId] ? ({
                       ...prev,
@@ -947,7 +1016,8 @@ const App: React.FC = () => {
                               decor: decor0,
                               intensity: intensity0,
                               housingType: housing0,
-                              needsWorkstation: work0
+                              needsWorkstation: work0,
+                              hallType: hall0
                           }
                       }
                   }) : prev);
@@ -1201,6 +1271,7 @@ const App: React.FC = () => {
               const suiteSpec = suiteToPrompt(space, focus, storage);
               const housingType = String((u.render as any)?.housingType || '不确定');
               const needsWorkstation = String((u.render as any)?.needsWorkstation || '不需要');
+              const hallType = String((u.render as any)?.hallType || '不确定');
               const hkByHousing =
                 housingType.includes('公屋')
                   ? 'HK context: public housing (公屋), often deeper window sill + tighter circulation; prefer full-height cabinetry and shallow storage to keep passage.'
@@ -1209,6 +1280,14 @@ const App: React.FC = () => {
                     : housingType.includes('私楼') || housingType.includes('私樓')
                       ? 'HK context: private flat (私楼), keep structure but allow more premium finishes and lighting layers.'
                       : 'HK context: Hong Kong apartment, compact planning and practical full-height storage.';
+              const hkHall =
+                isLivingDiningSpace(space) && hallType.includes('钻石')
+                  ? 'Hall type: diamond living-dining (钻石厅); prioritize clear circulation, avoid bulky TV wall, use slimmer cabinetry and more integrated storage.'
+                  : isLivingDiningSpace(space) && hallType.includes('长')
+                    ? 'Hall type: long living-dining (长厅); use long-wall TV/storage and keep a clear corridor line; optimize dining sideboard near kitchen/route.'
+                    : isLivingDiningSpace(space)
+                      ? 'Hall type: standard living-dining; keep balanced TV + dining zones with clear circulation.'
+                      : '';
 
               const vibeSpec = (() => {
                 const v = String(vibe || '');
@@ -1229,6 +1308,7 @@ const App: React.FC = () => {
                   `Focus: ${focus}. ${bedType ? `Bed: ${bedType}.` : ''} Storage: ${storage}. Vibe: ${vibe}. Decor: ${decor}.`,
                   `HK home type: ${housingType}. Workstation: ${needsWorkstation}.`,
                   hkByHousing,
+                  hkHall,
                   photorealisticSpec,
                   hkHardConstraints,
                   `Must include: cabinetry/storage plan; ceiling + floor + wall finishes; lighting; soft furnishings.`,

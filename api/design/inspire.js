@@ -97,6 +97,7 @@ export default async function handler(req, res) {
   const vibe = normalize(intake?.vibe);
   const housingType = normalize(intake?.housingType);
   const needsWorkstation = normalize(intake?.needsWorkstation);
+  const hallType = normalize(intake?.hallType);
 
   const focusLine = focus ? `Key feature: ${focus}.` : '';
   const storageLine = storage ? `Storage strategy: ${storage}.` : 'Storage strategy: practical full-height cabinetry, space-saving built-ins.';
@@ -121,6 +122,7 @@ export default async function handler(req, res) {
     `Color palette: ${colorEn}.`,
     housingType ? `Hong Kong home type: ${housingType}.` : '',
     needsWorkstation ? `Workstation needed: ${needsWorkstation}.` : '',
+    hallType ? `Hall type: ${hallType}.` : '',
     mustHave,
     focusLine,
     storageLine,
