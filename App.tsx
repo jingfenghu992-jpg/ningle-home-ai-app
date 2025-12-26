@@ -570,19 +570,9 @@ const App: React.FC = () => {
               ]);
 
               // Explanation should align to the actual prompt/spec used by backend
-              const explain =
-                res.designExplanation
-                  ? `【設計說明】\n${res.designExplanation}\n\n想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
-                  : [
-                      `【設計說明】`,
-                      `- 風格：${intakeData?.style || '（按你選擇）'}；色系：${intakeData?.color || '（按你選擇）'}`,
-                      `- 佈局重點：已按你選擇的重點區域/收納取向去做櫃體規劃`,
-                      `- 櫃體/收納：建議做全高櫃/餐邊櫃/收納牆，分區包含展示＋封閉收納（避免雜亂）`,
-                      `- 天花/燈光：用燈槽/筒燈做層次，必要位置加吊燈/壁燈`,
-                      `- 地面/牆面：地面用木地板或耐磨磚；牆面用淺色耐污材質更易打理`,
-                      ``,
-                      `想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
-                    ].join('\n');
+              const explain = res.designExplanation
+                ? `【設計說明】\n${res.designExplanation}\n\n想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
+                : `【設計說明】\n- 已按你選擇生成全新效果圖（保留結構與視角），詳細說明暫時未返回。`;
               await typeOutAI(explain);
           } else {
               // Handle "already running" case (idempotency / concurrency)

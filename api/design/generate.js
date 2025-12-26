@@ -196,7 +196,7 @@ Rules:
 - Use finishLevel (bare_shell / semi_finished / finished / unknown) to decide how much to change:
   - bare_shell: MUST do full fit-out (ceiling design + walls + flooring + skirting + curtains) and make it look fully complete, not a site photo.
   - semi_finished: keep what's finished, add missing finishes, then unify materials and lighting.
-  - finished: keep existing ceiling/walls/floor as much as possible; mainly enhance cabinetry, lighting layers, material harmony and soft furnishings.
+  - finished: keep the original STRUCTURE and camera perspective, but you can boldly redesign the interior look (upgrade/replace finishes, cabinetry, lighting layers and soft furnishings) so it reads like a NEW design proposal render.
 - Lighting requirements (MUST be explicit in prompt_en, not vague):
   - Write a layered lighting script: cove/indirect + downlights + accent lights (wall wash / cabinet / pendant / bedside / under-cabinet depending on space).
   - Specify warm white 2700-3000K (bathroom can be neutral up to 3500K), CRI 90+, dimmable, realistic GI, balanced exposure, soft shadows.
@@ -579,12 +579,12 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         const finishLevelFallback = extractFinishLevelFromText(renderIntake?.visionSummary || requirements || '');
         const finishPolicy =
           finishLevelFallback === 'bare_shell'
-            ? 'Finish level: bare shell; complete full fit-out (ceiling + walls + floor + skirting + curtains), then furniture + cabinetry + layered lighting.'
+            ? 'Finish level: bare shell; complete full fit-out (ceiling + walls + floor + skirting + curtains), then furniture + cabinetry + layered lighting. Make it a bold, magazine-quality new design render.'
             : finishLevelFallback === 'semi_finished'
-              ? 'Finish level: semi-finished; keep existing finished parts and add missing finishes, then unify materials and lighting.'
+              ? 'Finish level: semi-finished; keep existing finished parts, add missing finishes, then unify materials and lighting. Make it clearly redesigned (not minor tweaks).'
               : finishLevelFallback === 'finished'
-                ? 'Finish level: finished; keep existing ceiling/walls/floor as much as possible, mainly upgrade cabinetry, lighting layers, and soft furnishings.'
-                : 'Finish level: unknown; prioritize keeping structure, and ensure the render looks fully finished.';
+                ? 'Finish level: finished; keep original structure/perspective but boldly redesign finishes, cabinetry, lighting layers and soft furnishings so it reads like a NEW design proposal render.'
+                : 'Finish level: unknown; keep original structure/perspective, but still produce a clearly redesigned, fully finished design proposal render.';
         const spaceKindFallback = inferSpaceKind(space, focus, requirements, renderIntake?.bedType);
         const lightingScript = getLightingScriptEn({ spaceKind: spaceKindFallback, vibe });
 
@@ -671,6 +671,45 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
     if (finalPrompt.length > 1024) {
         finalPrompt = finalPrompt.slice(0, 1021) + '...';
     }
+
+    // Ensure explanation ALWAYS matches the final prompt (avoid front-end fallback drift)
+    const ensureDesignExplanation = async () => {
+        if (designExplanation && String(designExplanation).trim()) return;
+        try {
+            const explainSystem =
+              `You are a senior interior designer. Given a final image-to-image prompt, output ONLY 5-7 bullet points in Simplified Chinese.\n` +
+              `Rules:\n` +
+              `- Each bullet MUST be directly reflected in the prompt (visually verifiable).\n` +
+              `- Mention layout (bed/sofa/TV/dining/kitchen/bath) only if present in the prompt.\n` +
+              `- Mention lighting as layered (cove + downlights + accents) with warm 2700-3000K.\n` +
+              `- No marketing, no pricing, no extra text besides bullet points.\n`;
+            const explainUser =
+              `FINAL_PROMPT_EN:\n${finalPrompt}\n\nReturn bullet list now.`;
+            const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+                body: JSON.stringify({
+                    model: 'step-1-8k',
+                    temperature: 0.2,
+                    max_tokens: 260,
+                    messages: [
+                        { role: 'system', content: explainSystem },
+                        { role: 'user', content: explainUser }
+                    ]
+                })
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const content = String(data.choices?.[0]?.message?.content || '').trim();
+            if (!content) return;
+            // Keep as-is; front-end already expects "- xxx" lines.
+            designExplanation = content;
+        } catch (e) {
+            // non-fatal
+        }
+    };
+
+    await ensureDesignExplanation();
 
     // --- STRATEGY A: Try Blob URL directly ---
     let sourceUrl = baseImageBlobUrl;
