@@ -23,7 +23,16 @@ const App: React.FC = () => {
     spaceType?: string;
     visionSummary?: string;
     analysisStatus?: 'idle' | 'running' | 'done';
-    render?: { style?: string; color?: string; focus?: string; storage?: string; priority?: string; intensity?: string };
+    render?: {
+      style?: string;
+      color?: string;
+      focus?: string;
+      storage?: string;
+      priority?: string;
+      intensity?: string;
+      housingType?: '公屋' | '居屋' | '私楼' | '不确定';
+      needsWorkstation?: '需要' | '不需要';
+    };
   }>>({});
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
@@ -361,6 +370,18 @@ const App: React.FC = () => {
       }
       // 现代简约 / 默认
       return ["浅木+米白", "胡桃木+灰白", "纯白+浅灰", "深木+暖白"];
+  };
+
+  const getDefaultStyleForHK = () => "現代簡約";
+  const getDefaultColorForHK = (style?: string) => getPaletteOptionsForStyle(style)[0] || "浅木+米白";
+  const getDefaultVibeForHK = () => "明亮通透";
+  const getDefaultDecorForHK = () => "標準搭配（推薦）";
+  const getDefaultIntensityForHK = () => "明顯改造（推薦）";
+  const getDefaultStorageForSpace = (space?: string) => {
+      const s = normalizeSpaceKey(space);
+      if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return "台面整洁收纳（隐藏小家电）";
+      if (s.includes('卫') || s.includes('衛') || s.includes('卫生间') || s.includes('洗手') || s.includes('厕') || s.includes('廁')) return "镜柜+壁龛（更好用）";
+      return "隐藏收纳为主";
   };
 
   const inferBedTypeFromLayout = (layoutText?: string) => {
@@ -816,15 +837,44 @@ const App: React.FC = () => {
 
           // Start clickable intake flow in chat (designer-first workflow: layout -> storage/cabinet -> style -> palette -> lighting -> soft)
           const space = u.spaceType || '';
-          await typeOutAI("先定「布置/动线」先（呢步最影响落地同出图准确）\n你想走边个摆位方案？", {
-              options: getLayoutOptionsForSpace(space),
-              meta: { kind: 'render_flow', stage: 'layout', uploadId }
+          // HK mobile-first: ask only 2 key questions before layout.
+          await typeOutAI("先確認兩樣關鍵資料（更貼合香港單位落地）：\n1) 你係咩類型單位？", {
+              options: ["公屋", "居屋", "私楼", "不确定"],
+              meta: { kind: 'render_flow', stage: 'housing', uploadId }
           });
           return;
       }
 
       // Render flow steps (bound to the analysis/upload)
       if (message.meta?.kind === 'render_flow' && uploadId && u) {
+          // 0) HK key questions (housing type + workstation)
+          if (message.meta.stage === 'housing') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), housingType: opt as any } }
+              }) : prev);
+              await typeOutAI("2) 客戶習慣：你需唔需要留「工作位/書桌」？（唔需要就唔會加，避免客餐廳變怪）", {
+                  options: ["不需要", "需要"],
+                  meta: { kind: 'render_flow', stage: 'workstation', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'workstation') {
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), needsWorkstation: opt as any } }
+              }) : prev);
+              const space = u.spaceType || '';
+              // Show <=3 layout options (recommended + 2 alternatives)
+              const layouts = getLayoutOptionsForSpace(space).slice(0, 3);
+              await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
+                  options: layouts,
+                  meta: { kind: 'render_flow', stage: 'layout', uploadId }
+              });
+              return;
+          }
+
           // 1) Layout first (stores into focus). Bed type is part of layout; infer it if mentioned.
           if (message.meta.stage === 'layout') {
               const inferredBed = inferBedTypeFromLayout(opt);
@@ -841,6 +891,64 @@ const App: React.FC = () => {
               }) : prev);
 
               const space = u.spaceType || '';
+              // Offer a fast path: generate with HK defaults, or continue fine-tuning.
+              const r0 = (u.render as any) || {};
+              const style0 = r0.style || getDefaultStyleForHK();
+              const color0 = r0.color || getDefaultColorForHK(style0);
+              const storage0 = r0.storage || getDefaultStorageForSpace(space);
+              const vibe0 = r0.vibe || getDefaultVibeForHK();
+              const decor0 = r0.decor || getDefaultDecorForHK();
+              const intensity0 = r0.intensity || getDefaultIntensityForHK();
+              const housing0 = r0.housingType || '不确定';
+              const work0 = r0.needsWorkstation || '不需要';
+
+              await typeOutAI(
+                `我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n- 單位：${housing0}｜工作位：${work0}\n- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
+                { options: ["直接生成（推薦）", "继续细调"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
+              );
+              return;
+          }
+
+          if (message.meta.stage === 'fast_confirm') {
+              if (opt === "直接生成（推薦）") {
+                  const space = u.spaceType || '';
+                  const r0 = (u.render as any) || {};
+                  const style0 = r0.style || getDefaultStyleForHK();
+                  const color0 = r0.color || getDefaultColorForHK(style0);
+                  const storage0 = r0.storage || getDefaultStorageForSpace(space);
+                  const vibe0 = r0.vibe || getDefaultVibeForHK();
+                  const decor0 = r0.decor || getDefaultDecorForHK();
+                  const intensity0 = r0.intensity || getDefaultIntensityForHK();
+                  const housing0 = r0.housingType || '不确定';
+                  const work0 = r0.needsWorkstation || '不需要';
+
+                  setUploads(prev => prev[uploadId] ? ({
+                      ...prev,
+                      [uploadId]: {
+                          ...prev[uploadId],
+                          render: {
+                              ...(prev[uploadId].render || {}),
+                              style: style0,
+                              color: color0,
+                              storage: storage0,
+                              vibe: vibe0,
+                              decor: decor0,
+                              intensity: intensity0,
+                              housingType: housing0,
+                              needsWorkstation: work0
+                          }
+                      }
+                  }) : prev);
+
+                  await typeOutAI("好，準備好就按下面開始生成～", {
+                      options: ["開始生成效果圖"],
+                      meta: { kind: 'render_flow', stage: 'confirm', uploadId }
+                  });
+                  return;
+              }
+
+              // Continue fine-tuning flow
+              const space = u.spaceType || '';
               const storageOptions = (() => {
                   const s = normalizeSpaceKey(space);
                   // Space-aware options (avoid irrelevant choices on mobile)
@@ -854,14 +962,15 @@ const App: React.FC = () => {
                   const isStudy = s.includes('书房') || s.includes('書房') || s.includes('工作间') || s.includes('工作間');
                   const isSmallBedroom = s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('兒童房') || s.includes('儿童房');
                   const isBedroom = isSmallBedroom || s.includes('睡房') || s.includes('卧室') || s.includes('房');
+                  const needsWork = String((u.render as any)?.needsWorkstation || '').includes('需要');
 
                   if (isKitchen) return ["台面整洁收纳（隐藏小家电）", "高柜电器位/储物高柜", "转角五金优化"];
-                  if (isBath) return ["隐藏收纳为主", "镜柜+壁龛（更好用）", "毛巾/清洁高柜"];
+                  if (isBath) return ["镜柜+壁龛（更好用）", "隐藏收纳为主", "毛巾/清洁高柜"];
                   if (isEntry || isCorridor) return ["隐藏收纳为主", "隐藏+局部展示（少量）"];
                   if (isStudy) return ["书桌/工作位优先", "收纳+局部展示（少量）", "隐藏收纳为主"];
-                  if (isSmallBedroom) return ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"];
+                  if (isSmallBedroom) return needsWork ? ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"] : ["隐藏收纳为主", "收纳+局部展示（少量）"];
                   // Living/dining: do NOT offer desk/workstation by default
-                  if (isLivingDining || isLiving || isDining) return ["隐藏收纳为主", "收纳+局部展示（少量）"];
+                  if (isLivingDining || isLiving || isDining) return needsWork ? ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"] : ["隐藏收纳为主", "收纳+局部展示（少量）"];
                   if (isBedroom) return ["隐藏收纳为主", "收纳+局部展示（少量）"];
                   return ["隐藏收纳为主", "收纳+局部展示（少量）"];
               })();
@@ -1014,6 +1123,8 @@ const App: React.FC = () => {
 
               const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
               setAppState('GENERATING');
+              // Extra stage hint (spinner stays in this loading toast)
+              addLoadingToast("生成中：结构锁定 → 设计改造 → 灯光材质精修（约 60–120 秒）", { loadingType: 'generating', uploadId });
 
               const baseImage = u.dataUrl;
               // Default goal: "明显改造、像设计效果图" (stronger than previous conservative preset).
@@ -1118,6 +1229,9 @@ const App: React.FC = () => {
                   decor,
                   // intensity influences i2i defaults on server too; default to recommended if not collected in the new flow
                   intensity: (u.render as any)?.intensity || '明顯改造（推薦）',
+                  // HK key context
+                  housingType: (u.render as any)?.housingType || '不确定',
+                  needsWorkstation: (u.render as any)?.needsWorkstation || '不需要',
                   requirements,
                   // Pass vision summary for layout constraints (no persistence; used for this generation only)
                   visionSummary: u.visionSummary,
