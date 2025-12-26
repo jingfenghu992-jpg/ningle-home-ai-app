@@ -741,8 +741,9 @@ const App: React.FC = () => {
                 renderIntake: intakeData || {},
                 size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
                 response_format: 'url',
-                steps: 28,
-                cfg_scale: 6.6,
+                // Keep inspiration fast to avoid blocking final i2i under concurrency=1
+                steps: 18,
+                cfg_scale: 6.4,
               });
               stopLoadingToast(hintId);
 
@@ -756,13 +757,25 @@ const App: React.FC = () => {
                   "【風格靈感圖】\n- 呢張係方向參考圖（唔一定同你間房門窗結構一樣）\n- 真正「保留你間房結構」嘅效果圖我仍然生成緊～",
                   { loadingType: 'generating', uploadId: intakeData?.uploadId }
                 );
+              } else if ((insp as any)?.errorCode === 'RATE_LIMITED') {
+                // If inspiration is queued, do not block the main i2i.
+                addSystemToast("靈感圖而家排隊中，我先幫你出最終效果圖～");
               }
             } catch {
               // ignore inspiration failure; continue to final i2i
             }
           }
 
-          const res = await generateDesignImage(payload as any);
+          const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+          let res = await generateDesignImage(payload as any);
+          // If upstream is rate limited, wait and retry once to avoid looking "stuck"
+          if (!res.ok && (res as any)?.errorCode === 'RATE_LIMITED') {
+            const qid = addLoadingToast("排隊中…我幫你自動再試一次（約 20–40 秒）", { loadingType: 'generating', uploadId: intakeData?.uploadId });
+            await sleep(25000);
+            res = await generateDesignImage(payload as any);
+            stopLoadingToast(qid);
+          }
           if (progressId) stopLoadingToast(progressId);
 
           if (res.ok && (res.resultBlobUrl || res.b64_json)) {
