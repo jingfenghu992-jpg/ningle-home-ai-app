@@ -7,7 +7,7 @@ import { Composer } from './components/Composer';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateDesignImage } from './services/generateClient';
+import { generateDesignImage, qaDesignImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
@@ -569,11 +569,62 @@ const App: React.FC = () => {
                   { id: `${Date.now()}-img`, type: 'image', content: resultUrl!, sender: 'ai', timestamp: Date.now() }
               ]);
 
-              // Explanation should align to the actual prompt/spec used by backend
-              const explain = res.designExplanation
-                ? `【設計說明】\n${res.designExplanation}\n\n想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
-                : `【設計說明】\n- 已按你選擇生成全新效果圖（保留結構與視角），詳細說明暫時未返回。`;
-              await typeOutAI(explain);
+              // Explanation should match the final image. If backend skipped QA due to timeout budget,
+              // do a background QA call (separate endpoint) so we don't block the render.
+              const gotExplain = Boolean(res.designExplanation && String(res.designExplanation).trim());
+              const qaSkipped = Boolean((res as any)?.debug?.qa_skipped);
+
+              if (gotExplain && !qaSkipped) {
+                await typeOutAI(
+                  `【設計說明】\n${res.designExplanation}\n\n想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
+                );
+              } else {
+                const bgId = addLoadingToast("效果圖已出，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId: intakeData?.uploadId });
+                // Show quick placeholder to keep conversation responsive
+                await typeOutAI(`【設計說明】\n- 效果圖已生成，我正幫你做智能复核补充说明，请稍等…`);
+
+                try {
+                  const qaRes = await qaDesignImage({
+                    imageUrl: resultUrl!,
+                    renderIntake: intakeData || {},
+                  });
+                  stopLoadingToast(bgId);
+
+                  if (qaRes.ok && qaRes.designExplanation) {
+                    const pass = Boolean((qaRes as any)?.qa?.pass);
+                    const issues = Array.isArray((qaRes as any)?.qa?.issues) ? (qaRes as any).qa.issues : [];
+                    const missing = Array.isArray((qaRes as any)?.qa?.missing) ? (qaRes as any).qa.missing : [];
+
+                    const extra =
+                      pass
+                        ? ''
+                        : [
+                            '',
+                            '【智能复核】',
+                            missing.length ? `- 缺失：${missing.slice(0, 5).join('、')}` : '',
+                            issues.length ? `- 问题：${issues.slice(0, 5).join('；')}` : '',
+                            '你想我再精修一次就回覆：「再精修：灯光更有层次／床+衣柜更清晰／减少变形」'
+                          ].filter(Boolean).join('\n');
+
+                    await typeOutAI(
+                      `【設計說明（按最终效果图）】\n${qaRes.designExplanation}${extra}\n\n想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
+                    );
+                  } else {
+                    await typeOutAI(
+                      gotExplain
+                        ? `【設計說明】\n${res.designExplanation}`
+                        : `【設計說明】\n- 智能复核暂时失败，但效果图已生成；你可以直接回覆想改咩位，我再帮你精修。`
+                    );
+                  }
+                } catch (e: any) {
+                  stopLoadingToast(bgId);
+                  await typeOutAI(
+                    gotExplain
+                      ? `【設計說明】\n${res.designExplanation}`
+                      : `【設計說明】\n- 智能复核暂时失败，但效果图已生成；你可以直接回覆想改咩位，我再帮你精修。`
+                  );
+                }
+              }
           } else {
               // Handle "already running" case (idempotency / concurrency)
               if ((res as any)?.errorCode === 'IN_PROGRESS') {

@@ -11,6 +11,14 @@ export interface GenerateResponse {
   errorCode?: string;
 }
 
+export interface DesignQaResponse {
+  ok: boolean;
+  designExplanation?: string;
+  qa?: any;
+  debug?: any;
+  message?: string;
+}
+
 export async function uploadImage(
   file: File | Blob,
   opts?: { clientId?: string; uploadId?: string }
@@ -60,6 +68,24 @@ export async function generateDesignImage(params: {
       ok: false,
       message: error.message || 'Generation failed',
       errorCode: error.code || 'NETWORK_ERROR'
+    };
+  }
+}
+
+export async function qaDesignImage(params: {
+  imageUrl: string;
+  renderIntake?: any;
+}): Promise<DesignQaResponse> {
+  try {
+    return await fetchJSON<DesignQaResponse>('/api/design/qa', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  } catch (error: any) {
+    console.error('[Design QA Client] Error:', error);
+    return {
+      ok: false,
+      message: error.message || 'QA failed',
     };
   }
 }
