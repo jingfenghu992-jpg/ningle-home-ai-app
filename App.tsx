@@ -439,6 +439,13 @@ const App: React.FC = () => {
   const isBareShellFromSummary = (summary?: string) => {
       const s = String(summary || '');
       if (!s) return false;
+      // Prefer explicit marker from Vision: "完成度：毛坯/半装/已装"
+      if (s.includes('完成度')) {
+        if (s.includes('完成度：毛坯') || s.includes('完成度:毛坯') || s.includes('完成度： 清水') || s.includes('完成度：清水')) return true;
+        if (s.includes('完成度：已装') || s.includes('完成度：已裝') || s.includes('完成度：精装') || s.includes('完成度：精裝')) return false;
+        // 半装按“非毛坯”处理（后端会做更细分流）
+        if (s.includes('完成度：半装') || s.includes('完成度：半裝')) return false;
+      }
       return [
           '毛坯', '清水', '未裝修', '未装修', '水泥', '批蕩', '批荡', '工地', '裸牆', '裸墙', '空置', '空房',
           'bare', 'unfinished', 'construction', 'raw'

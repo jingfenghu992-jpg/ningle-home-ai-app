@@ -89,12 +89,83 @@ export default async function handler(req, res) {
       }
     };
 
+    // --- Finish level inference for "bare shell vs finished" strategy ---
+    // Returns: 'bare_shell' | 'semi_finished' | 'finished' | 'unknown'
+    const normalizeFinishLevel = (raw) => {
+      const s0 = String(raw || '').trim();
+      const s = s0.toLowerCase();
+      if (!s0) return 'unknown';
+
+      // Explicit marker (we ask Vision to add: "完成度：毛坯/半装/已装")
+      if (s0.includes('完成度')) {
+        if (s0.includes('毛坯') || s0.includes('清水') || s.includes('bare')) return 'bare_shell';
+        if (s0.includes('半装') || s0.includes('半裝') || s.includes('semi')) return 'semi_finished';
+        if (s0.includes('已装') || s0.includes('已裝') || s0.includes('精装') || s0.includes('精裝') || s.includes('finished') || s.includes('furnished')) return 'finished';
+      }
+
+      const bareKeys = [
+        '毛坯', '清水', '未裝修', '未装修', '水泥', '批蕩', '批荡', '工地',
+        '裸牆', '裸墙', '未鋪', '未铺', 'unfinished', 'bare', 'construction', 'raw concrete'
+      ];
+      const finishedKeys = [
+        '已裝修', '已装修', '精裝', '精装', '完成面',
+        '地板', '木地板', '地砖', '地磚', '瓷砖', '瓷磚',
+        '乳胶漆', '油漆', '窗簾', '窗帘', '吊顶', '天花',
+        'furnished', 'finished'
+      ];
+      if (bareKeys.some(k => s0.includes(k) || s.includes(String(k).toLowerCase()))) return 'bare_shell';
+      if (finishedKeys.some(k => s0.includes(k) || s.includes(String(k).toLowerCase()))) return 'finished';
+      return 'unknown';
+    };
+
+    const extractFinishLevelFromText = (text) => {
+      const t = String(text || '');
+      const m = t.match(/完成度\s*[:：]\s*(毛坯|半装|半裝|已装|已裝|精装|精裝)/);
+      if (m?.[1]) return normalizeFinishLevel(m[1]);
+      return normalizeFinishLevel(t);
+    };
+
+    const getLightingScriptEn = ({ spaceKind, vibe }) => {
+      const v = String(vibe || '');
+      const vL = v.toLowerCase();
+      const isHotel = v.includes('酒店') || v.includes('高級') || v.includes('高级') || vL.includes('hotel') || vL.includes('luxury');
+      const isBright = v.includes('明亮') || vL.includes('bright') || vL.includes('airy');
+
+      const base = [
+        'Lighting: layered lighting plan, warm white 2700-3000K, CRI 90+, dimmable, balanced exposure, realistic global illumination (GI).'
+      ];
+      if (spaceKind === 'bath') {
+        base.push('Ceiling lighting: recessed downlights (no harsh hotspots) + mirror/vanity light, soft shadows.');
+      } else {
+        base.push('Ceiling lighting: slim recessed cove lighting with hidden LED strip + evenly spaced recessed downlights, soft indirect bounce.');
+      }
+
+      if (spaceKind === 'living') base.push('Accent lighting: TV wall wash / grazing light + cabinet display niche lighting (subtle).');
+      if (spaceKind === 'dining') base.push('Accent lighting: pendant lights centered above dining table (warm glow) + sideboard niche lighting.');
+      if (spaceKind === 'bedroom') base.push('Accent lighting: bedside wall lights + headboard wash light, warm and calm.');
+      if (spaceKind === 'study') base.push('Accent lighting: desk task lamp + shelf lighting to add depth.');
+      if (spaceKind === 'kitchen') base.push('Accent lighting: under-cabinet task lighting + subtle toe-kick strip, keep worktop bright but not blown-out.');
+      if (spaceKind === 'entry') base.push('Accent lighting: shoe cabinet niche lighting + soft mirror light, welcoming.');
+      if (spaceKind === 'corridor') base.push('Accent lighting: linear cove or wall wash to avoid dark corners, visually elongate corridor.');
+
+      if (isHotel) base.push('Mood: premium hotel-like, controlled highlights, elegant contrast (no overexposure).');
+      else if (isBright) base.push('Mood: bright and airy, clean white balance, soft shadows.');
+      else base.push('Mood: warm cozy, gentle contrast, comfortable.');
+
+      return base.join(' ');
+    };
+
     const buildSpec = async (intake, opts) => {
       const normalize = (s) => String(s || '').trim();
       const compact = (s, max = 420) => {
         const t = normalize(s).replace(/\s+/g, ' ');
         return t.length > max ? t.slice(0, max) + '…' : t;
       };
+
+      const finishLevel =
+        normalizeFinishLevel(intake?.finishLevel) !== 'unknown'
+          ? normalizeFinishLevel(intake?.finishLevel)
+          : extractFinishLevelFromText(intake?.visionSummary || intake?.requirements || '');
 
       const payload = {
         space: normalize(intake?.space),
@@ -107,6 +178,7 @@ export default async function handler(req, res) {
         decor: normalize(intake?.decor),
         priority: normalize(intake?.priority),
         intensity: normalize(intake?.intensity),
+        finishLevel,
         constraints: compact(intake?.visionSummary || intake?.requirements || '', 520),
       };
 
@@ -116,11 +188,18 @@ Produce a compact, executable design spec that will be used for image-to-image g
 Output MUST be valid JSON only, no extra text.
 Rules:
 - The generated image MUST look like a finished photorealistic interior render (V-Ray/Corona style).
+- The render MUST look like a real interior design proposal: coherent material palette, cabinetry detailing, and a beautiful lighting mood (not flat).
 - INTERIOR ONLY: do NOT redesign balcony/outdoor view; keep balcony as background unchanged.
 - Do NOT move windows/doors/beams/columns; keep camera viewpoint/perspective.
 - Preserve object geometry: keep window frames, doors, straight vertical/horizontal lines; do NOT warp/melt/stretch objects; no bent walls, no distorted windows.
-- Must include: ceiling detail (cove/false ceiling + downlights), finished flooring, finished wall surfaces, built-in cabinetry, lighting plan, and soft furnishings.
-- If constraints indicate the room is unfinished/bare shell, complete full fit-out (ceiling + walls + flooring + skirting + curtains). If it appears already finished, keep existing ceiling/walls/floor and mainly enhance lighting mood, material harmony, cabinetry and soft furnishings.
+- Must include: ceiling detail, finished flooring, finished wall surfaces, built-in cabinetry, lighting plan, and soft furnishings (as applicable).
+- Use finishLevel (bare_shell / semi_finished / finished / unknown) to decide how much to change:
+  - bare_shell: MUST do full fit-out (ceiling design + walls + flooring + skirting + curtains) and make it look fully complete, not a site photo.
+  - semi_finished: keep what's finished, add missing finishes, then unify materials and lighting.
+  - finished: keep existing ceiling/walls/floor as much as possible; mainly enhance cabinetry, lighting layers, material harmony and soft furnishings.
+- Lighting requirements (MUST be explicit in prompt_en, not vague):
+  - Write a layered lighting script: cove/indirect + downlights + accent lights (wall wash / cabinet / pendant / bedside / under-cabinet depending on space).
+  - Specify warm white 2700-3000K (bathroom can be neutral up to 3500K), CRI 90+, dimmable, realistic GI, balanced exposure, soft shadows.
 - Never output an office grid ceiling / mineral fiber ceiling tiles.
 - For bedrooms: bed MUST be a residential bed (no hospital bed, no metal guardrails).
 - The spec MUST match the final render and also match the explanation.
@@ -155,7 +234,8 @@ ${JSON.stringify(payload)}
 Write a design that fits a typical Hong Kong apartment and the constraints.
 Make cabinetry placement explicit (e.g., right wall / left wall / opposite window).
 Keep balcony unchanged.
-MUST include these items in prompt_en and explain_zh (if applicable): ${mustInclude.join(', ') || '(none)'}.`;
+MUST include these items in prompt_en and explain_zh (if applicable): ${mustInclude.join(', ') || '(none)'}.
+Also MUST embed an explicit layered lighting script into prompt_en (concrete components + Kelvin), based on this reference: ${getLightingScriptEn({ spaceKind: String(opts?.spaceKind || 'other'), vibe: payload.vibe })}.`;
 
       const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
         method: 'POST',
@@ -229,7 +309,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
       return 'other';
     };
 
-    const validateMustHave = (spaceKind, spec) => {
+    const validateMustHave = (spaceKind, spec, finishLevel = 'unknown') => {
       const p = String(spec?.prompt_en || '').toLowerCase();
       if (!p) return false;
 
@@ -237,32 +317,49 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
       const universal = ['ceiling', 'floor', 'wall finish', 'lighting', 'built-in', 'cabinet', 'soft'];
       if (!universal.every(k => p.includes(k))) return false;
 
+      const hasAny = (arr) => arr.some(k => p.includes(String(k).toLowerCase()));
+
+      // Lighting script tokens: keep it strict enough to improve "漂亮灯光" consistency
+      // Bathroom is special: may not use cove, but must have mirror/vanity light.
+      if (spaceKind !== 'bath') {
+        if (!hasAny(['cove lighting', 'recessed cove', 'recessed led strip', 'led strip'])) return false;
+      }
+      if (!hasAny(['downlight', 'downlights', 'recessed downlight', 'recessed spot'])) return false;
+      if (!hasAny(['warm white', '3000k', '2700k', '2800k', '2900k'])) {
+        if (!(spaceKind === 'bath' && hasAny(['3500k', 'neutral']))) return false;
+      }
+
       if (spaceKind === 'living') {
         if (!p.includes('tv')) return false;
         if (!(p.includes('tv console') || p.includes('media console') || p.includes('tv cabinet'))) return false;
         if (!(p.includes('sofa') || p.includes('sectional'))) return false;
+        if (!hasAny(['wall wash', 'grazing light', 'accent lighting', 'niche lighting', 'cabinet lighting'])) return false;
         return true;
       }
       if (spaceKind === 'dining') {
         if (!p.includes('dining table')) return false;
         if (!(p.includes('chairs') || p.includes('dining chair'))) return false;
         if (!(p.includes('pendant') || p.includes('chandelier'))) return false;
+        if (!hasAny(['sideboard', 'pantry', 'buffet'])) return false;
         return true;
       }
       if (spaceKind === 'bedroom') {
         if (!p.includes('bed')) return false;
         if (!(p.includes('wardrobe') || p.includes('closet'))) return false;
+        if (!hasAny(['bedside', 'wall light', 'sconce'])) return false;
         return true;
       }
       if (spaceKind === 'study') {
         if (!(p.includes('desk') || p.includes('work desk') || p.includes('study desk'))) return false;
         if (!(p.includes('bookcase') || p.includes('bookshelf') || p.includes('storage'))) return false;
+        if (!hasAny(['task lighting', 'desk lamp'])) return false;
         return true;
       }
       if (spaceKind === 'kitchen') {
         if (!(p.includes('countertop') || p.includes('worktop'))) return false;
         if (!(p.includes('backsplash') || p.includes('tile backsplash'))) return false;
         if (!(p.includes('sink') || p.includes('cooktop') || p.includes('stove'))) return false;
+        if (!hasAny(['under-cabinet', 'under cabinet', 'task lighting'])) return false;
         return true;
       }
       if (spaceKind === 'bath') {
@@ -270,17 +367,20 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
         if (!(p.includes('mirror cabinet') || p.includes('medicine cabinet') || p.includes('mirror'))) return false;
         if (!(p.includes('shower') || p.includes('shower screen') || p.includes('wet area'))) return false;
         if (!(p.includes('non-slip') || p.includes('anti-slip'))) return false;
+        if (!hasAny(['mirror light', 'vanity light'])) return false;
         return true;
       }
       if (spaceKind === 'entry') {
         if (!(p.includes('shoe cabinet') || p.includes('shoe storage'))) return false;
         if (!(p.includes('bench') || p.includes('seat'))) return false;
         if (!(p.includes('mirror') || p.includes('full-length mirror'))) return false;
+        if (!hasAny(['niche lighting', 'accent lighting'])) return false;
         return true;
       }
       if (spaceKind === 'corridor') {
         if (!(p.includes('shallow cabinet') || p.includes('wall cabinet') || p.includes('storage along corridor'))) return false;
         if (!(p.includes('clear walkway') || p.includes('clear circulation'))) return false;
+        if (!hasAny(['wall wash', 'linear', 'cove'])) return false;
         return true;
       }
       return true;
@@ -294,6 +394,10 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
         // Build a spec first (prompt + explanation from same source) to keep them consistent
         try {
           const spaceKind = inferSpaceKind(renderIntake?.space, renderIntake?.focus, renderIntake?.requirements, renderIntake?.bedType);
+          const finishLevel =
+            normalizeFinishLevel(renderIntake?.finishLevel) !== 'unknown'
+              ? normalizeFinishLevel(renderIntake?.finishLevel)
+              : extractFinishLevelFromText(renderIntake?.visionSummary || renderIntake?.requirements || '');
           const mustInclude = (() => {
             const base = [
               'CEILING detail (cove/false ceiling + downlights)',
@@ -302,6 +406,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
               'BUILT-IN CABINETRY',
               'LIGHTING plan',
               'SOFT FURNISHINGS',
+              'Layered lighting (cove/indirect + downlights + accent), warm white 2700-3000K, CRI90+',
               'INTERIOR ONLY (do not change balcony/outdoor view)',
               'DO NOT warp/melt objects'
             ];
@@ -309,29 +414,29 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             if (spaceKind === 'dining') return base.concat(['dining table for 4', 'chairs', 'pendant above table', 'dining sideboard/tall pantry']);
             if (spaceKind === 'bedroom') return base.concat(['residential bed (no hospital bed, no metal rails)', 'full-height wardrobe', 'bedside', 'curtains']);
             if (spaceKind === 'study') return base.concat(['desk', 'bookcase/storage', 'task lighting']);
-            if (spaceKind === 'kitchen') return base.concat(['base cabinets', 'wall cabinets', 'countertop/worktop', 'sink', 'cooktop', 'backsplash tiles']);
-            if (spaceKind === 'bath') return base.concat(['vanity cabinet', 'mirror cabinet', 'shower screen/zone', 'anti-slip floor tiles']);
-            if (spaceKind === 'entry') return base.concat(['shoe cabinet', 'bench/seat', 'full-length mirror', 'concealed clutter storage']);
-            if (spaceKind === 'corridor') return base.concat(['shallow cabinets along corridor', 'clear walkway/circulation']);
+            if (spaceKind === 'kitchen') return base.concat(['base cabinets', 'wall cabinets', 'countertop/worktop', 'sink', 'cooktop', 'backsplash tiles', 'under-cabinet task lighting']);
+            if (spaceKind === 'bath') return base.concat(['vanity cabinet', 'mirror cabinet', 'shower screen/zone', 'anti-slip floor tiles', 'mirror vanity light']);
+            if (spaceKind === 'entry') return base.concat(['shoe cabinet', 'bench/seat', 'full-length mirror', 'concealed clutter storage', 'niche lighting']);
+            if (spaceKind === 'corridor') return base.concat(['shallow cabinets along corridor', 'clear walkway/circulation', 'wall wash / linear lighting']);
             return base;
           })();
 
-          designSpec = await buildSpec(renderIntake, { mustInclude });
+          designSpec = await buildSpec({ ...(renderIntake || {}), finishLevel }, { mustInclude, spaceKind });
           // If missing critical items, retry once with stronger mustInclude
-          if (!validateMustHave(spaceKind, designSpec)) {
+          if (!validateMustHave(spaceKind, designSpec, finishLevel)) {
             const retryExtra =
               spaceKind === 'living'
-                ? ['MUST mention TV explicitly', 'MUST include TV feature wall with storage']
+                ? ['MUST mention TV explicitly', 'MUST include TV feature wall with storage', 'MUST include cove lighting + downlights + wall wash/cabinet accent lights']
                 : spaceKind === 'kitchen'
-                  ? ['MUST include sink + cooktop triangle workflow', 'MUST include tall pantry/electrical cabinet if space allows']
+                  ? ['MUST include sink + cooktop triangle workflow', 'MUST include tall pantry/electrical cabinet if space allows', 'MUST include under-cabinet task lighting']
                   : spaceKind === 'bath'
-                    ? ['MUST include dry-wet separation', 'MUST include anti-slip floor tiles']
+                    ? ['MUST include dry-wet separation', 'MUST include anti-slip floor tiles', 'MUST include mirror vanity light + soft downlights']
                     : spaceKind === 'entry'
-                      ? ['MUST include shoe storage with bench + mirror']
+                      ? ['MUST include shoe storage with bench + mirror', 'MUST include niche lighting / soft mirror light']
                       : spaceKind === 'corridor'
-                        ? ['MUST keep clear circulation width', 'use shallow storage only']
-                        : ['Ensure all must-haves are explicitly present in prompt'];
-            designSpec = await buildSpec(renderIntake, { mustInclude: mustInclude.concat(retryExtra) });
+                        ? ['MUST keep clear circulation width', 'use shallow storage only', 'MUST include wall wash / linear lighting to avoid dark corners']
+                        : ['Ensure all must-haves are explicitly present in prompt', 'Include layered lighting with 2700-3000K'];
+            designSpec = await buildSpec({ ...(renderIntake || {}), finishLevel }, { mustInclude: mustInclude.concat(retryExtra), spaceKind });
           }
           if (designSpec?.prompt_en) {
             finalPrompt = designSpec.prompt_en;
@@ -471,6 +576,17 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
         const spaceEn = mapSpace(space);
         const styleEn = mapStyle(style);
         const colorEn = mapColor(color);
+        const finishLevelFallback = extractFinishLevelFromText(renderIntake?.visionSummary || requirements || '');
+        const finishPolicy =
+          finishLevelFallback === 'bare_shell'
+            ? 'Finish level: bare shell; complete full fit-out (ceiling + walls + floor + skirting + curtains), then furniture + cabinetry + layered lighting.'
+            : finishLevelFallback === 'semi_finished'
+              ? 'Finish level: semi-finished; keep existing finished parts and add missing finishes, then unify materials and lighting.'
+              : finishLevelFallback === 'finished'
+                ? 'Finish level: finished; keep existing ceiling/walls/floor as much as possible, mainly upgrade cabinetry, lighting layers, and soft furnishings.'
+                : 'Finish level: unknown; prioritize keeping structure, and ensure the render looks fully finished.';
+        const spaceKindFallback = inferSpaceKind(space, focus, requirements, renderIntake?.bedType);
+        const lightingScript = getLightingScriptEn({ spaceKind: spaceKindFallback, vibe });
 
         // Hard constraints for HK apartment + balcony cases
         const hardRules = [
@@ -489,6 +605,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             'Must include: finished flooring (engineered wood or large-format porcelain tiles with skirting), finished wall surfaces, and a proper ceiling design (gypsum board flat ceiling / slim cove lighting + downlights).',
             'Must include: built-in cabinetry plan with real details (full-height cabinets, toe-kick, shadow gap or integrated handles, internal compartments).',
             'Must include: a complete furniture layout + soft furnishings (curtains, rug, artwork, plants), warm realistic lighting, coherent styling.',
+            'Must include: a layered lighting script (cove/indirect + downlights + accent) with warm white 2700-3000K, CRI90+, dimmable, realistic GI and balanced exposure.',
             spaceEn.includes('dining') ? 'Dining must-have: dining table for 4 + chairs with clear circulation, pendant light above table, and a dining sideboard/tall pantry storage with display niche lighting.' : '',
         ].filter(Boolean).join(' ');
 
@@ -496,7 +613,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             'Materials: ENF-grade multilayer wood/plywood cabinetry.',
             'Lighting: warm, natural; balanced exposure; not oversharpened.',
             'Clean realistic textures; no cartoon/CGI look; no low-poly.',
-            'Avoid: empty room, blank walls, unfinished concrete, muddy textures, toy-like 3D, distorted straight lines.'
+            'Avoid: empty room, blank walls, unfinished concrete, muddy textures, toy-like 3D, distorted straight lines, fisheye, bent walls, melted objects, overexposed highlights.'
         ].join(' ');
 
         const extraReq = compact(requirements, 380);
@@ -507,6 +624,8 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
           finalPrompt = trimPrompt([
               hardRules,
               mustHave,
+              finishPolicy,
+              lightingScript,
               `Space: ${spaceEn}.`,
               `Style: ${styleEn}.`,
               `Color palette: ${colorEn}.`,
@@ -720,7 +839,7 @@ MUST include these items in prompt_en and explain_zh (if applicable): ${mustIncl
             if (refineSource) {
                 const refinePrompt = (() => {
                     const suffix =
-                      ' Refine into magazine-quality photorealistic interior render: ONLY enhance materials, lighting layers (ceiling cove + downlights), and soft furnishings (curtains/rug/art/plants) matching the chosen style/palette, and add cabinetry detailing. Do NOT change layout or move furniture/cabinets. Keep straight lines; no distorted windows/doors; no office grid ceiling; no hospital bed/medical rails. Keep structure and perspective unchanged. Avoid empty room, blank walls, unfinished concrete.';
+                      ' Refine into magazine-quality photorealistic interior render: ONLY enhance materials, cabinetry detailing, and layered lighting. Lighting must be beautiful and realistic: warm white 2700-3000K, CRI 90+, dimmable; ceiling cove/indirect + recessed downlights + space-appropriate accent lights (wall wash / cabinet niche / pendant / bedside / under-cabinet). Keep balanced exposure, soft shadows, realistic GI; avoid overexposed highlights. Do NOT change layout or move furniture/cabinets. Keep straight lines; no distorted windows/doors; no fisheye; no office grid ceiling; no hospital bed/medical rails. Keep structure and perspective unchanged. Avoid empty room, blank walls, unfinished concrete, muddy textures, melted objects.';
                     const t = String(finalPrompt + suffix).replace(/\s+/g, ' ').trim();
                     return t.length > 1024 ? t.slice(0, 1021) + '...' : t;
                 })();
