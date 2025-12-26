@@ -7,7 +7,7 @@ import { Composer } from './components/Composer';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateDesignImage, generateInspireImage, qaDesignImage } from './services/generateClient';
+import { generateDesignImage, generateInspireImage, qaDesignImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
@@ -18,6 +18,7 @@ const App: React.FC = () => {
   
   const [uploads, setUploads] = useState<Record<string, {
     dataUrl: string;
+    imageUrl?: string; // Prefer public URL (Blob) for analysis/i2i stability
     width?: number;
     height?: number;
     spaceType?: string;
@@ -144,7 +145,8 @@ const App: React.FC = () => {
       setMessages(prev => prev.filter(m => !(m.meta?.kind === 'analysis' && m.meta?.uploadId === uploadId)));
 
       const visionRes = await analyzeImage({
-        imageDataUrl: active.dataUrl,
+        imageUrl: active.imageUrl,
+        imageDataUrl: active.imageUrl ? undefined : active.dataUrl,
         mode: 'consultant',
         spaceType: spaceTypeText,
         clientId
@@ -176,8 +178,9 @@ const App: React.FC = () => {
   };
 
   const handleUpload = (file: File) => {
-    // No Blob storage: keep payload smaller for stability (base64 only, in-session)
+    // Prefer URL-first (Vercel Blob) for Stepfun vision/i2i stability; fallback to base64-only if upload fails.
     compressImage(file, 1024, 0.75).then(blob => {
+        let uploadedUrl: string | undefined;
         const reader = new FileReader();
         reader.onload = async (e) => {
             const dataUrl = e.target?.result as string;
@@ -190,6 +193,21 @@ const App: React.FC = () => {
                     dataUrl,
                 }
             }));
+
+            // Fire-and-forget: try to upload to Blob to obtain a public URL for downstream APIs.
+            // If it fails (e.g. local dev without token), we keep using base64.
+            (async () => {
+              try {
+                const up = await uploadImage(blob, { clientId, uploadId });
+                const url = up?.url;
+                if (url) {
+                  uploadedUrl = url;
+                  setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], imageUrl: url } }) : prev);
+                }
+              } catch {
+                // ignore
+              }
+            })();
 
             // Show the latest uploaded image in chat immediately (user bubble)
             setMessages(prev => [
@@ -215,7 +233,7 @@ const App: React.FC = () => {
                     (async () => {
                       const classifyId = addLoadingToast("我先幫你判斷呢張相係咩空間，請稍等…", { loadingType: 'classifying', uploadId });
                       try {
-                        const sres = await classifySpace({ imageDataUrl: dataUrl, clientId });
+                        const sres = await classifySpace({ imageUrl: uploadedUrl, imageDataUrl: uploadedUrl ? undefined : dataUrl, clientId });
                         stopLoadingToast(classifyId);
                         const primary = (sres.ok && sres.primary) ? sres.primary : '其他';
                         const options = (() => {
@@ -1246,7 +1264,8 @@ const App: React.FC = () => {
               // Extra stage hint (spinner stays in this loading toast)
               const stageHintId = addLoadingToast("生成中：结构锁定 → 设计改造 → 灯光材质精修（约 60–120 秒）", { loadingType: 'generating', uploadId });
 
-              const baseImage = u.dataUrl;
+              // Prefer public URL for i2i (more stable); fallback to base64 dataUrl.
+              const baseImage = u.imageUrl || u.dataUrl;
               // Default goal: "明显改造、像设计效果图" (stronger than previous conservative preset).
               // StepFun doc: smaller source_weight => closer to source (less deformation).
               const inferIntensityPreset = (t?: string) => {

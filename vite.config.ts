@@ -10,6 +10,7 @@ import designInspireHandler from './api/design/inspire'
 import kbStatusHandler from './api/kbStatus'
 import visionHealthHandler from './api/vision-health'
 import envCheckHandler from './api/env-check'
+import uploadHandler from './api/upload'
 import { IncomingMessage, ServerResponse } from 'http'
 
 const apiMockPlugin = (): Plugin => ({
@@ -32,6 +33,7 @@ const apiMockPlugin = (): Plugin => ({
       if (pathname === '/api/design/inspire') return designInspireHandler(req, res)
       if (pathname === '/api/kb-status') return kbStatusHandler(req, res)
       if (pathname === '/api/env-check') return envCheckHandler(req, res)
+      if (pathname === '/api/upload') return uploadHandler(req, res)
 
       // 404 for unknown /api routes
       res.statusCode = 404

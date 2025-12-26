@@ -1,25 +1,25 @@
 export default async function handler(req, res) {
-    const keys = [
-        process.env.STEPFUN_VISION_API_KEY,
-        process.env.STEPFUN_VISION_API_KEY_2
-    ].filter(Boolean);
+    // Prefer unified key used across the app.
+    // Keep legacy fallback keys for backward compatibility.
+    const candidates = [
+        { key: process.env.STEPFUN_API_KEY, label: 'STEPFUN_API_KEY' },
+        { key: process.env.STEPFUN_VISION_API_KEY, label: 'STEPFUN_VISION_API_KEY' },
+        { key: process.env.STEPFUN_VISION_API_KEY_2, label: 'STEPFUN_VISION_API_KEY_2' },
+    ].filter(x => Boolean(x.key));
 
-    if (keys.length === 0) {
+    if (candidates.length === 0) {
         res.status(200).json({ ok: false, errorCode: 'MISSING_KEY' });
         return;
     }
 
+    // Minimal 1x1 pixel image (data URL)
+    const minimalImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
     let lastError = null;
 
-    for (const key of keys) {
+    for (const c of candidates) {
+        const key = c.key;
         try {
-            const usedKeyLabel = key === process.env.STEPFUN_VISION_API_KEY ? 'KEY_1' : 'KEY_2';
-            
-            // Minimal health check - analyze a tiny 1x1 pixel image or just ask "hello" if model supports text-only (most vision models do)
-            // Or use a public image URL. Since we don't have a public URL handy, let's try text-only prompt if supported, 
-            // or pass a minimal base64 black pixel.
-            const minimalImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-
+            // Real vision-style request: send text + image_url content array.
             const response = await fetch('https://api.stepfun.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -28,10 +28,17 @@ export default async function handler(req, res) {
                 },
                 body: JSON.stringify({
                     model: 'step-1v-8k',
+                    temperature: 0.0,
+                    max_tokens: 16,
                     messages: [
-                        { role: "user", content: "Test." } 
-                    ],
-                    max_tokens: 5
+                        {
+                            role: "user",
+                            content: [
+                                { type: "text", text: "Health check: reply OK." },
+                                { type: "image_url", image_url: { url: minimalImage } }
+                            ]
+                        }
+                    ]
                 })
             });
 
@@ -39,23 +46,16 @@ export default async function handler(req, res) {
                 const data = await response.json();
                 res.status(200).json({
                     ok: true,
-                    usedKey: usedKeyLabel,
+                    usedKey: c.label,
                     requestId: data.id
                 });
                 return;
-            } else {
-                const text = await response.text();
-                lastError = { status: response.status, details: text };
-                // If 400 (e.g. image required), it means key is working but request was bad. 
-                // But we want to ensure key works.
-                if (response.status === 400 && text.includes("image")) {
-                     // It connected successfully but complained about missing image, which means Auth is likely OK.
-                     // But strictly, we want 200.
-                     // Let's try with image if text-only fails.
-                }
             }
+
+            const text = await response.text();
+            lastError = { status: response.status, details: text, usedKey: c.label };
         } catch (e) {
-            lastError = { message: e.message };
+            lastError = { message: e?.message || String(e), usedKey: c.label };
         }
     }
 
