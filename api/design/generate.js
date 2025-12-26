@@ -672,7 +672,9 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         finalPrompt = finalPrompt.slice(0, 1021) + '...';
     }
 
-    // Ensure explanation ALWAYS matches the final prompt (avoid front-end fallback drift)
+    // Explanation strategy:
+    // - Prefer generating explanation from the FINAL image (most consistent with what user sees)
+    // - Fallback to generating from finalPrompt only if image-based explanation fails
     const ensureDesignExplanation = async () => {
         if (designExplanation && String(designExplanation).trim()) return;
         try {
@@ -708,8 +710,6 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
             // non-fatal
         }
     };
-
-    await ensureDesignExplanation();
 
     // --- STRATEGY A: Try Blob URL directly ---
     let sourceUrl = baseImageBlobUrl;
@@ -834,6 +834,138 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         return { mime, b64 };
     };
 
+    const normalizeImageForVision = async (urlOrDataUrl) => {
+        const u = String(urlOrDataUrl || '').trim();
+        if (!u) return null;
+        if (u.startsWith('data:')) return u;
+        // StepFun vision can often consume URLs, but make it robust with a base64 fallback.
+        try {
+            const ab = await fetchUrlToB64(u);
+            if (ab?.b64) return `data:${ab.mime || 'image/jpeg'};base64,${ab.b64}`;
+        } catch {}
+        return u;
+    };
+
+    const callVisionCheck = async ({ imageUrl, spaceKind, intake }) => {
+        const finalImageUrl = await normalizeImageForVision(imageUrl);
+        if (!finalImageUrl) return null;
+
+        const must = (() => {
+            if (spaceKind === 'bedroom') return ['bed', 'wardrobe', 'curtains', 'layered lighting (cove+downlights+accent)'];
+            if (spaceKind === 'living') return ['tv', 'tv console', 'sofa', 'layered lighting (cove+downlights+accent)'];
+            if (spaceKind === 'dining') return ['dining table', 'chairs', 'pendant lights above table', 'sideboard/pantry', 'layered lighting'];
+            if (spaceKind === 'kitchen') return ['base cabinets', 'wall cabinets', 'countertop', 'sink/cooktop zone', 'under-cabinet lighting'];
+            if (spaceKind === 'bath') return ['vanity cabinet', 'mirror cabinet', 'shower zone/screen', 'anti-slip floor', 'mirror/vanity light'];
+            if (spaceKind === 'entry') return ['shoe cabinet', 'bench', 'full-length mirror', 'niche/accent lighting'];
+            if (spaceKind === 'corridor') return ['shallow storage', 'clear circulation', 'wall wash/linear lighting'];
+            return ['built-in cabinetry', 'finished ceiling/walls/floor', 'curtains/soft furnishings', 'layered lighting'];
+        })();
+
+        const system =
+          `You are an interior design QA inspector. Judge ONLY from the image.\n` +
+          `Output MUST be valid JSON only.\n` +
+          `Criteria:\n` +
+          `- Must look like a NEW, magazine-quality photorealistic interior design proposal render (not a site photo).\n` +
+          `- Lighting must be layered: cove/indirect + recessed downlights + space-appropriate accent lights; warm 2700-3000K; no flat lighting.\n` +
+          `- Keep straight lines; report any warped windows/doors/walls or fisheye distortion.\n` +
+          `- Required objects for this space MUST be visible.\n` +
+          `Return schema:\n` +
+          `{\n` +
+          `  "pass": true/false,\n` +
+          `  "missing": ["..."],\n` +
+          `  "issues": ["..."],\n` +
+          `  "lighting_layered": true/false,\n` +
+          `  "distortion": true/false,\n` +
+          `  "scores": { "design_render": 0-10, "lighting": 0-10, "realism": 0-10 },\n` +
+          `  "suggest_suffix_en": "short English refine instruction <= 240 chars"\n` +
+          `}\n`;
+
+        const user =
+          `Space kind: ${spaceKind}\n` +
+          `User selections (for reference, do not hallucinate): ${JSON.stringify({
+              style: intake?.style,
+              color: intake?.color,
+              focus: intake?.focus,
+              storage: intake?.storage,
+              vibe: intake?.vibe,
+              decor: intake?.decor,
+          })}\n` +
+          `Required visible items: ${must.join(', ')}\n` +
+          `Now evaluate this image.`;
+
+        const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({
+                model: 'step-1v-8k',
+                temperature: 0.1,
+                max_tokens: 420,
+                messages: [
+                    { role: 'system', content: system },
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: user },
+                            { type: 'image_url', image_url: { url: finalImageUrl } }
+                        ]
+                    }
+                ]
+            })
+        });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        return safeJsonParse(content);
+    };
+
+    const generateExplanationFromImage = async ({ imageUrl, intake }) => {
+        const finalImageUrl = await normalizeImageForVision(imageUrl);
+        if (!finalImageUrl) return null;
+        const system =
+          `你是一位资深香港室内订造设计师。请只根据图片内容输出 5-7 条简体中文要点（每条以“- ”开头）。\n` +
+          `规则：\n` +
+          `- 每条必须在图片里看得见，不能乱编。\n` +
+          `- 必须包含“布置要点”（例如床/衣柜/电视墙/餐桌/厨房动线/浴室干湿分区等，按空间实际出现写）。\n` +
+          `- 必须包含“灯光层次”（灯槽/筒灯/重点光）并描述氛围（暖光 2700-3000K）。\n` +
+          `- 不要写报价、促销、品牌、不可见结构。\n`;
+        const user =
+          `用户选择（仅供参考，不要超出图片内容）：${JSON.stringify({
+              space: intake?.space,
+              style: intake?.style,
+              color: intake?.color,
+              focus: intake?.focus,
+              storage: intake?.storage,
+              vibe: intake?.vibe,
+              decor: intake?.decor,
+          })}\n` +
+          `请输出要点。`;
+
+        const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({
+                model: 'step-1v-8k',
+                temperature: 0.2,
+                max_tokens: 320,
+                messages: [
+                    { role: 'system', content: system },
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: user },
+                            { type: 'image_url', image_url: { url: finalImageUrl } }
+                        ]
+                    }
+                ]
+            })
+        });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const content = String(data.choices?.[0]?.message?.content || '').trim();
+        if (!content) return null;
+        return content;
+    };
+
     const extractResult = (data) => {
         const first = data?.data?.[0] || {};
         const finishReason = first?.finish_reason;
@@ -910,6 +1042,58 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         }
     }
 
+    // --- Post-check loop (vision QA) and one extra auto-refine if needed ---
+    const spaceKindForCheck = renderIntake ? inferSpaceKind(renderIntake?.space, renderIntake?.focus, renderIntake?.requirements, renderIntake?.bedType) : 'other';
+    let qa = null;
+    let qa2 = null;
+    let autoRefined = false;
+    try {
+        const currentImg = resultUrl ? resultUrl : (resultImageB64 ? `data:image/jpeg;base64,${resultImageB64}` : null);
+        if (currentImg && renderIntake) {
+            qa = await callVisionCheck({ imageUrl: currentImg, spaceKind: spaceKindForCheck, intake: renderIntake });
+            const pass = Boolean(qa?.pass);
+            if (!pass) {
+                const suggestion = String(qa?.suggest_suffix_en || '').replace(/\s+/g, ' ').trim();
+                const refineSource = currentImg;
+                const refinePrompt2 = (() => {
+                    const suffix =
+                      ` Refine to pass QA: ensure required layout items for ${spaceKindForCheck} are clearly visible; make it look like a NEW magazine-quality interior design render. ` +
+                      `Lighting MUST be layered (cove/indirect + recessed downlights + accent lights) warm 2700-3000K, CRI 90+, realistic GI, balanced exposure; avoid flat lighting. ` +
+                      `Do NOT warp straight lines; no fisheye; keep structure and perspective. ` +
+                      (suggestion ? `Extra: ${suggestion}` : '');
+                    const t = String(finalPrompt + suffix).replace(/\s+/g, ' ').trim();
+                    return t.length > 1024 ? t.slice(0, 1021) + '...' : t;
+                })();
+
+                const refineRes2 = await callStepFun({
+                    urlToUse: refineSource,
+                    rf: 'url',
+                    promptToUse: refinePrompt2,
+                    sw: Math.min(0.30, finalSourceWeight),
+                    st: Math.min(34, finalSteps),
+                    cfg: Math.min(6.6, finalCfgScale)
+                });
+                if (refineRes2.ok) {
+                    const refineData2 = await readStepFunJson(refineRes2);
+                    const refined2 = extractResult(refineData2);
+                    if (refined2.resultUrl || refined2.resultImageB64) {
+                        autoRefined = true;
+                        finishReason = refined2.finishReason || finishReason;
+                        resultSeed = refined2.resultSeed ?? resultSeed;
+                        resultImageB64 = refined2.resultImageB64 || resultImageB64;
+                        resultUrl = refined2.resultUrl || resultUrl;
+                        const img2 = refined2.resultUrl ? refined2.resultUrl : (refined2.resultImageB64 ? `data:image/jpeg;base64,${refined2.resultImageB64}` : null);
+                        if (img2) {
+                            qa2 = await callVisionCheck({ imageUrl: img2, spaceKind: spaceKindForCheck, intake: renderIntake });
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[Design Gen] QA loop error:', e?.message || e);
+    }
+
     // If client asked for base64 but only URL exists, fetch and convert.
     let fetchedB64 = null;
     if (finalResponseFormat === 'b64_json' && !resultImageB64 && resultUrl) {
@@ -942,6 +1126,18 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         const mime = fetchedB64?.mime || 'image/jpeg';
         return `data:${mime};base64,${resultImageB64}`;
     })();
+
+    // Generate explanation from FINAL image to ensure it matches what user sees
+    try {
+        const imgForExplain = String(finalResult || '').trim();
+        if (imgForExplain) {
+            const exp = await generateExplanationFromImage({ imageUrl: imgForExplain, intake: renderIntake || {} });
+            if (exp) designExplanation = exp;
+        }
+    } catch {}
+    // Fallback: prompt-based explanation
+    await ensureDesignExplanation();
+
     res.status(200).json({
       ok: true,
       resultBlobUrl: finalResult,
@@ -955,7 +1151,10 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         steps: finalSteps,
         cfg_scale: finalCfgScale,
         seed: resultSeed,
-        finish_reason: finishReason
+        finish_reason: finishReason,
+        qa_pass: qa ? Boolean(qa?.pass) : undefined,
+        qa_auto_refined: autoRefined,
+        qa_last: qa2 || qa || undefined
       }
     });
 
