@@ -147,7 +147,7 @@ const App: React.FC = () => {
         setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], visionSummary: visionRes.vision_summary, analysisStatus: 'done' } }) : prev);
 
         await typeOutAI(
-          `【圖片分析結果】\n${visionRes.vision_summary}\n\n想再分析另一張相？直接點左下角圖片按鈕再上傳就得～`,
+          `【图片分析】\n${visionRes.vision_summary}\n点「生成智能效果图」继续。`,
           { options: ["生成智能效果圖"], meta: { kind: 'analysis', uploadId } }
         );
       } else {
@@ -843,10 +843,27 @@ const App: React.FC = () => {
               const space = u.spaceType || '';
               const storageOptions = (() => {
                   const s = normalizeSpaceKey(space);
-                  if (s.includes('厨房')) return ["台面整洁收纳（隐藏小家电）", "高柜电器位/储物高柜", "转角五金优化"];
-                  if (s.includes('卫生间')) return ["隐藏收纳为主", "镜柜+壁龛（更好用）", "毛巾/清洁高柜"];
-                  if (s.includes('走廊') || s.includes('入户')) return ["隐藏收纳为主", "隐藏+局部展示（少量）"];
-                  return ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"];
+                  // Space-aware options (avoid irrelevant choices on mobile)
+                  const isLivingDining = s.includes('客餐');
+                  const isLiving = s.includes('客厅') || s.includes('客廳') || s === '客餐厅';
+                  const isDining = s.includes('餐厅') || s.includes('餐廳');
+                  const isKitchen = s.includes('厨房') || s.includes('廚') || s.includes('厨');
+                  const isBath = s.includes('卫生间') || s.includes('衛生間') || s.includes('卫生間') || s.includes('洗手') || s.includes('厕') || s.includes('廁');
+                  const isEntry = s.includes('入户') || s.includes('玄') || s.includes('關') || s.includes('关');
+                  const isCorridor = s.includes('走廊') || s.includes('通道');
+                  const isStudy = s.includes('书房') || s.includes('書房') || s.includes('工作间') || s.includes('工作間');
+                  const isSmallBedroom = s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('兒童房') || s.includes('儿童房');
+                  const isBedroom = isSmallBedroom || s.includes('睡房') || s.includes('卧室') || s.includes('房');
+
+                  if (isKitchen) return ["台面整洁收纳（隐藏小家电）", "高柜电器位/储物高柜", "转角五金优化"];
+                  if (isBath) return ["隐藏收纳为主", "镜柜+壁龛（更好用）", "毛巾/清洁高柜"];
+                  if (isEntry || isCorridor) return ["隐藏收纳为主", "隐藏+局部展示（少量）"];
+                  if (isStudy) return ["书桌/工作位优先", "收纳+局部展示（少量）", "隐藏收纳为主"];
+                  if (isSmallBedroom) return ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"];
+                  // Living/dining: do NOT offer desk/workstation by default
+                  if (isLivingDining || isLiving || isDining) return ["隐藏收纳为主", "收纳+局部展示（少量）"];
+                  if (isBedroom) return ["隐藏收纳为主", "收纳+局部展示（少量）"];
+                  return ["隐藏收纳为主", "收纳+局部展示（少量）"];
               })();
 
               await typeOutAI("收纳取向你想偏边种？（会影响柜体比例与细节）", {
