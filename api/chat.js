@@ -19,6 +19,16 @@ export default async function handler(req, res) {
 
   try {
     const { messages, visionSummary, spaceType } = req.body;
+    const lastUserText = (() => {
+      try {
+        const arr = Array.isArray(messages) ? messages : [];
+        for (let i = arr.length - 1; i >= 0; i--) {
+          const m = arr[i];
+          if (m && m.role === 'user' && typeof m.content === 'string') return m.content;
+        }
+      } catch {}
+      return '';
+    })();
     
     // Core Persona (Mainland factory + HK customization)
     const WHATSAPP_NUMBER = "85256273817";
@@ -34,6 +44,48 @@ export default async function handler(req, res) {
 5) 涉及“业务敏感”内容：价钱/报价/套餐/优惠、工厂地址、门店/展厅地址、交期、付款、保养细则等——不要编造；统一礼貌引导点右上角「免费跟进」WhatsApp（wa.me/${WHATSAPP_NUMBER}）。
 6) 香港语境：熟悉钻石厅、眼镜房、窗台深、冷气机位尴尬、楼底矮、走廊浪费位等常见问题，并给对应柜体解法（例如：到顶高柜、餐边高柜、电器高柜、窗台书枱柜、玄关一体柜）。`;
 
+    // Knowledge Base (Vercel Blob .docx) — optional and guarded
+    const kbContext = await (async () => {
+      // Only try KB when blob token exists; otherwise skip silently.
+      if (!process.env.BLOB_READ_WRITE_TOKEN) return '';
+      if (!lastUserText) return '';
+
+      // Enforce a small time budget so chat streaming isn't blocked too long on cold start.
+      const withTimeout = async (promise, ms) => {
+        let to;
+        try {
+          return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+              to = setTimeout(() => reject(new Error('KB_TIMEOUT')), ms);
+            }),
+          ]);
+        } finally {
+          if (to) clearTimeout(to);
+        }
+      };
+
+      try {
+        const kb = await import('../services/kbFromBlob.js');
+        const should = typeof kb.shouldUseKnowledge === 'function' ? kb.shouldUseKnowledge(lastUserText) : false;
+        if (!should) return '';
+
+        const result = await withTimeout(
+          Promise.resolve(kb.searchKnowledge(lastUserText)),
+          1800
+        );
+
+        const excerpt = String(result?.excerpt || '').trim();
+        const sources = Array.isArray(result?.sources) ? result.sources : [];
+        if (!excerpt) return '';
+        const sourceLine = sources.length ? `（来源：${sources.slice(0, 3).join('、')}）` : '';
+        return `\n\n【公司知识库参考资料】\n${sourceLine}\n${excerpt}\n\n【使用规则】\n- 仅在与用户问题相关时引用；不要生搬硬套。\n- 涉及价格/套餐/地址/交期等敏感内容：若资料不足，仍需引导 WhatsApp 跟进，不可编造。`;
+      } catch (e) {
+        // KB is best-effort; never fail chat because of KB issues.
+        return '';
+      }
+    })();
+
     // Vision Context
     let visionContext = "";
     if (visionSummary) {
@@ -43,7 +95,7 @@ export default async function handler(req, res) {
     }
 
     // Final System Prompt
-    const systemPrompt = `${CORE_PERSONA}${visionContext}`;
+    const systemPrompt = `${CORE_PERSONA}${visionContext}${kbContext}`;
 
     const apiMessages = [
         { role: "system", content: systemPrompt },
