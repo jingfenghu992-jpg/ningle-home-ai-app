@@ -787,25 +787,41 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         cfg = finalCfgScale
     }) => {
         console.log(`[Design Gen] Calling StepFun image2image with ${urlToUse.slice(0, 50)}...`);
-        return await fetch('https://api.stepfun.com/v1/images/image2image', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: 'step-1x-medium',
-            prompt: promptToUse,
-            source_url: urlToUse,
-            source_weight: sw,
-            size: finalSize,
-            n: 1,
-            response_format: rf,
-            seed: finalSeed,
-            steps: st,
-            cfg_scale: cfg
-          })
-        });
+        // StepFun may enforce very low concurrency (e.g. limit=1). Add a small retry for 429.
+        const doFetch = async () =>
+          await fetch('https://api.stepfun.com/v1/images/image2image', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: 'step-1x-medium',
+              prompt: promptToUse,
+              source_url: urlToUse,
+              source_weight: sw,
+              size: finalSize,
+              n: 1,
+              response_format: rf,
+              seed: finalSeed,
+              steps: st,
+              cfg_scale: cfg
+            })
+          });
+
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        let r = await doFetch();
+        if (r.status === 429) {
+          console.warn('[Design Gen] 429 rate limited, retrying...');
+          await sleep(900);
+          r = await doFetch();
+        }
+        if (r.status === 429) {
+          console.warn('[Design Gen] 429 rate limited again, retrying...');
+          await sleep(1400);
+          r = await doFetch();
+        }
+        return r;
     };
 
     // Quick preflight check for public URL access (non-fatal; we can still try)

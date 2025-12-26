@@ -129,23 +129,32 @@ export default async function handler(req, res) {
   ].filter(Boolean).join(' ');
 
   try {
-    const response = await fetch('https://api.stepfun.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'step-1x-medium',
-        prompt,
-        size: finalSize,
-        n: 1,
-        response_format: finalResponseFormat,
-        seed: finalSeed,
-        steps: finalSteps,
-        cfg_scale: finalCfgScale,
-      }),
-    });
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const doFetch = async () =>
+      await fetch('https://api.stepfun.com/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'step-1x-medium',
+          prompt,
+          size: finalSize,
+          n: 1,
+          response_format: finalResponseFormat,
+          seed: finalSeed,
+          steps: finalSteps,
+          cfg_scale: finalCfgScale,
+        }),
+      });
+
+    // StepFun may enforce limit=1 concurrency. Retry lightly on 429.
+    let response = await doFetch();
+    if (response.status === 429) {
+      await sleep(800);
+      response = await doFetch();
+    }
 
     if (!response.ok) {
       const errText = await response.text();

@@ -667,34 +667,44 @@ const App: React.FC = () => {
               payload.renderIntake = { requirements: `Modification: ${revisionText}` } as any; 
           }
 
-          // Fire a fast text-to-image inspiration render in parallel (does NOT block i2i).
-          // This is a style reference only (not tied to user's exact structure).
+          // IMPORTANT (StepFun concurrency limit):
+          // Do NOT run inspiration (t2i) and final i2i in parallel, otherwise one will 429.
+          // Strategy: generate inspiration first (fast), then start the final i2i.
+          // Inspiration is optional; if it fails, we still proceed with i2i.
+          let progressId: string | null = null;
           if (!revisionText) {
-            (async () => {
-              try {
-                const hintId = addLoadingToast("我順便幫你出一張「風格靈感圖」（唔一定同你間房結構一樣），等你唔使乾等～", { loadingType: 'generating', uploadId: intakeData?.uploadId });
-                const insp = await generateInspireImage({
-                  renderIntake: intakeData || {},
-                  size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
-                  response_format: 'url',
-                  steps: 28,
-                  cfg_scale: 6.6,
-                });
-                stopLoadingToast(hintId);
-                if (insp.ok && insp.resultUrl) {
-                  setMessages(prev => [
-                    ...prev,
-                    { id: `${Date.now()}-inspire-img`, type: 'image', content: insp.resultUrl!, sender: 'ai', timestamp: Date.now() }
-                  ]);
-                  await typeOutAI("【風格靈感圖】\n- 呢張係方向參考圖（唔一定同你間房門窗結構一樣）\n- 真正「保留你間房結構」嘅效果圖我仍然繼續生成緊～");
-                }
-              } catch {
-                // ignore inspiration failure
+            try {
+              const hintId = addLoadingToast(
+                "我順便幫你出一張「風格靈感圖」（唔一定同你間房結構一樣），等你唔使乾等～",
+                { loadingType: 'generating', uploadId: intakeData?.uploadId }
+              );
+              const insp = await generateInspireImage({
+                renderIntake: intakeData || {},
+                size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
+                response_format: 'url',
+                steps: 28,
+                cfg_scale: 6.6,
+              });
+              stopLoadingToast(hintId);
+
+              if (insp.ok && insp.resultUrl) {
+                setMessages(prev => [
+                  ...prev,
+                  { id: `${Date.now()}-inspire-img`, type: 'image', content: insp.resultUrl!, sender: 'ai', timestamp: Date.now() }
+                ]);
+                // Show a "still generating" message WITH a spinner to reduce user anxiety.
+                progressId = addLoadingToast(
+                  "【風格靈感圖】\n- 呢張係方向參考圖（唔一定同你間房門窗結構一樣）\n- 真正「保留你間房結構」嘅效果圖我仍然生成緊～",
+                  { loadingType: 'generating', uploadId: intakeData?.uploadId }
+                );
               }
-            })();
+            } catch {
+              // ignore inspiration failure; continue to final i2i
+            }
           }
 
           const res = await generateDesignImage(payload as any);
+          if (progressId) stopLoadingToast(progressId);
 
           if (res.ok && (res.resultBlobUrl || res.b64_json)) {
               const resultUrl = res.resultBlobUrl || (res.b64_json ? `data:image/jpeg;base64,${res.b64_json}` : null);
