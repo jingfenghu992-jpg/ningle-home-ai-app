@@ -15,6 +15,12 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Vercel maxDuration is configured as 60s in vercel.json for api/**.
+  // We MUST keep end-to-end work below that budget to avoid 504 Gateway Timeout.
+  const startedAt = Date.now();
+  const hardBudgetMs = 56000; // keep some headroom for network/serialization
+  const timeLeftMs = () => Math.max(0, hardBudgetMs - (Date.now() - startedAt));
+
   const {
     prompt,
     baseImageBlobUrl,
@@ -846,7 +852,8 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         return u;
     };
 
-    const callVisionCheck = async ({ imageUrl, spaceKind, intake }) => {
+    // Single vision call: QA + explanation together (reduces latency vs 2 separate calls)
+    const callVisionQaAndExplain = async ({ imageUrl, spaceKind, intake }) => {
         const finalImageUrl = await normalizeImageForVision(imageUrl);
         if (!finalImageUrl) return null;
 
@@ -862,8 +869,8 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         })();
 
         const system =
-          `You are an interior design QA inspector. Judge ONLY from the image.\n` +
-          `Output MUST be valid JSON only.\n` +
+          `You are an interior design QA inspector and design summarizer. Judge ONLY from the image.\n` +
+          `Output MUST be valid JSON only (no extra text).\n` +
           `Criteria:\n` +
           `- Must look like a NEW, magazine-quality photorealistic interior design proposal render (not a site photo).\n` +
           `- Lighting must be layered: cove/indirect + recessed downlights + space-appropriate accent lights; warm 2700-3000K; no flat lighting.\n` +
@@ -877,7 +884,8 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
           `  "lighting_layered": true/false,\n` +
           `  "distortion": true/false,\n` +
           `  "scores": { "design_render": 0-10, "lighting": 0-10, "realism": 0-10 },\n` +
-          `  "suggest_suffix_en": "short English refine instruction <= 240 chars"\n` +
+          `  "suggest_suffix_en": "short English refine instruction <= 240 chars",\n` +
+          `  "explain_zh": ["- 5-7 bullet points in Simplified Chinese, each visually verifiable from the image, include layout + cabinetry + layered lighting"]\n` +
           `}\n`;
 
         const user =
@@ -899,7 +907,7 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
             body: JSON.stringify({
                 model: 'step-1v-8k',
                 temperature: 0.1,
-                max_tokens: 420,
+                max_tokens: 520,
                 messages: [
                     { role: 'system', content: system },
                     {
@@ -916,54 +924,6 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         const data = await resp.json();
         const content = data.choices?.[0]?.message?.content || '';
         return safeJsonParse(content);
-    };
-
-    const generateExplanationFromImage = async ({ imageUrl, intake }) => {
-        const finalImageUrl = await normalizeImageForVision(imageUrl);
-        if (!finalImageUrl) return null;
-        const system =
-          `你是一位资深香港室内订造设计师。请只根据图片内容输出 5-7 条简体中文要点（每条以“- ”开头）。\n` +
-          `规则：\n` +
-          `- 每条必须在图片里看得见，不能乱编。\n` +
-          `- 必须包含“布置要点”（例如床/衣柜/电视墙/餐桌/厨房动线/浴室干湿分区等，按空间实际出现写）。\n` +
-          `- 必须包含“灯光层次”（灯槽/筒灯/重点光）并描述氛围（暖光 2700-3000K）。\n` +
-          `- 不要写报价、促销、品牌、不可见结构。\n`;
-        const user =
-          `用户选择（仅供参考，不要超出图片内容）：${JSON.stringify({
-              space: intake?.space,
-              style: intake?.style,
-              color: intake?.color,
-              focus: intake?.focus,
-              storage: intake?.storage,
-              vibe: intake?.vibe,
-              decor: intake?.decor,
-          })}\n` +
-          `请输出要点。`;
-
-        const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify({
-                model: 'step-1v-8k',
-                temperature: 0.2,
-                max_tokens: 320,
-                messages: [
-                    { role: 'system', content: system },
-                    {
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: user },
-                            { type: 'image_url', image_url: { url: finalImageUrl } }
-                        ]
-                    }
-                ]
-            })
-        });
-        if (!resp.ok) return null;
-        const data = await resp.json();
-        const content = String(data.choices?.[0]?.message?.content || '').trim();
-        if (!content) return null;
-        return content;
     };
 
     const extractResult = (data) => {
@@ -1047,12 +1007,26 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
     let qa = null;
     let qa2 = null;
     let autoRefined = false;
+    let qaSkipped = false;
     try {
         const currentImg = resultUrl ? resultUrl : (resultImageB64 ? `data:image/jpeg;base64,${resultImageB64}` : null);
         if (currentImg && renderIntake) {
-            qa = await callVisionCheck({ imageUrl: currentImg, spaceKind: spaceKindForCheck, intake: renderIntake });
+            // Skip QA if we're close to Vercel timeout (avoid 504)
+            if (timeLeftMs() < 14000) {
+                qaSkipped = true;
+            } else {
+                qa = await callVisionQaAndExplain({ imageUrl: currentImg, spaceKind: spaceKindForCheck, intake: renderIntake });
+            }
+
+            // If we already have image-based explain bullets, use them (ensures match)
+            if (!designExplanation) {
+                const arr = Array.isArray(qa?.explain_zh) ? qa.explain_zh : null;
+                if (arr && arr.length) {
+                    designExplanation = arr.map(x => String(x).trim()).filter(Boolean).slice(0, 8).join('\n');
+                }
+            }
             const pass = Boolean(qa?.pass);
-            if (!pass) {
+            if (!qaSkipped && !pass && timeLeftMs() > 18000) {
                 const suggestion = String(qa?.suggest_suffix_en || '').replace(/\s+/g, ' ').trim();
                 const refineSource = currentImg;
                 const refinePrompt2 = (() => {
@@ -1083,8 +1057,13 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
                         resultImageB64 = refined2.resultImageB64 || resultImageB64;
                         resultUrl = refined2.resultUrl || resultUrl;
                         const img2 = refined2.resultUrl ? refined2.resultUrl : (refined2.resultImageB64 ? `data:image/jpeg;base64,${refined2.resultImageB64}` : null);
-                        if (img2) {
-                            qa2 = await callVisionCheck({ imageUrl: img2, spaceKind: spaceKindForCheck, intake: renderIntake });
+                        if (img2 && timeLeftMs() > 9000) {
+                            qa2 = await callVisionQaAndExplain({ imageUrl: img2, spaceKind: spaceKindForCheck, intake: renderIntake });
+                            // Prefer refined image explanation if available
+                            const arr2 = Array.isArray(qa2?.explain_zh) ? qa2.explain_zh : null;
+                            if (arr2 && arr2.length) {
+                                designExplanation = arr2.map(x => String(x).trim()).filter(Boolean).slice(0, 8).join('\n');
+                            }
                         }
                     }
                 }
@@ -1127,16 +1106,10 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         return `data:${mime};base64,${resultImageB64}`;
     })();
 
-    // Generate explanation from FINAL image to ensure it matches what user sees
-    try {
-        const imgForExplain = String(finalResult || '').trim();
-        if (imgForExplain) {
-            const exp = await generateExplanationFromImage({ imageUrl: imgForExplain, intake: renderIntake || {} });
-            if (exp) designExplanation = exp;
-        }
-    } catch {}
-    // Fallback: prompt-based explanation
-    await ensureDesignExplanation();
+    // Fallback: prompt-based explanation only if we still have time
+    if (!designExplanation && timeLeftMs() > 6000) {
+        await ensureDesignExplanation();
+    }
 
     res.status(200).json({
       ok: true,
@@ -1154,6 +1127,8 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         finish_reason: finishReason,
         qa_pass: qa ? Boolean(qa?.pass) : undefined,
         qa_auto_refined: autoRefined,
+        qa_skipped: qaSkipped,
+        ms_spent: Date.now() - startedAt,
         qa_last: qa2 || qa || undefined
       }
     });
