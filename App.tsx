@@ -741,10 +741,12 @@ const App: React.FC = () => {
               // do a background QA call (separate endpoint) so we don't block the render.
               const gotExplain = Boolean(res.designExplanation && String(res.designExplanation).trim());
               const qaSkipped = Boolean((res as any)?.debug?.qa_skipped);
+              const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：减少变形"];
 
               if (gotExplain && !qaSkipped) {
                 await typeOutAI(
-                  `【設計說明】\n${res.designExplanation}\n\n想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
+                  `【設計說明】\n${res.designExplanation}\n\n想再精修？點下面一個：`,
+                  { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
                 );
               } else {
                 const bgId = addLoadingToast("效果圖已出，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId: intakeData?.uploadId });
@@ -775,7 +777,8 @@ const App: React.FC = () => {
                           ].filter(Boolean).join('\n');
 
                     await typeOutAI(
-                      `【設計說明（按最终效果图）】\n${qaRes.designExplanation}${extra}\n\n想要我哋按你單位尺寸出更準嘅櫃體分區、五金配置同報價？直接點右上角「免費跟進」WhatsApp，我哋同事一對一跟進～`
+                      `【設計說明（按最终效果图）】\n${qaRes.designExplanation}${extra}\n\n想再精修？點下面一個：`,
+                      { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
                     );
                   } else {
                     await typeOutAI(
@@ -809,6 +812,15 @@ const App: React.FC = () => {
   const handleOptionClick = async (message: Message, opt: string) => {
       const uploadId = message.meta?.uploadId;
       const u = uploadId ? uploads[uploadId] : undefined;
+
+      // One-tap refinement actions (mobile friendly)
+      if (opt.startsWith('再精修：')) {
+          const tweak = opt.replace('再精修：', '').trim();
+          setAppState('GENERATING');
+          // Use the last generated image as base; triggerGeneration handles revisionText mode.
+          triggerGeneration(null, tweak);
+          return;
+      }
 
       if (message.meta?.kind === 'space_pick' && uploadId) {
           // Lock this message to prevent double-trigger
@@ -1124,7 +1136,7 @@ const App: React.FC = () => {
               const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
               setAppState('GENERATING');
               // Extra stage hint (spinner stays in this loading toast)
-              addLoadingToast("生成中：结构锁定 → 设计改造 → 灯光材质精修（约 60–120 秒）", { loadingType: 'generating', uploadId });
+              const stageHintId = addLoadingToast("生成中：结构锁定 → 设计改造 → 灯光材质精修（约 60–120 秒）", { loadingType: 'generating', uploadId });
 
               const baseImage = u.dataUrl;
               // Default goal: "明显改造、像设计效果图" (stronger than previous conservative preset).
@@ -1187,6 +1199,17 @@ const App: React.FC = () => {
                 : '';
 
               const suiteSpec = suiteToPrompt(space, focus, storage);
+              const housingType = String((u.render as any)?.housingType || '不确定');
+              const needsWorkstation = String((u.render as any)?.needsWorkstation || '不需要');
+              const hkByHousing =
+                housingType.includes('公屋')
+                  ? 'HK context: public housing (公屋), often deeper window sill + tighter circulation; prefer full-height cabinetry and shallow storage to keep passage.'
+                  : housingType.includes('居屋')
+                    ? 'HK context: subsidized housing (居屋), compact planning; keep ceilings slim and prioritize practical full-height storage.'
+                    : housingType.includes('私楼') || housingType.includes('私樓')
+                      ? 'HK context: private flat (私楼), keep structure but allow more premium finishes and lighting layers.'
+                      : 'HK context: Hong Kong apartment, compact planning and practical full-height storage.';
+
               const vibeSpec = (() => {
                 const v = String(vibe || '');
                 if (v.includes('明亮')) return 'Lighting mood: bright, airy, clean daylight + balanced downlights.';
@@ -1204,6 +1227,8 @@ const App: React.FC = () => {
               // Keep requirements concise to avoid StepFun prompt >1024
               const requirements = [
                   `Focus: ${focus}. ${bedType ? `Bed: ${bedType}.` : ''} Storage: ${storage}. Vibe: ${vibe}. Decor: ${decor}.`,
+                  `HK home type: ${housingType}. Workstation: ${needsWorkstation}.`,
+                  hkByHousing,
                   photorealisticSpec,
                   hkHardConstraints,
                   `Must include: cabinetry/storage plan; ceiling + floor + wall finishes; lighting; soft furnishings.`,
@@ -1248,6 +1273,7 @@ const App: React.FC = () => {
                   await triggerGeneration(intake);
               } finally {
                   stopLoadingToast(genLoadingId);
+                  stopLoadingToast(stageHintId);
               }
           }
       }

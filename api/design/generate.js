@@ -839,6 +839,14 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
     }
 
     let stepfunRes = await callStepFun({ urlToUse: sourceUrl, rf: finalResponseFormat });
+    if (stepfunRes.status === 429) {
+        res.status(429).json({
+            ok: false,
+            errorCode: 'RATE_LIMITED',
+            message: '当前生成排队中，请稍后再试（约 20–40 秒）'
+        });
+        return;
+    }
     let lastUpstreamErrorText = null;
 
     // --- STRATEGY B: Fallback to Base64 if URL fails ---
@@ -861,6 +869,14 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
                     
                     // Retry with Base64
                     stepfunRes = await callStepFun({ urlToUse: sourceUrl, rf: finalResponseFormat });
+                    if (stepfunRes.status === 429) {
+                        res.status(429).json({
+                            ok: false,
+                            errorCode: 'RATE_LIMITED',
+                            message: '当前生成排队中，请稍后再试（约 20–40 秒）'
+                        });
+                        return;
+                    }
                     if (!stepfunRes.ok) {
                         const errText2 = await stepfunRes.text();
                         lastUpstreamErrorText = errText2;
@@ -887,6 +903,14 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
             });
             if (retryRes.ok) {
                 stepfunRes = retryRes;
+                if (stepfunRes.status === 429) {
+                    res.status(429).json({
+                        ok: false,
+                        errorCode: 'RATE_LIMITED',
+                        message: '当前生成排队中，请稍后再试（约 20–40 秒）'
+                    });
+                    return;
+                }
             } else {
                 const msg = lastUpstreamErrorText || '(no upstream body)';
                 throw new Error(`StepFun API Error: ${stepfunRes.status} ${msg}`);

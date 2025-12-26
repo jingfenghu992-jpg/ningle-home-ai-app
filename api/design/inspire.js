@@ -161,6 +161,14 @@ export default async function handler(req, res) {
     }
 
     if (!response.ok) {
+      if (response.status === 429) {
+        res.status(429).json({
+          ok: false,
+          errorCode: 'RATE_LIMITED',
+          message: '当前生成排队中，请稍后再试（约 20–40 秒）'
+        });
+        return;
+      }
       const errText = await response.text();
       res.status(response.status).json({
         ok: false,
