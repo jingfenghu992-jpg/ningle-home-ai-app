@@ -31,8 +31,6 @@ const App: React.FC = () => {
       storage?: string;
       priority?: string;
       intensity?: string;
-      housingType?: '公屋' | '居屋' | '私楼' | '不确定';
-      needsWorkstation?: '需要' | '不需要';
       hallType?: '标准厅' | '钻石厅' | '长厅' | '不确定';
     };
   }>>({});
@@ -943,53 +941,25 @@ const App: React.FC = () => {
 
           // Start clickable intake flow in chat (designer-first workflow: layout -> storage/cabinet -> style -> palette -> lighting -> soft)
           const space = u.spaceType || '';
-          // HK mobile-first: ask only 2 key questions before layout.
-          await typeOutAI("先確認兩樣關鍵資料（更貼合香港單位落地）：\n1) 你係咩類型單位？", {
-              options: ["公屋", "居屋", "私楼", "不确定"],
-              meta: { kind: 'render_flow', stage: 'housing', uploadId }
+          // Skip extra intake questions for now: go straight to hall type (if living-dining) or layout.
+          if (isLivingDiningSpace(space)) {
+              await typeOutAI("客餐厅再确认一下（更贴合香港常见户型）：你屋企偏边种厅？", {
+                  options: ["标准厅（推荐）", "钻石厅", "长厅", "不确定"],
+                  meta: { kind: 'render_flow', stage: 'hall', uploadId }
+              });
+              return;
+          }
+
+          const layouts = pickLayoutOptionsHK(space, (u.render as any)?.hallType);
+          await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
+              options: layouts,
+              meta: { kind: 'render_flow', stage: 'layout', uploadId }
           });
           return;
       }
 
       // Render flow steps (bound to the analysis/upload)
       if (message.meta?.kind === 'render_flow' && uploadId && u) {
-          // 0) HK key questions (housing type + workstation)
-          if (message.meta.stage === 'housing') {
-              setUploads(prev => prev[uploadId] ? ({
-                  ...prev,
-                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), housingType: opt as any } }
-              }) : prev);
-              await typeOutAI("2) 客戶習慣：你需唔需要留「工作位/書桌」？（唔需要就唔會加，避免客餐廳變怪）", {
-                  options: ["不需要", "需要"],
-                  meta: { kind: 'render_flow', stage: 'workstation', uploadId }
-              });
-              return;
-          }
-
-          if (message.meta.stage === 'workstation') {
-              setUploads(prev => prev[uploadId] ? ({
-                  ...prev,
-                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), needsWorkstation: opt as any } }
-              }) : prev);
-              const space = u.spaceType || '';
-              // Living-dining needs one more HK-specific split: diamond hall vs long hall.
-              if (isLivingDiningSpace(space)) {
-                  await typeOutAI("客餐厅再确认一下（更贴合香港常见户型）：你屋企偏边种厅？", {
-                      options: ["标准厅（推荐）", "钻石厅", "长厅", "不确定"],
-                      meta: { kind: 'render_flow', stage: 'hall', uploadId }
-                  });
-                  return;
-              }
-
-              // Show <=3 layout options (recommended + 2 alternatives)
-              const layouts = pickLayoutOptionsHK(space, (u.render as any)?.hallType);
-              await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
-                  options: layouts,
-                  meta: { kind: 'render_flow', stage: 'layout', uploadId }
-              });
-              return;
-          }
-
           if (message.meta.stage === 'hall') {
               const hallType =
                   opt.includes('钻石') ? '钻石厅'
@@ -1034,12 +1004,10 @@ const App: React.FC = () => {
               const vibe0 = r0.vibe || getDefaultVibeForHK();
               const decor0 = r0.decor || getDefaultDecorForHK();
               const intensity0 = r0.intensity || getDefaultIntensityForHK();
-              const housing0 = r0.housingType || '不确定';
-              const work0 = r0.needsWorkstation || '不需要';
               const hall0 = r0.hallType || '不确定';
 
               await typeOutAI(
-                `我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n- 單位：${housing0}｜工作位：${work0}${isLivingDiningSpace(space) ? `｜厅型：${hall0}` : ''}\n- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
+                `我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
                 { options: ["直接生成（推薦）", "继续细调"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
               );
               return;
@@ -1055,8 +1023,6 @@ const App: React.FC = () => {
                   const vibe0 = r0.vibe || getDefaultVibeForHK();
                   const decor0 = r0.decor || getDefaultDecorForHK();
                   const intensity0 = r0.intensity || getDefaultIntensityForHK();
-                  const housing0 = r0.housingType || '不确定';
-                  const work0 = r0.needsWorkstation || '不需要';
                   const hall0 = r0.hallType || '不确定';
 
                   setUploads(prev => prev[uploadId] ? ({
@@ -1071,8 +1037,6 @@ const App: React.FC = () => {
                               vibe: vibe0,
                               decor: decor0,
                               intensity: intensity0,
-                              housingType: housing0,
-                              needsWorkstation: work0,
                               hallType: hall0
                           }
                       }
@@ -1100,15 +1064,14 @@ const App: React.FC = () => {
                   const isStudy = s.includes('书房') || s.includes('書房') || s.includes('工作间') || s.includes('工作間');
                   const isSmallBedroom = s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('兒童房') || s.includes('儿童房');
                   const isBedroom = isSmallBedroom || s.includes('睡房') || s.includes('卧室') || s.includes('房');
-                  const needsWork = String((u.render as any)?.needsWorkstation || '').includes('需要');
 
                   if (isKitchen) return ["台面整洁收纳（隐藏小家电）", "高柜电器位/储物高柜", "转角五金优化"];
                   if (isBath) return ["镜柜+壁龛（更好用）", "隐藏收纳为主", "毛巾/清洁高柜"];
                   if (isEntry || isCorridor) return ["隐藏收纳为主", "隐藏+局部展示（少量）"];
                   if (isStudy) return ["书桌/工作位优先", "收纳+局部展示（少量）", "隐藏收纳为主"];
-                  if (isSmallBedroom) return needsWork ? ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"] : ["隐藏收纳为主", "收纳+局部展示（少量）"];
-                  // Living/dining: do NOT offer desk/workstation by default
-                  if (isLivingDining || isLiving || isDining) return needsWork ? ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"] : ["隐藏收纳为主", "收纳+局部展示（少量）"];
+                  if (isSmallBedroom) return ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"];
+                  // Living/dining: avoid desk/workstation option by default
+                  if (isLivingDining || isLiving || isDining) return ["隐藏收纳为主", "收纳+局部展示（少量）"];
                   if (isBedroom) return ["隐藏收纳为主", "收纳+局部展示（少量）"];
                   return ["隐藏收纳为主", "收纳+局部展示（少量）"];
               })();
@@ -1326,17 +1289,7 @@ const App: React.FC = () => {
                 : '';
 
               const suiteSpec = suiteToPrompt(space, focus, storage);
-              const housingType = String((u.render as any)?.housingType || '不确定');
-              const needsWorkstation = String((u.render as any)?.needsWorkstation || '不需要');
               const hallType = String((u.render as any)?.hallType || '不确定');
-              const hkByHousing =
-                housingType.includes('公屋')
-                  ? 'HK context: public housing (公屋), often deeper window sill + tighter circulation; prefer full-height cabinetry and shallow storage to keep passage.'
-                  : housingType.includes('居屋')
-                    ? 'HK context: subsidized housing (居屋), compact planning; keep ceilings slim and prioritize practical full-height storage.'
-                    : housingType.includes('私楼') || housingType.includes('私樓')
-                      ? 'HK context: private flat (私楼), keep structure but allow more premium finishes and lighting layers.'
-                      : 'HK context: Hong Kong apartment, compact planning and practical full-height storage.';
               const hkHall =
                 isLivingDiningSpace(space) && hallType.includes('钻石')
                   ? 'Hall type: diamond living-dining (钻石厅); prioritize clear circulation, avoid bulky TV wall, use slimmer cabinetry and more integrated storage.'
@@ -1363,8 +1316,6 @@ const App: React.FC = () => {
               // Keep requirements concise to avoid StepFun prompt >1024
               const requirements = [
                   `Focus: ${focus}. ${bedType ? `Bed: ${bedType}.` : ''} Storage: ${storage}. Vibe: ${vibe}. Decor: ${decor}.`,
-                  `HK home type: ${housingType}. Workstation: ${needsWorkstation}.`,
-                  hkByHousing,
                   hkHall,
                   photorealisticSpec,
                   hkHardConstraints,
@@ -1391,9 +1342,6 @@ const App: React.FC = () => {
                   decor,
                   // intensity influences i2i defaults on server too; default to recommended if not collected in the new flow
                   intensity: (u.render as any)?.intensity || '明顯改造（推薦）',
-                  // HK key context
-                  housingType: (u.render as any)?.housingType || '不确定',
-                  needsWorkstation: (u.render as any)?.needsWorkstation || '不需要',
                   requirements,
                   // Pass vision summary for layout constraints (no persistence; used for this generation only)
                   visionSummary: u.visionSummary,
