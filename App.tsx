@@ -437,6 +437,24 @@ const App: React.FC = () => {
 
   const getDefaultStyleForHK = () => "現代簡約";
   const getDefaultColorForHK = (style?: string) => getPaletteOptionsForStyle(style)[0] || "浅木+米白";
+  // HK-friendly style+tone combos (fast selection right after layout)
+  const getStyleToneOptionsHK = () => ([
+    "現代簡約｜浅木+米白",
+    "現代簡約｜纯白+浅灰",
+    "奶油風｜奶油白+浅木",
+    "日式木系｜原木+暖白",
+    "輕奢｜胡桃木+灰白（香槟金点缀）",
+    "深木暖調｜深木+暖白",
+  ]);
+
+  const parseStyleTone = (opt: string) => {
+    const t = String(opt || '').trim();
+    const parts = t.split('｜').map(s => s.trim()).filter(Boolean);
+    const style = parts[0] || '';
+    const color = parts[1] || '';
+    return { style, color };
+  };
+
   const getDefaultVibeForHK = () => "明亮通透";
   const getDefaultDecorForHK = () => "標準搭配（推薦）";
   const getDefaultIntensityForHK = () => "明顯改造（推薦）";
@@ -1045,11 +1063,26 @@ const App: React.FC = () => {
                   }
               }) : prev);
 
+              // NEW: Right after layout, ask HK-friendly style+tone (keeps prompt alignment and improves output accuracy).
+              await typeOutAI("好，布置/动线已定。下一步揀「风格色调」（会直接影响出图质感）：", {
+                options: getStyleToneOptionsHK(),
+                meta: { kind: 'render_flow', stage: 'style_tone', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'style_tone') {
+              const { style, color } = parseStyleTone(opt);
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), ...(style ? { style } : {}), ...(color ? { color } : {}) } }
+              }) : prev);
+
               const space = u.spaceType || '';
               // Offer a fast path: generate with HK defaults, or continue fine-tuning.
               const r0 = (u.render as any) || {};
-              const style0 = r0.style || getDefaultStyleForHK();
-              const color0 = r0.color || getDefaultColorForHK(style0);
+              const style0 = style || r0.style || getDefaultStyleForHK();
+              const color0 = color || r0.color || getDefaultColorForHK(style0);
               const storage0 = r0.storage || getDefaultStorageForSpace(space);
               const vibe0 = r0.vibe || getDefaultVibeForHK();
               const decor0 = r0.decor || getDefaultDecorForHK();
@@ -1057,7 +1090,7 @@ const App: React.FC = () => {
               const hall0 = r0.hallType || '不确定';
 
               await typeOutAI(
-                `我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
+                `收到～我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
                 { options: ["直接生成（推薦）", "继续细调"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
               );
               return;

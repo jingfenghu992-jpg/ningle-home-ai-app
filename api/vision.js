@@ -52,13 +52,15 @@ export default async function handler(req, res) {
         const spacePrompt = spaceType ? `This is a photo of a "${spaceType}" in a Hong Kong apartment.` : "This is a photo of an interior space in a Hong Kong apartment.";
 
         // We want a designer-grade layout analysis that can be fed into the i2i prompt later.
-        // Output JSON only, then we will generate a compact 4-line summary for UI.
+        // Output JSON only, then we will generate a compact 4-line summary for UI (no layout line; layout is handled by selectable options below).
         const schema = `Return JSON only, with this schema:
 {
   "space_type": "客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他",
-  "structure": [
-    "结构点（必须带方位：左墙/右墙/远端/近端/窗下/门旁/梁位/冷气位/电箱等）",
-    "..."
+  "doors_windows": "门/窗/窗台位置（必须带方位；看不到写未见）",
+  "columns": "墙面是否有立柱/凸位（必须带方位；没有则写未见）",
+  "beams_ceiling": "天花是否有横梁/降板/灯槽条件（必须带方位；没有则写未见）",
+  "structure_notes": [
+    "补充结构点（可选，必须带方位，例如电箱/冷气位/凹位/窗下台）"
   ],
   "light": "自然光方向 + 冷/暖（短句）",
   "finish_level": { "level": "毛坯/半装/已装", "evidence": "一句画面证据" },
@@ -100,6 +102,10 @@ Rules:
                         content: `You are a senior Hong Kong interior designer specialized in cabinetry, storage zoning and buildable circulation.
 ${spacePrompt}
 You MUST output JSON only. No markdown, no extra text.
+Key checks you MUST explicitly answer:
+- doors_windows: where are door(s)/window(s)/window sill(s)
+- columns: any wall columns / protrusions (or say "未见")
+- beams_ceiling: any ceiling beams / drops (or say "未见")
 ${schema}`
                     },
                     {
@@ -153,24 +159,24 @@ ${schema}`
 
         const to4LineSummary = (p) => {
             if (!p) return String(content || '').trim();
-            const structureArr = Array.isArray(p.structure) ? p.structure : [];
-            const structure = structureArr.slice(0, 2).map(s => String(s).trim()).filter(Boolean).join('；') || '未见';
+            const doors = String(p.doors_windows || '').trim() || '未见';
+            const cols = String(p.columns || '').trim() || '未见';
+            const beams = String(p.beams_ceiling || '').trim() || '未见';
+            const notesArr = Array.isArray(p.structure_notes) ? p.structure_notes : [];
+            const extra = notesArr.map(x => String(x).trim()).filter(Boolean).slice(0, 1).join('；');
+            const structure = [`门窗：${doors}`, `立柱：${cols}`, `横梁/天花：${beams}`, extra ? `补充：${extra}` : ''].filter(Boolean).join('｜');
             const light = String(p.light || '').trim() || '未见';
             const fin = p.finish_level || {};
             const finLevel = String(fin.level || '').trim() || '未见';
             const finEv = String(fin.evidence || '').trim();
             const finish = finEv ? `${finLevel}，${finEv}` : finLevel;
-            const opts = Array.isArray(p.layout_options) ? p.layout_options : [];
-            const ri = Number.isInteger(p.recommended_index) ? p.recommended_index : 0;
-            const rec = opts[ri] || opts[0] || {};
-            const plan = String(rec.plan || '').trim() || '未见';
-            const lighting = String(rec.lighting || '').trim();
-            const layoutLine = lighting ? `${plan}｜${lighting}` : plan;
+            const constraintsArr = Array.isArray(p.fixed_constraints) ? p.fixed_constraints : [];
+            const constraints = constraintsArr.map(x => String(x).trim()).filter(Boolean).slice(0, 2).join('；') || '未见';
             return [
                 `結構：${structure}。`,
                 `光線：${light}。`,
                 `完成度：${finish}。`,
-                `布置：${layoutLine}。`
+                `約束：${constraints}。`
             ].join('\n');
         };
 
