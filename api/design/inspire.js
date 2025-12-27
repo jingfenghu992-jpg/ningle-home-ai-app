@@ -106,6 +106,8 @@ export default async function handler(req, res) {
   const colorEn = mapColor(intake?.color);
   const focus = normalize(intake?.focus);
   const bedType = normalize(intake?.bedType);
+  const roomWidthChi = normalize(intake?.roomWidthChi);
+  const roomHeightChi = normalize(intake?.roomHeightChi);
   const storage = normalize(intake?.storage);
   const decor = normalize(intake?.decor);
   const vibe = normalize(intake?.vibe);
@@ -121,6 +123,9 @@ export default async function handler(req, res) {
   const decorLine = decor ? `Soft furnishing density: ${decor}.` : 'Soft furnishing density: balanced and livable.';
   const intensityLine = intensity ? `Renovation intensity: ${cap(intensity, 28)}.` : '';
   const roomTypeLock = spaceEn ? `Room type lock: this MUST be a ${spaceEn}. Do NOT depict any other room type.` : '';
+  const dimsLine = (roomWidthChi || roomHeightChi)
+    ? `Approx room size (chi): width ${cap(roomWidthChi || 'unknown', 16)}, ceiling height ${cap(roomHeightChi || 'unknown', 16)}.`
+    : '';
 
   const builtInsFromFocus = (() => {
     const f = normalize(focus);
@@ -220,6 +225,7 @@ export default async function handler(req, res) {
     needsWorkstation ? `Workstation needed: ${needsWorkstation}.` : '',
     hallType ? `Hall type: ${hallType}.` : '',
     roomTypeLock,
+    dimsLine,
     layoutLine,
     bedLine,
     builtInsFromFocus,

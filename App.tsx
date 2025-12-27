@@ -33,6 +33,8 @@ const App: React.FC = () => {
       style?: string;
       color?: string;
       focus?: string;
+      roomWidthChi?: string;   // e.g. "8–10尺"
+      roomHeightChi?: string;  // e.g. "7尺2–7尺8"
       storage?: string;
       priority?: string;
       intensity?: string;
@@ -466,6 +468,56 @@ const App: React.FC = () => {
       if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return "台面整洁收纳（隐藏小家电）";
       if (s.includes('卫') || s.includes('衛') || s.includes('卫生间') || s.includes('洗手') || s.includes('厕') || s.includes('廁')) return "镜柜+壁龛（更好用）";
       return "隐藏收纳为主";
+  };
+
+  // HK-friendly size presets (in 尺). We offer two widths + two heights => 4 combined options.
+  const getDimensionOptionsHK = (space?: string) => {
+      const s = normalizeSpaceKey(space);
+      const isLivingDining = s.includes('客餐');
+      const isKitchen = s.includes('厨房') || s.includes('廚') || s.includes('厨');
+      const isEntrance = s.includes('入户') || s.includes('玄') || s.includes('關') || s.includes('关');
+      const isCorridor = s.includes('走廊') || s.includes('通道');
+      const isBathroom = s.includes('卫') || s.includes('衛') || s.includes('卫生间') || s.includes('洗手') || s.includes('厕') || s.includes('廁');
+      const isMasterBed = s.includes('大睡房') || s.includes('主人房') || s.includes('主卧');
+      const isSmallBed = s.includes('小睡房') || s.includes('次卧') || s.includes('儿童房') || s.includes('眼镜房');
+
+      // Width presets (香港常见净宽区间，按空间智能给两档)
+      const widthA =
+        isLivingDining ? '10–12尺'
+        : isMasterBed ? '9–11尺'
+        : isSmallBed ? '7–8尺'
+        : isKitchen ? '5–6尺'
+        : isBathroom ? '4–5尺'
+        : (isEntrance || isCorridor) ? '3–4尺'
+        : '8–10尺';
+      const widthB =
+        isLivingDining ? '12–14尺'
+        : isMasterBed ? '11–13尺'
+        : isSmallBed ? '8–9尺'
+        : isKitchen ? '6–7尺'
+        : isBathroom ? '5–6尺'
+        : (isEntrance || isCorridor) ? '4–5尺'
+        : '10–12尺';
+
+      // Ceiling height presets (香港常见 2.2–2.4m 左右，换算成尺约 7尺2–7尺9)
+      const hA = '7尺2–7尺8';
+      const hB = '8尺0–8尺6';
+
+      return [
+        `宽 ${widthA}｜高 ${hA}`,
+        `宽 ${widthA}｜高 ${hB}`,
+        `宽 ${widthB}｜高 ${hA}`,
+        `宽 ${widthB}｜高 ${hB}`,
+      ];
+  };
+
+  const parseDimsChi = (opt: string) => {
+      const t = String(opt || '').trim();
+      const mW = t.match(/宽\s*([^｜|]+)\s*[｜|]/);
+      const mH = t.match(/高\s*([0-9尺.\-–—]+(?:\s*[–—-]\s*[0-9尺.\-–—]+)?)$/);
+      const roomWidthChi = mW?.[1]?.trim() || '';
+      const roomHeightChi = mH?.[1]?.trim() || '';
+      return { roomWidthChi, roomHeightChi };
   };
 
   const isLivingDiningSpace = (space?: string) => {
@@ -942,8 +994,31 @@ const App: React.FC = () => {
                   }
               }) : prev);
 
-              // NEW: Right after layout, ask HK-friendly style+tone (keeps prompt alignment and improves output accuracy).
-              await typeOutAI("好，布置/动线已定。下一步揀「风格色调」（会直接影响出图质感）：", {
+              // After layout, confirm approximate room size (HK-friendly in 尺) to improve proportions.
+              const space = u.spaceType || '';
+              await typeOutAI("好，布置/动线已定。再确认一下「空间大概尺寸」（更贴近香港比例）：", {
+                options: getDimensionOptionsHK(space),
+                meta: { kind: 'render_flow', stage: 'dimensions', uploadId }
+              });
+              return;
+          }
+
+          if (message.meta.stage === 'dimensions') {
+              const { roomWidthChi, roomHeightChi } = parseDimsChi(opt);
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: {
+                      ...prev[uploadId],
+                      render: {
+                          ...(prev[uploadId].render || {}),
+                          ...(roomWidthChi ? { roomWidthChi } : {}),
+                          ...(roomHeightChi ? { roomHeightChi } : {}),
+                      }
+                  }
+              }) : prev);
+
+              // Next: style+tone selection (directly affects the final render).
+              await typeOutAI("收到～下一步揀「风格色调」（会直接影响出图质感）：", {
                 options: getStyleToneOptionsHK(),
                 meta: { kind: 'render_flow', stage: 'style_tone', uploadId }
               });
@@ -1008,12 +1083,16 @@ const App: React.FC = () => {
                   // Build a compact intake and run a single t2i generation as the final render.
                   const focus = (u.render as any)?.focus || '布置方案（按你选择）';
                   const bedType = (u.render as any)?.bedType || '';
+                  const roomWidthChi = (u.render as any)?.roomWidthChi || '';
+                  const roomHeightChi = (u.render as any)?.roomHeightChi || '';
                   const intake = {
                       space,
                       style: style0,
                       color: color0,
                       focus,
                       bedType,
+                      roomWidthChi,
+                      roomHeightChi,
                       storage: storage0,
                       vibe: vibe0,
                       decor: decor0,
