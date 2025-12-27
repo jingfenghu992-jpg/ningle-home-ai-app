@@ -42,7 +42,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOptionClick })
             <button
               key={idx}
               onClick={() => onOptionClick?.(option)}
-              className="px-4 py-2 bg-[#2a3942] text-[var(--wa-accent)] text-[15px] font-medium rounded-full border border-[var(--wa-accent)]/30 hover:bg-[var(--wa-accent)]/10 transition-colors"
+              className="px-4 py-2 bg-[#2a3942] text-[var(--wa-accent)] text-[15px] font-medium rounded-xl border border-[var(--wa-accent)]/30 hover:bg-[var(--wa-accent)]/10 transition-colors"
             >
               {option}
             </button>

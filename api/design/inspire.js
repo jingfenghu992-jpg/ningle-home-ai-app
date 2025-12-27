@@ -27,7 +27,6 @@ export default async function handler(req, res) {
     '256x256', '512x512', '768x768', '1024x1024',
     '1280x800', '800x1280',
   ]);
-  const finalSize = (typeof size === 'string' && allowedSizes.has(size)) ? size : '1280x800';
 
   const finalResponseFormat = (response_format === 'b64_json' || response_format === 'url') ? response_format : 'url';
 
@@ -44,6 +43,11 @@ export default async function handler(req, res) {
   }
 
   const normalize = (s) => String(s || '').trim();
+  const cap = (s, n) => {
+    const t = normalize(s);
+    if (!t) return '';
+    return t.length > n ? t.slice(0, n - 3) + '...' : t;
+  };
 
   const mapSpace = (s) => {
     const t = normalize(s);
@@ -88,20 +92,33 @@ export default async function handler(req, res) {
   };
 
   const intake = renderIntake || {};
+  const bw = Number(intake?.baseWidth);
+  const bh = Number(intake?.baseHeight);
+  const inferredSize =
+    (Number.isFinite(bw) && Number.isFinite(bh) && bw > 0 && bh > 0)
+      ? (bh > bw ? '800x1280' : '1280x800')
+      : '1280x800';
+  const finalSize = (typeof size === 'string' && allowedSizes.has(size)) ? size : inferredSize;
+
   const spaceEn = mapSpace(intake?.space);
   const styleEn = mapStyle(intake?.style);
   const colorEn = mapColor(intake?.color);
   const focus = normalize(intake?.focus);
+  const bedType = normalize(intake?.bedType);
   const storage = normalize(intake?.storage);
   const decor = normalize(intake?.decor);
   const vibe = normalize(intake?.vibe);
+  const intensity = normalize(intake?.intensity);
   const housingType = normalize(intake?.housingType);
   const needsWorkstation = normalize(intake?.needsWorkstation);
   const hallType = normalize(intake?.hallType);
 
-  const focusLine = focus ? `Key feature: ${focus}.` : '';
+  // User-selected layout/circulation plan should be treated as a hard constraint.
+  const layoutLine = focus ? `Selected layout plan (must follow, do not invent a different plan): ${cap(focus, 240)}.` : '';
+  const bedLine = bedType ? `Bed type: ${cap(bedType, 40)}.` : '';
   const storageLine = storage ? `Storage strategy: ${storage}.` : 'Storage strategy: practical full-height cabinetry, space-saving built-ins.';
   const decorLine = decor ? `Soft furnishing density: ${decor}.` : 'Soft furnishing density: balanced and livable.';
+  const intensityLine = intensity ? `Renovation intensity: ${cap(intensity, 28)}.` : '';
 
   // Optional: add loose structure cues from vision summary to make the inspiration image closer
   // to the user's photo "at a glance" (still NOT exact structure; t2i cannot replicate).
@@ -126,7 +143,11 @@ export default async function handler(req, res) {
     if (s.includes('卫生') || s.includes('衛') || s.includes('浴') || s.includes('洗手')) return 'Must include: vanity cabinet + mirror cabinet + shower screen/zone + anti-slip floor tiles + mirror/vanity light.';
     if (s.includes('入户') || s.includes('玄')) return 'Must include: full-height shoe cabinet + bench + full-length mirror + concealed clutter storage.';
     if (s.includes('走廊')) return 'Must include: shallow corridor storage + wall wash/linear lighting + clear circulation width.';
-    if (s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('儿童')) return 'Must include: space-saving bed (platform/tatami/Murphy) + full-height slim wardrobe + integrated desk/shelves.';
+    if (s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('儿童')) {
+      const wantsDesk = /书桌|工作位|工作|办公/.test(storage);
+      const deskLine = wantsDesk ? ' + slim desk (only if space allows)' : '';
+      return `Must include: space-saving bed (${bedType || 'platform/tatami/Murphy'}) + full-height slim wardrobe with sliding doors${deskLine}.`;
+    }
     if (s.includes('睡') || s.includes('卧') || s.includes('房')) return 'Must include: residential bed + full-height wardrobe + bedside + curtains.';
     return 'Must include: finished ceiling/walls/floor + built-in cabinetry + layered lighting + soft furnishings.';
   })();
@@ -140,10 +161,12 @@ export default async function handler(req, res) {
     housingType ? `Hong Kong home type: ${housingType}.` : '',
     needsWorkstation ? `Workstation needed: ${needsWorkstation}.` : '',
     hallType ? `Hall type: ${hallType}.` : '',
+    layoutLine,
+    bedLine,
     mustHave,
-    focusLine,
     storageLine,
     decorLine,
+    intensityLine,
     lightingByVibe(vibe),
     'Hong Kong apartment practicality, compact space planning, clear circulation.',
     'Ceiling design: slim gypsum board ceiling with recessed cove lighting + downlights (no office grid ceiling).',

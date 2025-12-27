@@ -44,7 +44,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
               <button
                 key={i}
                 onClick={() => onOptionClick?.(message, opt)}
-                className="bg-white/60 hover:bg-white text-[#4A453C] border border-black/5 px-4 py-2 rounded-full text-[14px] font-medium transition-all shadow-sm active:scale-95"
+                className="bg-white/60 hover:bg-white text-[#4A453C] border border-black/5 px-4 py-2 rounded-xl text-[14px] font-medium transition-all shadow-sm active:scale-95"
               >
                 {opt}
               </button>

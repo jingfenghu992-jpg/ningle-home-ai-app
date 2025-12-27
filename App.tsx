@@ -477,7 +477,7 @@ const App: React.FC = () => {
       const options = getLayoutOptionsForSpace(space);
       const h = String(hallType || '').trim();
       if (!options.length) return options;
-      if (!h || h.includes('不确定') || h.includes('标准')) return options.slice(0, 3);
+      if (!h || h.includes('不确定') || h.includes('标准')) return options.slice(0, 2);
 
       const score = (opt: string) => {
           const t = String(opt || '');
@@ -500,9 +500,9 @@ const App: React.FC = () => {
           .map(o => ({ o, s: score(o) }))
           .sort((a, b) => b.s - a.s)
           .map(x => x.o);
-      // If scoring didn't help, fall back to first 3
-      const top = ranked.slice(0, 3);
-      return top.every(x => score(x) === 0) ? options.slice(0, 3) : top;
+      // If scoring didn't help, fall back to first 2
+      const top = ranked.slice(0, 2);
+      return top.every(x => score(x) === 0) ? options.slice(0, 2) : top;
   };
 
   const inferBedTypeFromLayout = (layoutText?: string) => {
@@ -894,7 +894,7 @@ const App: React.FC = () => {
           }
 
           const layouts = (u.layoutOptions && u.layoutOptions.length)
-            ? u.layoutOptions.slice(0, 3)
+            ? u.layoutOptions.slice(0, 2)
             : pickLayoutOptionsHK(space, (u.render as any)?.hallType);
           await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
               options: layouts,
@@ -918,7 +918,7 @@ const App: React.FC = () => {
 
               const space = u.spaceType || '';
               const layouts = (u.layoutOptions && u.layoutOptions.length)
-                ? u.layoutOptions.slice(0, 3)
+                ? u.layoutOptions.slice(0, 2)
                 : pickLayoutOptionsHK(space, hallType);
               await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
                   options: layouts,
