@@ -33,6 +33,191 @@ export default async function handler(req, res) {
 
     try {
         console.log('[Vision API] Analyzing image...');
+
+        const normalizeSpaceType = (t) => {
+            const v = String(t || '').trim();
+            // Keep the taxonomy aligned to /api/space
+            const allowed = new Set(['客餐厅', '大睡房', '小睡房', '厨房', '卫生间', '入户', '走廊', '其他']);
+            if (allowed.has(v)) return v;
+            // If model returns variants, map loosely
+            if (v.includes('客') && v.includes('餐')) return '客餐厅';
+            if (v.includes('厨') || v.includes('廚')) return '厨房';
+            if (v.includes('卫') || v.includes('衛') || v.includes('浴') || v.includes('厕') || v.includes('廁')) return '卫生间';
+            if (v.includes('入') || v.includes('玄') || v.includes('關') || v.includes('关')) return '入户';
+            if (v.includes('走廊') || v.includes('通道')) return '走廊';
+            if (v.includes('小') && (v.includes('睡') || v.includes('卧') || v.includes('房'))) return '小睡房';
+            if (v.includes('大') && (v.includes('睡') || v.includes('卧') || v.includes('房'))) return '大睡房';
+            if (v.includes('睡') || v.includes('卧') || v.includes('房')) return '大睡房';
+            return '其他';
+        };
+
+        const standardLayoutOptions = (spaceTypeNorm, cues) => {
+            const w = String(cues?.doors_windows || '').trim();
+            const c = String(cues?.columns || '').trim();
+            const b = String(cues?.beams_ceiling || '').trim();
+            // Safe references (avoid hallucinating door position)
+            const windowRef = w && w !== '未见' ? `以「${w}」為基準` : '以窗為正面牆';
+            const columnRef = (c && c !== '未见') ? `（注意：${c}）` : '';
+            const beamRef = (b && b !== '未见') ? `（注意：${b}）` : '';
+            const keepDoor = '门位未见则保留门口净通道，不挡门扇。';
+
+            const mk = (title, plan, cabinetry, circulation, lighting, risk) => ({
+                title, plan, cabinetry, circulation, lighting, risk
+            });
+
+            if (spaceTypeNorm === '入户') {
+                return [
+                    mk(
+                        'A 鞋柜一体',
+                        `${windowRef}：门旁一侧到顶鞋柜＋换鞋凳＋全身镜。${columnRef}${beamRef}`,
+                        '柜：到顶鞋柜（分常用/季节）＋中段开放格＋底部留空；可加清洁高柜（吸尘器位）。',
+                        `动线：保留净通道≥80cm；不挡门扇；钥匙/包位靠出门动线。${keepDoor}`,
+                        '灯：玄关筒灯＋鞋柜感应灯带/壁洗；镜前柔光。',
+                        '风险：柜体过深会压通道；优先做薄柜+到顶。'
+                    ),
+                    mk(
+                        'B 走廊浅柜',
+                        `${windowRef}：走廊单侧做25–30cm浅柜到顶，端头做清洁高柜。${columnRef}${beamRef}`,
+                        '柜：浅柜到顶（杂物/被褥）＋端头展示格（少量）＋清洁高柜。',
+                        `动线：浅柜不压迫；端头留转身位；门口留落尘区。${keepDoor}`,
+                        '灯：线性灯/壁洗拉长走廊＋柜内灯带。',
+                        '风险：浅柜必须控深；端头不要做凸出把手。'
+                    )
+                ];
+            }
+
+            if (spaceTypeNorm === '走廊') {
+                return [
+                    mk(
+                        'A 单侧浅柜',
+                        `${windowRef}：走廊单侧25–30cm浅柜到顶，端头展示格（少量）。${columnRef}${beamRef}`,
+                        '柜：浅柜到顶（杂物/清洁）＋端头展示格＋底部留空扫地机位（可选）。',
+                        '动线：保留净通道≥85cm；门洞处不做转角外凸。',
+                        '灯：线性灯/壁洗＋端头重点光。',
+                        '风险：门洞附近柜体过深会顶门；必须控深。'
+                    ),
+                    mk(
+                        'B 清洁高柜',
+                        `${windowRef}：走廊端头做清洁高柜，侧面做浅柜分区收纳。${columnRef}${beamRef}`,
+                        '柜：清洁高柜（吸尘器/拖把）＋侧浅柜（雨伞/杂物）＋隐藏门板。',
+                        '动线：端头留回旋；不挤压主通道。',
+                        '灯：端头洗墙光＋柜内感应灯。',
+                        '风险：端头高柜要避开门套/踢脚线冲突。'
+                    )
+                ];
+            }
+
+            if (spaceTypeNorm === '厨房') {
+                return [
+                    mk(
+                        'A 一字型',
+                        `${windowRef}：一字型（冰箱/高柜→水槽→备餐→炉头），吊柜到顶。${columnRef}${beamRef}`,
+                        '柜：地柜+吊柜到顶＋高柜电器位；台面整洁收纳（隐藏小家电）。',
+                        '动线：水槽-备餐-炉头顺手；保留操作通道≥90cm；不挡窗开启（如有）。',
+                        '灯：吊柜底灯＋筒灯；重点照台面。',
+                        '风险：台面太短会不好用；优先保证备餐区长度。'
+                    ),
+                    mk(
+                        'B L型',
+                        `${windowRef}：L型转角（水槽与炉头分开），加转角五金与高柜。${columnRef}${beamRef}`,
+                        '柜：L型地柜+吊柜到顶＋转角五金＋电器高柜/储物高柜。',
+                        '动线：转角不做死角；避免开门互撞；保留通道≥90cm。',
+                        '灯：底灯+筒灯+重点光；转角补光。',
+                        '风险：转角规划不当会浪费；必须预留开门角度。'
+                    )
+                ];
+            }
+
+            if (spaceTypeNorm === '卫生间') {
+                return [
+                    mk(
+                        'A 干湿分离',
+                        `${windowRef}：门口侧浴室柜+镜柜，里侧淋浴区做干湿分离。${columnRef}${beamRef}`,
+                        '柜：浴室柜+镜柜（主收纳）＋壁龛（可选）＋高柜（毛巾/清洁）。',
+                        '动线：门口干区先用；淋浴区不溅水；不挡门扇。',
+                        '灯：筒灯+镜前灯；淋浴区重点光。',
+                        '风险：空间小则屏风尺寸要控；避免压迫。'
+                    ),
+                    mk(
+                        'B 一字型',
+                        `${windowRef}：一字型布局，浴室柜对门/侧门，淋浴在远端。${columnRef}${beamRef}`,
+                        '柜：浴室柜+镜柜＋窄高柜（收纳清洁品）。',
+                        '动线：保持净通道；壁龛/置物不凸出。',
+                        '灯：筒灯+镜前灯+壁龛灯带（可选）。',
+                        '风险：镜柜深度要控，避免撞头。'
+                    )
+                ];
+            }
+
+            if (spaceTypeNorm === '客餐厅') {
+                return [
+                    mk(
+                        'A 标准厅',
+                        `${windowRef}：电视墙在长墙；沙发对电视；餐桌靠窗侧；餐边高柜靠近厨房动线。${columnRef}${beamRef}`,
+                        '柜：电视墙到顶收纳（下柜+侧高柜+少量展示格）＋餐边高柜/电器高柜。',
+                        '动线：主通道留≥90cm；餐桌与门洞不冲突；避免挡窗帘轨。',
+                        '灯：灯槽+筒灯+电视墙洗墙+餐桌吊灯（重点光）。',
+                        '风险：电视墙太厚会压迫；优先薄柜+到顶。'
+                    ),
+                    mk(
+                        'B 钻石/长厅',
+                        `${windowRef}：电视墙做薄柜不压迫；餐区主导（餐桌居中/靠窗）；餐边高柜到顶。${columnRef}${beamRef}`,
+                        '柜：薄电视墙柜+展示灯带（少量）＋餐边高柜到顶（咖啡/小家电）。',
+                        '动线：留出钻石位/长走道净通道；避免沙发背后太挤。',
+                        '灯：灯槽+筒灯+餐吊灯+柜内灯带（层次）。',
+                        '风险：餐桌居中需控尺寸；否则会卡通道。'
+                    )
+                ];
+            }
+
+            if (spaceTypeNorm === '大睡房') {
+                return [
+                    mk(
+                        'A 床靠实墙',
+                        `${windowRef}：床头靠实墙；侧墙整排到顶衣柜（趟门优先）。${columnRef}${beamRef}`,
+                        '柜：到顶衣柜（挂衣+抽屉+被褥位）＋床头背景（薄）＋床侧床头位。',
+                        '动线：床侧通道≥55–60cm；衣柜趟门不占通道；不挡窗帘。',
+                        '灯：灯槽+筒灯+床头壁灯/线性灯（柔光）。',
+                        '风险：衣柜门型选错会顶通道；优先趟门。'
+                    ),
+                    mk(
+                        'B 衣柜+梳妆一体',
+                        `${windowRef}：衣柜到顶＋梳妆/书桌一体放窗边侧墙；床靠另一面实墙。${columnRef}${beamRef}`,
+                        '柜：衣柜到顶＋梳妆/书桌一体（浅台面）＋上部开放格（少量）。',
+                        '动线：桌面不挡窗开启；床尾留净通道；门位未见则保留门口转身位。',
+                        '灯：桌面重点光+床头柔光+筒灯均匀。',
+                        '风险：桌面过深会挡窗；控制深度。'
+                    )
+                ];
+            }
+
+            if (spaceTypeNorm === '小睡房') {
+                return [
+                    mk(
+                        'A 地台/榻榻米',
+                        `${windowRef}：床（地台/榻榻米）靠窗下或侧墙；到顶衣柜用趟门。${columnRef}${beamRef}`,
+                        '柜：到顶薄衣柜（趟门）＋床下收纳（抽屉/上翻）＋窗边薄书架（可选）。',
+                        '动线：保留门口通道；床不挡窗；柜体优先到顶但控深。',
+                        '灯：灯槽+筒灯+床头重点光（壁灯/线性灯）。',
+                        '风险：床放错会挡窗帘/采光；先保证窗可用。'
+                    ),
+                    mk(
+                        'B 隐形/活动床',
+                        `${windowRef}：隐形/活动床+柜一体，白天释放通道；到顶衣柜薄柜。${columnRef}${beamRef}`,
+                        '柜：床柜一体＋到顶薄衣柜（趟门）＋（可选）窄书桌靠窗，不默认配置。',
+                        '动线：白天留出净通道；门位未见则不压门口转身位。',
+                        '灯：灯槽+筒灯+柜内灯带（氛围）。',
+                        '风险：隐形床需墙体承重条件；不确定则用地台方案。'
+                    )
+                ];
+            }
+
+            // Fallback
+            return [
+                mk('A 标准', `${windowRef}：主功能靠墙，柜体到顶。${columnRef}${beamRef}`, '柜：到顶收纳为主＋少量展示。', `动线：保留净通道；不挡门窗。${keepDoor}`, '灯：灯槽+筒灯+重点光。', '风险：柜体过深会压迫通道。'),
+                mk('B 备选', `${windowRef}：薄柜+功能角组合。${columnRef}${beamRef}`, '柜：薄柜到顶＋功能角（可选）。', `动线：优先通道。${keepDoor}`, '灯：线性灯+筒灯。', '风险：功能角过多会显乱。')
+            ];
+        };
         
         let finalImageUrl = imageUrl;
         if (imageUrl.startsWith('http')) {
@@ -146,23 +331,6 @@ ${schema}`
 
         const parsed = safeJsonParse(content);
 
-        const normalizeSpaceType = (t) => {
-            const v = String(t || '').trim();
-            // Keep the taxonomy aligned to /api/space
-            const allowed = new Set(['客餐厅', '大睡房', '小睡房', '厨房', '卫生间', '入户', '走廊', '其他']);
-            if (allowed.has(v)) return v;
-            // If model returns variants, map loosely
-            if (v.includes('客') && v.includes('餐')) return '客餐厅';
-            if (v.includes('厨') || v.includes('廚')) return '厨房';
-            if (v.includes('卫') || v.includes('衛') || v.includes('浴') || v.includes('厕') || v.includes('廁')) return '卫生间';
-            if (v.includes('入') || v.includes('玄') || v.includes('關') || v.includes('关')) return '入户';
-            if (v.includes('走廊') || v.includes('通道')) return '走廊';
-            if (v.includes('小') && (v.includes('睡') || v.includes('卧') || v.includes('房'))) return '小睡房';
-            if (v.includes('大') && (v.includes('睡') || v.includes('卧') || v.includes('房'))) return '大睡房';
-            if (v.includes('睡') || v.includes('卧') || v.includes('房')) return '大睡房';
-            return '其他';
-        };
-
         const to4LineSummary = (p) => {
             if (!p) return String(content || '').trim();
             const forbid = (s) => {
@@ -198,16 +366,22 @@ ${schema}`
         };
 
         // Enforce consistent spaceType if provided by user
-        if (parsed) {
-            parsed.space_type = spaceType ? normalizeSpaceType(spaceType) : normalizeSpaceType(parsed.space_type);
-        }
+        const enforcedSpace = normalizeSpaceType(spaceType || parsed?.space_type);
+        const baseParsed = parsed || {};
+        const extraction = {
+            ...baseParsed,
+            space_type: enforcedSpace,
+            // Always lock to 2 standard options for HK standardization
+            layout_options: standardLayoutOptions(enforcedSpace, baseParsed),
+            recommended_index: 0
+        };
 
-        const summary = to4LineSummary(parsed);
+        const summary = to4LineSummary(extraction);
 
         res.status(200).json({
             ok: true,
             vision_summary: summary,
-            extraction: parsed || undefined
+            extraction
         });
 
     } catch (error) {

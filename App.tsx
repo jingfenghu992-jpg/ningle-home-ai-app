@@ -184,7 +184,8 @@ const App: React.FC = () => {
           return compact(parts.join('｜'));
         };
 
-        const layoutOptions = rawOpts.slice(0, 3).map(toOptionText).filter(Boolean);
+        // Standardized: show exactly 2 options (A/B) for HK units
+        const layoutOptions = rawOpts.slice(0, 2).map(toOptionText).filter(Boolean);
         const layoutRecommended = rawOpts[recIdx] ? toOptionText(rawOpts[recIdx], recIdx) : undefined;
         const fixedConstraints = Array.isArray(ex?.fixed_constraints) ? ex.fixed_constraints.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 6) : undefined;
 
