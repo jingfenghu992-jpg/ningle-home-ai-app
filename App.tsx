@@ -23,6 +23,11 @@ const App: React.FC = () => {
     height?: number;
     spaceType?: string;
     visionSummary?: string;
+    visionExtraction?: any;
+    // Layout suggestions inferred from vision (2-3 options). Used as the FIRST-STEP before generation.
+    layoutOptions?: string[];
+    layoutRecommended?: string;
+    fixedConstraints?: string[];
     analysisStatus?: 'idle' | 'running' | 'done';
     render?: {
       style?: string;
@@ -154,7 +159,48 @@ const App: React.FC = () => {
         setAnalysisSummary(visionRes.vision_summary);
         setAppState('ANALYSIS_DONE');
         stopLoadingToast(analysisLoadingId);
-        setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], visionSummary: visionRes.vision_summary, analysisStatus: 'done' } }) : prev);
+        const ex: any = (visionRes as any)?.extraction;
+        const rawOpts: any[] = Array.isArray(ex?.layout_options) ? ex.layout_options : [];
+        const recIdx = Number.isInteger(ex?.recommended_index) ? ex.recommended_index : 0;
+
+        const compact = (s: string, max = 88) => {
+          const t = String(s || '').replace(/\s+/g, ' ').trim();
+          return t.length > max ? t.slice(0, max - 1) + '…' : t;
+        };
+        const toOptionText = (o: any, idx: number) => {
+          const title = String(o?.title || `方案${idx + 1}`).trim();
+          const plan = String(o?.plan || '').trim();
+          const cab = String(o?.cabinetry || '').trim();
+          const circ = String(o?.circulation || '').trim();
+          const light = String(o?.lighting || '').trim();
+          const parts = [
+            `${title}：${plan || '（未见）'}`,
+            cab ? `柜：${cab}` : '',
+            circ ? `动线：${circ}` : '',
+            light ? `灯：${light}` : ''
+          ].filter(Boolean);
+          return compact(parts.join('｜'));
+        };
+
+        const layoutOptions = rawOpts.slice(0, 3).map(toOptionText).filter(Boolean);
+        const layoutRecommended = rawOpts[recIdx] ? toOptionText(rawOpts[recIdx], recIdx) : undefined;
+        const fixedConstraints = Array.isArray(ex?.fixed_constraints) ? ex.fixed_constraints.map((x: any) => String(x).trim()).filter(Boolean).slice(0, 6) : undefined;
+
+        setUploads(prev => prev[uploadId]
+          ? ({
+              ...prev,
+              [uploadId]: {
+                ...prev[uploadId],
+                visionSummary: visionRes.vision_summary,
+                visionExtraction: ex,
+                layoutOptions: layoutOptions.length ? layoutOptions : undefined,
+                layoutRecommended,
+                fixedConstraints,
+                analysisStatus: 'done'
+              }
+            })
+          : prev
+        );
 
         await typeOutAI(
           `【图片分析】\n${visionRes.vision_summary}\n点「生成智能效果图」继续。`,
@@ -950,7 +996,9 @@ const App: React.FC = () => {
               return;
           }
 
-          const layouts = pickLayoutOptionsHK(space, (u.render as any)?.hallType);
+          const layouts = (u.layoutOptions && u.layoutOptions.length)
+            ? u.layoutOptions.slice(0, 3)
+            : pickLayoutOptionsHK(space, (u.render as any)?.hallType);
           await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
               options: layouts,
               meta: { kind: 'render_flow', stage: 'layout', uploadId }
@@ -972,7 +1020,9 @@ const App: React.FC = () => {
               }) : prev);
 
               const space = u.spaceType || '';
-              const layouts = pickLayoutOptionsHK(space, hallType);
+              const layouts = (u.layoutOptions && u.layoutOptions.length)
+                ? u.layoutOptions.slice(0, 3)
+                : pickLayoutOptionsHK(space, hallType);
               await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
                   options: layouts,
                   meta: { kind: 'render_flow', stage: 'layout', uploadId }

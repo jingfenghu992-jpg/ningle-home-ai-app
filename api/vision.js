@@ -49,7 +49,39 @@ export default async function handler(req, res) {
             }
         }
 
-        const spacePrompt = spaceType ? `這是一張「${spaceType}」的照片。` : "";
+        const spacePrompt = spaceType ? `This is a photo of a "${spaceType}" in a Hong Kong apartment.` : "This is a photo of an interior space in a Hong Kong apartment.";
+
+        // We want a designer-grade layout analysis that can be fed into the i2i prompt later.
+        // Output JSON only, then we will generate a compact 4-line summary for UI.
+        const schema = `Return JSON only, with this schema:
+{
+  "space_type": "客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他",
+  "structure": [
+    "结构点（必须带方位：左墙/右墙/远端/近端/窗下/门旁/梁位/冷气位/电箱等）",
+    "..."
+  ],
+  "light": "自然光方向 + 冷/暖（短句）",
+  "finish_level": { "level": "毛坯/半装/已装", "evidence": "一句画面证据" },
+  "fixed_constraints": [
+    "不可动的硬约束（门窗/梁柱/冷气/电箱/水煤位/走道宽等）"
+  ],
+  "layout_options": [
+    {
+      "title": "方案A（<=10字）",
+      "plan": "一句话摆位（必须带方位）",
+      "cabinetry": "柜体/收纳方案（位置+到顶/薄柜/开门方式）",
+      "circulation": "动线要点（保留净通道/避开门扇/避开窗台）",
+      "lighting": "灯光层次（灯槽/筒灯/重点光）",
+      "risk": "一句风险提醒（例如会挡窗/太挤/门冲突）"
+    }
+  ],
+  "recommended_index": 0
+}
+Rules:
+- layout_options must be 2-3 options, each <= 90 Chinese chars total across fields.
+- Must respect: do NOT hallucinate what you cannot see; if not visible, say "未见".
+- If user confirmed space_type, MUST keep it consistent and do NOT mention other spaces.
+- Focus on layout/placement/cabinet feasibility for Hong Kong flats.`;
 
         const response = await fetch('https://api.stepfun.com/v1/chat/completions', {
             method: 'POST',
@@ -59,36 +91,21 @@ export default async function handler(req, res) {
             },
             body: JSON.stringify({
                 model: 'step-1v-8k',
-                temperature: 0.2,
-                // Keep it short for mobile UI; enforce compact 4-line output
-                max_tokens: 240,
+                temperature: 0.15,
+                // Slightly larger to allow 2-3 layout options while keeping latency OK
+                max_tokens: 520,
                 messages: [
                     {
                         role: "system",
-                        content: `你是一位資深香港全屋訂造設計師，專注：櫃體設計、收納分區、動線落地，並且熟悉香港公屋/居屋常見限制（窗台深、樓底矮、冷氣機位尴尬、電箱/水表位、走廊浪費位）。
+                        content: `You are a senior Hong Kong interior designer specialized in cabinetry, storage zoning and buildable circulation.
 ${spacePrompt}
-
-請用「正常設計師」口吻輸出（简体为主，可少量港式语气词），唔好用 JSON。
-重要：
-1) 必須「只對住呢張相」講，所有結論要有畫面證據
-2) 用戶已確認空間類型時，只能輸出該空間內容，絕對唔好提其他空間（例如唔好講客廳/廚房/衛生間等，除非用戶確認係嗰個空間）
-3) 見唔到就寫「未見，唔好亂估」
-
-輸出格式【嚴格】：
-- 只輸出 4 行（不要空行、不要多餘文字）
-- 每行盡量短（<= 45 個中文字符左右）
-- 每行固定前綴：結構： / 光線： / 完成度： / 布置：
-
-內容要求：
-結構：只講看得到的門窗/窗台/梁柱/凸位/頂面/底盒，必須帶方位（左牆/右牆/窗下/靠鏡頭/遠端）。
-光線：自然光從哪入＋整體偏冷/偏暖（短句）。
-完成度：只能三選一【毛坯/半裝/已裝】＋一句畫面依據（很短）。
-布置：只針對「${spaceType || '用戶確認的空間'}」，只給 2 點：①主要柜体/家具摆位（带方位）②一句灯光层次（灯槽+筒灯+重点光）。不要啰嗦。`
+You MUST output JSON only. No markdown, no extra text.
+${schema}`
                     },
                     {
                         role: "user",
                         content: [
-                            { type: "text", text: "請分析這張室內圖片。" },
+                            { type: "text", text: "Analyze this interior photo for structure, constraints, and 2-3 buildable layout options." },
                             { type: "image_url", image_url: { url: finalImageUrl } }
                         ]
                     }
@@ -102,43 +119,72 @@ ${spacePrompt}
 
         const data = await response.json();
         const content = data.choices[0]?.message?.content || "";
-        
-        // If model still returns JSON, try to extract and humanize it.
-        const tryParseJson = (raw) => {
+
+        const safeJsonParse = (raw) => {
             try {
                 const clean = String(raw || '').replace(/```json/g, '').replace(/```/g, '').trim();
-                // Robust extraction between first { and last }
                 const s = clean.indexOf('{');
                 const e = clean.lastIndexOf('}');
-                if (s >= 0 && e > s) {
-                    return JSON.parse(clean.slice(s, e + 1));
-                }
-            } catch {}
-            return null;
+                if (s >= 0 && e > s) return JSON.parse(clean.slice(s, e + 1));
+                return JSON.parse(clean);
+            } catch {
+                return null;
+            }
         };
 
-        const parsed = tryParseJson(content);
-        const humanize = (p) => {
-            const structure = String(p?.structure || '').trim();
-            const lighting = String(p?.lighting || '').trim();
-            const suggestions = Array.isArray(p?.suggestions) ? p.suggestions : [];
-            const s1 = suggestions[0] ? String(suggestions[0]).trim() : '';
-            const s2 = suggestions[1] ? String(suggestions[1]).trim() : '';
-            const lines = [
-                structure ? `結構：${structure}` : '',
-                lighting ? `光線：${lighting}` : '',
-                s1 ? `建議：${s1}` : '',
-                s2 ? `建議：${s2}` : ''
-            ].filter(Boolean);
-            return lines.join('\n');
+        const parsed = safeJsonParse(content);
+
+        const normalizeSpaceType = (t) => {
+            const v = String(t || '').trim();
+            // Keep the taxonomy aligned to /api/space
+            const allowed = new Set(['客餐厅', '大睡房', '小睡房', '厨房', '卫生间', '入户', '走廊', '其他']);
+            if (allowed.has(v)) return v;
+            // If model returns variants, map loosely
+            if (v.includes('客') && v.includes('餐')) return '客餐厅';
+            if (v.includes('厨') || v.includes('廚')) return '厨房';
+            if (v.includes('卫') || v.includes('衛') || v.includes('浴') || v.includes('厕') || v.includes('廁')) return '卫生间';
+            if (v.includes('入') || v.includes('玄') || v.includes('關') || v.includes('关')) return '入户';
+            if (v.includes('走廊') || v.includes('通道')) return '走廊';
+            if (v.includes('小') && (v.includes('睡') || v.includes('卧') || v.includes('房'))) return '小睡房';
+            if (v.includes('大') && (v.includes('睡') || v.includes('卧') || v.includes('房'))) return '大睡房';
+            if (v.includes('睡') || v.includes('卧') || v.includes('房')) return '大睡房';
+            return '其他';
         };
 
-        const summary = parsed ? humanize(parsed) : String(content || '').trim();
+        const to4LineSummary = (p) => {
+            if (!p) return String(content || '').trim();
+            const structureArr = Array.isArray(p.structure) ? p.structure : [];
+            const structure = structureArr.slice(0, 2).map(s => String(s).trim()).filter(Boolean).join('；') || '未见';
+            const light = String(p.light || '').trim() || '未见';
+            const fin = p.finish_level || {};
+            const finLevel = String(fin.level || '').trim() || '未见';
+            const finEv = String(fin.evidence || '').trim();
+            const finish = finEv ? `${finLevel}，${finEv}` : finLevel;
+            const opts = Array.isArray(p.layout_options) ? p.layout_options : [];
+            const ri = Number.isInteger(p.recommended_index) ? p.recommended_index : 0;
+            const rec = opts[ri] || opts[0] || {};
+            const plan = String(rec.plan || '').trim() || '未见';
+            const lighting = String(rec.lighting || '').trim();
+            const layoutLine = lighting ? `${plan}｜${lighting}` : plan;
+            return [
+                `結構：${structure}。`,
+                `光線：${light}。`,
+                `完成度：${finish}。`,
+                `布置：${layoutLine}。`
+            ].join('\n');
+        };
+
+        // Enforce consistent spaceType if provided by user
+        if (parsed) {
+            parsed.space_type = spaceType ? normalizeSpaceType(spaceType) : normalizeSpaceType(parsed.space_type);
+        }
+
+        const summary = to4LineSummary(parsed);
 
         res.status(200).json({
             ok: true,
             vision_summary: summary,
-            extraction: parsed
+            extraction: parsed || undefined
         });
 
     } catch (error) {
