@@ -15,10 +15,11 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Vercel maxDuration is configured as 60s in vercel.json for api/**.
-  // We MUST keep end-to-end work below that budget to avoid 504 Gateway Timeout.
+  // This endpoint has maxDuration=300s in vercel.json.
+  // We keep an internal time budget to avoid runaway latency, but allow enough
+  // headroom for post-QA and auto-refine so results look like a real design render.
   const startedAt = Date.now();
-  const hardBudgetMs = 56000; // keep some headroom for network/serialization
+  const hardBudgetMs = 180000; // 3 minutes minus headroom
   const timeLeftMs = () => Math.max(0, hardBudgetMs - (Date.now() - startedAt));
 
   const {
@@ -58,6 +59,26 @@ export default async function handler(req, res) {
 
   const intensityPreset = inferIntensityPreset(renderIntake?.intensity);
 
+  // Quick finish-level hint (used to bias i2i params; prompt itself will still enforce "design render").
+  // Note: This runs before the main prompt builder and uses only the incoming text.
+  const guessFinishLevel = (raw) => {
+    const t0 = String(raw || '');
+    const t = t0.toLowerCase();
+    // Prefer explicit marker if present: "完成度：毛坯/半装/已装"
+    if (t0.includes('完成度')) {
+      if (t0.includes('毛坯') || t0.includes('清水') || t.includes('bare')) return 'bare_shell';
+      if (t0.includes('半装') || t0.includes('半裝') || t.includes('semi')) return 'semi_finished';
+      if (t0.includes('已装') || t0.includes('已裝') || t0.includes('精装') || t0.includes('精裝') || t.includes('finished') || t.includes('furnished')) return 'finished';
+    }
+    const bareKeys = ['毛坯', '清水', '未裝修', '未装修', '水泥', '批蕩', '批荡', '工地', '裸牆', '裸墙', 'unfinished', 'bare', 'construction', 'raw concrete'];
+    const finishedKeys = ['已裝修', '已装修', '精裝', '精装', '地板', '木地板', '地砖', '瓷砖', '乳胶漆', '窗簾', '窗帘', '吊顶', '天花', 'furnished', 'finished'];
+    if (bareKeys.some(k => t0.includes(k) || t.includes(String(k).toLowerCase()))) return 'bare_shell';
+    if (finishedKeys.some(k => t0.includes(k) || t.includes(String(k).toLowerCase()))) return 'finished';
+    return 'unknown';
+  };
+
+  const finishHint = guessFinishLevel(renderIntake?.visionSummary || renderIntake?.requirements || '');
+
   const defaultI2I = (() => {
     if (intensityPreset === 'light') {
       return { sw: 0.45, st: 34, cfg: 6.6 };
@@ -66,10 +87,13 @@ export default async function handler(req, res) {
       return { sw: 0.82, st: 46, cfg: 7.6 };
     }
     // recommended (明显改造)
-    return { sw: 0.70, st: 42, cfg: 7.2 };
+    // Bias stronger when input is bare shell so we don't end up with an empty room.
+    if (finishHint === 'bare_shell') return { sw: 0.86, st: 48, cfg: 7.9 };
+    return { sw: 0.78, st: 44, cfg: 7.4 };
   })();
 
-  const finalSourceWeight =
+  const clientProvidedSW = typeof source_weight === 'number' && source_weight > 0 && source_weight <= 1;
+  let finalSourceWeight =
     typeof source_weight === 'number' && source_weight > 0 && source_weight <= 1
       ? source_weight
       : defaultI2I.sw;
@@ -79,12 +103,12 @@ export default async function handler(req, res) {
   const requestedCfg = (typeof cfg_scale === 'number') ? cfg_scale : undefined;
 
   // Default to a "proposal render" preset (more designed & photoreal than the previous conservative preset).
-  const finalSteps =
+  let finalSteps =
     typeof requestedSteps === 'number' && requestedSteps >= 1
       ? Math.min(Math.max(requestedSteps, 1), 50)
       : Math.min(Math.max(defaultI2I.st, 1), 50);
 
-  const finalCfgScale =
+  let finalCfgScale =
     typeof requestedCfg === 'number' && requestedCfg >= 1
       ? Math.min(Math.max(requestedCfg, 1), 8.5)
       : Math.min(Math.max(defaultI2I.cfg, 1), 8.5);
@@ -690,6 +714,9 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
           // Make the first ~250 chars fully reflect user selections, so they won't be truncated.
           finalPrompt = trimPrompt([
               `Space: ${spaceEn}. Style: ${styleEn}. Color palette: ${colorEn}.`,
+              // Critical: enforce "designed and staged" output early so it won't be truncated away.
+              'MUST NOT be an empty room. MUST look like a fully staged interior design proposal render: add complete furniture layout, curtains, rug, artwork, and plants as appropriate, plus built-in cabinetry.',
+              'Lighting MUST be layered (cove/indirect + recessed downlights + accent lights), realistic GI, warm 2700-3000K.',
               // User intent as executable instructions (placement/cabinet emphasis)
               focusHint,
               storageHint,

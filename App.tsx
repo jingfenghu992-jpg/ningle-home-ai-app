@@ -1114,7 +1114,7 @@ const App: React.FC = () => {
 
               await typeOutAI(
                 `收到～我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
-                { options: ["直接生成（推薦）", "继续细调"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
+                { options: ["直接生成（推薦）"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
               );
               return;
           }
@@ -1251,37 +1251,8 @@ const App: React.FC = () => {
                   return;
               }
 
-              // Continue fine-tuning flow
-              const space = u.spaceType || '';
-              const storageOptions = (() => {
-                  const s = normalizeSpaceKey(space);
-                  // Space-aware options (avoid irrelevant choices on mobile)
-                  const isLivingDining = s.includes('客餐');
-                  const isLiving = s.includes('客厅') || s.includes('客廳') || s === '客餐厅';
-                  const isDining = s.includes('餐厅') || s.includes('餐廳');
-                  const isKitchen = s.includes('厨房') || s.includes('廚') || s.includes('厨');
-                  const isBath = s.includes('卫生间') || s.includes('衛生間') || s.includes('卫生間') || s.includes('洗手') || s.includes('厕') || s.includes('廁');
-                  const isEntry = s.includes('入户') || s.includes('玄') || s.includes('關') || s.includes('关');
-                  const isCorridor = s.includes('走廊') || s.includes('通道');
-                  const isStudy = s.includes('书房') || s.includes('書房') || s.includes('工作间') || s.includes('工作間');
-                  const isSmallBedroom = s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('兒童房') || s.includes('儿童房');
-                  const isBedroom = isSmallBedroom || s.includes('睡房') || s.includes('卧室') || s.includes('房');
-
-                  if (isKitchen) return ["台面整洁收纳（隐藏小家电）", "高柜电器位/储物高柜", "转角五金优化"];
-                  if (isBath) return ["镜柜+壁龛（更好用）", "隐藏收纳为主", "毛巾/清洁高柜"];
-                  if (isEntry || isCorridor) return ["隐藏收纳为主", "隐藏+局部展示（少量）"];
-                  if (isStudy) return ["书桌/工作位优先", "收纳+局部展示（少量）", "隐藏收纳为主"];
-                  if (isSmallBedroom) return ["隐藏收纳为主", "收纳+局部展示（少量）", "收纳+书桌/工作位（如需要）"];
-                  // Living/dining: avoid desk/workstation option by default
-                  if (isLivingDining || isLiving || isDining) return ["隐藏收纳为主", "收纳+局部展示（少量）"];
-                  if (isBedroom) return ["隐藏收纳为主", "收纳+局部展示（少量）"];
-                  return ["隐藏收纳为主", "收纳+局部展示（少量）"];
-              })();
-
-              await typeOutAI("收纳取向你想偏边种？（会影响柜体比例与细节）", {
-                  options: storageOptions,
-                  meta: { kind: 'render_flow', stage: 'storage', uploadId }
-              });
+              // Fine-tuning entry removed for now (post-generation refinements are handled after first render).
+              await typeOutAI("收到～我先按推薦預設直接出圖，你之後可以基於第一張效果圖再精修。");
               return;
           }
 
