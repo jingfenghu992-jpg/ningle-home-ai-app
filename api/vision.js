@@ -57,6 +57,12 @@ export default async function handler(req, res) {
             const b = String(cues?.beams_ceiling || '').trim();
             // Safe references (avoid hallucinating door position)
             const windowRef = w && w !== '未见' ? `以「${w}」為基準` : '以窗為正面牆';
+            // For spaces where windows are often absent/unclear in HK units, anchor to "door-end" instead of guessing.
+            const doorEndRef = '以门口这一端为基准';
+            const baseRef =
+                (spaceTypeNorm === '入户' || spaceTypeNorm === '走廊' || spaceTypeNorm === '卫生间')
+                  ? doorEndRef
+                  : windowRef;
             const columnRef = (c && c !== '未见') ? `（注意：${c}）` : '';
             const beamRef = (b && b !== '未见') ? `（注意：${b}）` : '';
             const keepDoor = '门位未见则保留门口净通道，不挡门扇。';
@@ -69,7 +75,7 @@ export default async function handler(req, res) {
                 return [
                     mk(
                         'A 鞋柜一体',
-                        `${windowRef}：门旁一侧到顶鞋柜＋换鞋凳＋全身镜。${columnRef}${beamRef}`,
+                        `${baseRef}：门旁一侧到顶鞋柜＋换鞋凳＋全身镜。${columnRef}${beamRef}`,
                         '柜：到顶鞋柜（分常用/季节）＋中段开放格＋底部留空；可加清洁高柜（吸尘器位）。',
                         `动线：保留净通道≥80cm；不挡门扇；钥匙/包位靠出门动线。${keepDoor}`,
                         '灯：玄关筒灯＋鞋柜感应灯带/壁洗；镜前柔光。',
@@ -77,7 +83,7 @@ export default async function handler(req, res) {
                     ),
                     mk(
                         'B 走廊浅柜',
-                        `${windowRef}：走廊单侧做25–30cm浅柜到顶，端头做清洁高柜。${columnRef}${beamRef}`,
+                        `${baseRef}：走廊单侧做25–30cm浅柜到顶，端头做清洁高柜。${columnRef}${beamRef}`,
                         '柜：浅柜到顶（杂物/被褥）＋端头展示格（少量）＋清洁高柜。',
                         `动线：浅柜不压迫；端头留转身位；门口留落尘区。${keepDoor}`,
                         '灯：线性灯/壁洗拉长走廊＋柜内灯带。',
@@ -90,7 +96,7 @@ export default async function handler(req, res) {
                 return [
                     mk(
                         'A 单侧浅柜',
-                        `${windowRef}：走廊单侧25–30cm浅柜到顶，端头展示格（少量）。${columnRef}${beamRef}`,
+                        `${baseRef}：走廊单侧25–30cm浅柜到顶，端头展示格（少量）。${columnRef}${beamRef}`,
                         '柜：浅柜到顶（杂物/清洁）＋端头展示格＋底部留空扫地机位（可选）。',
                         '动线：保留净通道≥85cm；门洞处不做转角外凸。',
                         '灯：线性灯/壁洗＋端头重点光。',
@@ -98,7 +104,7 @@ export default async function handler(req, res) {
                     ),
                     mk(
                         'B 清洁高柜',
-                        `${windowRef}：走廊端头做清洁高柜，侧面做浅柜分区收纳。${columnRef}${beamRef}`,
+                        `${baseRef}：走廊端头做清洁高柜，侧面做浅柜分区收纳。${columnRef}${beamRef}`,
                         '柜：清洁高柜（吸尘器/拖把）＋侧浅柜（雨伞/杂物）＋隐藏门板。',
                         '动线：端头留回旋；不挤压主通道。',
                         '灯：端头洗墙光＋柜内感应灯。',
@@ -132,7 +138,7 @@ export default async function handler(req, res) {
                 return [
                     mk(
                         'A 干湿分离',
-                        `${windowRef}：门口侧浴室柜+镜柜，里侧淋浴区做干湿分离。${columnRef}${beamRef}`,
+                        `${baseRef}：门口侧浴室柜+镜柜，里侧淋浴区做干湿分离。${columnRef}${beamRef}`,
                         '柜：浴室柜+镜柜（主收纳）＋壁龛（可选）＋高柜（毛巾/清洁）。',
                         '动线：门口干区先用；淋浴区不溅水；不挡门扇。',
                         '灯：筒灯+镜前灯；淋浴区重点光。',
@@ -140,7 +146,7 @@ export default async function handler(req, res) {
                     ),
                     mk(
                         'B 一字型',
-                        `${windowRef}：一字型布局，浴室柜对门/侧门，淋浴在远端。${columnRef}${beamRef}`,
+                        `${baseRef}：一字型布局，浴室柜对门/侧门，淋浴在远端。${columnRef}${beamRef}`,
                         '柜：浴室柜+镜柜＋窄高柜（收纳清洁品）。',
                         '动线：保持净通道；壁龛/置物不凸出。',
                         '灯：筒灯+镜前灯+壁龛灯带（可选）。',

@@ -101,6 +101,7 @@ export default async function handler(req, res) {
   const finalSize = (typeof size === 'string' && allowedSizes.has(size)) ? size : inferredSize;
 
   const spaceEn = mapSpace(intake?.space);
+  const spaceZh = normalize(intake?.space);
   const styleEn = mapStyle(intake?.style);
   const colorEn = mapColor(intake?.color);
   const focus = normalize(intake?.focus);
@@ -119,6 +120,45 @@ export default async function handler(req, res) {
   const storageLine = storage ? `Storage strategy: ${storage}.` : 'Storage strategy: practical full-height cabinetry, space-saving built-ins.';
   const decorLine = decor ? `Soft furnishing density: ${decor}.` : 'Soft furnishing density: balanced and livable.';
   const intensityLine = intensity ? `Renovation intensity: ${cap(intensity, 28)}.` : '';
+  const roomTypeLock = spaceEn ? `Room type lock: this MUST be a ${spaceEn}. Do NOT depict any other room type.` : '';
+
+  const builtInsFromFocus = (() => {
+    const f = normalize(focus);
+    if (!f) return '';
+    const hits = [];
+    const add = (k, v) => { if (f.includes(k)) hits.push(v); };
+    add('鞋柜', 'full-height shoe cabinet + bench');
+    add('玄关', 'entry storage wall');
+    add('电视', 'TV wall cabinetry');
+    add('電視', 'TV wall cabinetry');
+    add('餐边', 'dining sideboard / pantry cabinet');
+    add('餐邊', 'dining sideboard / pantry cabinet');
+    add('地台', 'platform bed with under-bed storage');
+    add('榻榻米', 'tatami platform with storage');
+    add('隐形床', 'Murphy bed + cabinet system');
+    add('隱形床', 'Murphy bed + cabinet system');
+    add('活动床', 'folding bed + cabinet system');
+    add('活動床', 'folding bed + cabinet system');
+    add('衣柜', 'full-height wardrobe (sliding doors preferred)');
+    add('衣櫃', 'full-height wardrobe (sliding doors preferred)');
+    add('梳妆', 'vanity / slim dressing table');
+    add('梳妝', 'vanity / slim dressing table');
+    add('书桌', 'slim desk (only if selected/needed)');
+    add('書桌', 'slim desk (only if selected/needed)');
+    add('吊柜', 'wall cabinets to ceiling');
+    add('橱柜', 'kitchen base + wall cabinets');
+    add('廚櫃', 'kitchen base + wall cabinets');
+    add('水槽', 'sink zone');
+    add('炉头', 'cooktop zone');
+    add('爐頭', 'cooktop zone');
+    add('镜柜', 'mirror cabinet');
+    add('鏡櫃', 'mirror cabinet');
+    add('浴室柜', 'vanity cabinet');
+    add('浴室櫃', 'vanity cabinet');
+    if (!hits.length) return '';
+    const uniq = Array.from(new Set(hits)).slice(0, 6).join('; ');
+    return `Built-ins must match the selected plan: ${uniq}.`;
+  })();
 
   // Optional: add loose structure cues from vision summary to make the inspiration image closer
   // to the user's photo "at a glance" (still NOT exact structure; t2i cannot replicate).
@@ -138,9 +178,9 @@ export default async function handler(req, res) {
 
   const mustHave = (() => {
     const s = normalize(intake?.space);
-    if (s.includes('客餐')) return 'Must include: TV wall + sofa seating + dining table for 4 + pendant above dining table + dining sideboard/pantry.';
+    if (s.includes('客餐')) return 'Must include: TV wall + sofa seating + dining table for 2-4 OR a bar counter (space-saving) + dining sideboard/pantry cabinet.';
     if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return 'Must include: base cabinets + wall cabinets to ceiling + countertop + sink/cooktop zones + under-cabinet task lighting.';
-    if (s.includes('卫生') || s.includes('衛') || s.includes('浴') || s.includes('洗手')) return 'Must include: vanity cabinet + mirror cabinet + shower screen/zone + anti-slip floor tiles + mirror/vanity light.';
+    if (s.includes('卫生') || s.includes('衛') || s.includes('浴') || s.includes('洗手')) return 'Must include: vanity cabinet + mirror cabinet + shower zone with screen OR compact bathtub (only if suitable) + anti-slip floor tiles + mirror/vanity light.';
     if (s.includes('入户') || s.includes('玄')) return 'Must include: full-height shoe cabinet + bench + full-length mirror + concealed clutter storage.';
     if (s.includes('走廊')) return 'Must include: shallow corridor storage + wall wash/linear lighting + clear circulation width.';
     if (s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('儿童')) {
@@ -148,8 +188,26 @@ export default async function handler(req, res) {
       const deskLine = wantsDesk ? ' + slim desk (only if space allows)' : '';
       return `Must include: space-saving bed (${bedType || 'platform/tatami/Murphy'}) + full-height slim wardrobe with sliding doors${deskLine}.`;
     }
+    if (s.includes('大睡房')) return 'Must include: bed + full-height wardrobe with sliding doors + bedside + curtains + optional vanity (compact).';
     if (s.includes('睡') || s.includes('卧') || s.includes('房')) return 'Must include: residential bed + full-height wardrobe + bedside + curtains.';
     return 'Must include: finished ceiling/walls/floor + built-in cabinetry + layered lighting + soft furnishings.';
+  })();
+
+  const avoidBySpace = (() => {
+    const s = normalize(intake?.space);
+    if (s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('儿童')) {
+      const wantsDesk = /书桌|工作位|工作|办公/.test(storage);
+      return wantsDesk
+        ? 'Avoid: turning it into a full study; keep desk slim and secondary.'
+        : 'Avoid: study/office setup, large desk, multiple monitors.';
+    }
+    if (s.includes('客餐')) return 'Avoid: bedroom furniture (beds), oversized bulky cabinets that block circulation.';
+    if (s.includes('大睡房')) return 'Avoid: kids bunk bed, turning the room into an office unless requested.';
+    if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return 'Avoid: large island unless space clearly allows; keep it compact and practical.';
+    if (s.includes('卫生') || s.includes('衛') || s.includes('浴') || s.includes('洗手')) return 'Avoid: freestanding bathtub unless requested; keep fixtures compact.';
+    if (s.includes('入户') || s.includes('玄')) return 'Avoid: living-room sofa/TV; keep it as an entryway.';
+    if (s.includes('走廊')) return 'Avoid: deep cabinets that narrow the corridor; avoid visual clutter.';
+    return '';
   })();
 
   let prompt = [
@@ -161,8 +219,10 @@ export default async function handler(req, res) {
     housingType ? `Hong Kong home type: ${housingType}.` : '',
     needsWorkstation ? `Workstation needed: ${needsWorkstation}.` : '',
     hallType ? `Hall type: ${hallType}.` : '',
+    roomTypeLock,
     layoutLine,
     bedLine,
+    builtInsFromFocus,
     mustHave,
     storageLine,
     decorLine,
@@ -171,6 +231,7 @@ export default async function handler(req, res) {
     'Hong Kong apartment practicality, compact space planning, clear circulation.',
     'Ceiling design: slim gypsum board ceiling with recessed cove lighting + downlights (no office grid ceiling).',
     'Materials: coherent warm textures, clean realistic details; built-in cabinetry with toe-kick and shadow gaps.',
+    avoidBySpace,
     'Avoid: cartoon, CGI toy look, low-poly, distorted straight lines, fisheye, clutter, unfinished concrete.',
   ].filter(Boolean).join(' ');
 
