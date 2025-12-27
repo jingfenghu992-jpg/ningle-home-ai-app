@@ -7,7 +7,7 @@ import { Composer } from './components/Composer';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateInspireImage, qaDesignImage, uploadImage } from './services/generateClient';
+import { generateDesignImage, generateInspireImage, qaDesignImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
@@ -29,6 +29,7 @@ const App: React.FC = () => {
     layoutRecommended?: string;
     fixedConstraints?: string[];
     analysisStatus?: 'idle' | 'running' | 'done';
+    generatedImageUrl?: string; // last generated result (temporary URL or data URL)
     render?: {
       style?: string;
       color?: string;
@@ -44,7 +45,7 @@ const App: React.FC = () => {
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
-  // Keep the last used render intake so "再精修" can regenerate via t2i.
+  // Keep the last used render intake so "再精修" can reuse the same selections.
   const lastRenderIntakeRef = useRef<any>(null);
   
   // Chat history for context, but we display sparingly
@@ -858,6 +859,12 @@ const App: React.FC = () => {
 
             const resultUrl = res.resultUrl;
             setLastGeneratedImage(resultUrl);
+            if (uploadId) {
+              setUploads(prev => prev[uploadId] ? ({
+                ...prev,
+                [uploadId]: { ...prev[uploadId], generatedImageUrl: resultUrl }
+              }) : prev);
+            }
             setAppState('RENDER_DONE');
             setMessages(prev => [
               ...prev,
@@ -896,6 +903,89 @@ const App: React.FC = () => {
       }
   };
 
+  // Detail enhancement using the current effect image as reference (slower but aligns better).
+  const triggerEnhanceFromCurrent = async (baseImageUrl: string, tweak: string, uploadId?: string) => {
+      try {
+          const base = lastRenderIntakeRef.current || {};
+          const size = (() => {
+              const u = uploadId ? uploads[uploadId] : undefined;
+              // Prefer keeping the orientation consistent with the user's original photo.
+              const w = u?.width || base?.baseWidth;
+              const h = u?.height || base?.baseHeight;
+              if (!w || !h) return '1280x800';
+              return h > w ? '800x1280' : '1280x800';
+          })();
+
+          const renderIntake = ({
+              ...(base || {}),
+              requirements: `${String(base?.requirements || '').trim()}\n\n精修重点：${tweak}`.trim()
+          });
+          lastRenderIntakeRef.current = renderIntake;
+
+          const genLoadingId = addLoadingToast("收到～我而家幫你做细节增强（会比第一次慢一点），请稍等…", { loadingType: 'generating', uploadId });
+          try {
+              const res = await generateDesignImage({
+                  baseImageBlobUrl: baseImageUrl,
+                  size,
+                  renderIntake,
+                  response_format: 'url',
+                  // Keep structure/layout from the current effect image; focus on detailing
+                  source_weight: 0.55,
+                  steps: 40,
+                  cfg_scale: 7.4,
+              });
+
+              stopLoadingToast(genLoadingId);
+              if (!res.ok || !res.resultBlobUrl) {
+                  throw new Error(res.message || '细节增强失败');
+              }
+
+              const resultUrl = res.resultBlobUrl;
+              setLastGeneratedImage(resultUrl);
+              if (uploadId) {
+                setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], generatedImageUrl: resultUrl }
+                }) : prev);
+              }
+              setAppState('RENDER_DONE');
+              setMessages(prev => [
+                ...prev,
+                { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
+              ]);
+
+              const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：软装更丰富"];
+              const bgId = addLoadingToast("细节已增强，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
+              try {
+                const qaRes = await qaDesignImage({ imageUrl: resultUrl, renderIntake });
+                stopLoadingToast(bgId);
+                if (qaRes.ok && qaRes.designExplanation) {
+                  await typeOutAI(
+                    `【設計說明（按最终效果图）】\n${qaRes.designExplanation}\n\n想再精修？點下面一個：`,
+                    { options: refineOptions, meta: { kind: 'generated', uploadId } }
+                  );
+                } else {
+                  await typeOutAI(`【設計說明】\n- 说明生成暂时失败，但效果图已生成；你可直接点下面再生成优化。`, {
+                    options: refineOptions,
+                    meta: { kind: 'generated', uploadId }
+                  });
+                }
+              } catch {
+                stopLoadingToast(bgId);
+                await typeOutAI(`【設計說明】\n- 复核暂时失败，但效果图已生成；你可直接点下面再生成优化。`, {
+                  options: refineOptions,
+                  meta: { kind: 'generated', uploadId }
+                });
+              }
+          } finally {
+              stopLoadingToast(genLoadingId);
+          }
+      } catch (e: any) {
+          addSystemToast(`细节增强失敗：${e.message}`);
+          setAppState('ANALYSIS_DONE');
+      }
+  };
+
   const handleOptionClick = async (message: Message, opt: string) => {
       const uploadId = message.meta?.uploadId;
       const u = uploadId ? uploads[uploadId] : undefined;
@@ -904,8 +994,14 @@ const App: React.FC = () => {
       if (opt.startsWith('再精修：')) {
           const tweak = opt.replace('再精修：', '').trim();
           setAppState('GENERATING');
-          // Regenerate via t2i with modification note.
-          triggerGeneration(null, tweak);
+          // Prefer detail enhancement using the current generated image as reference.
+          const baseImg = (uploadId && uploads[uploadId]?.generatedImageUrl) ? uploads[uploadId]!.generatedImageUrl! : (lastGeneratedImage || '');
+          if (baseImg) {
+            triggerEnhanceFromCurrent(baseImg, tweak, uploadId);
+          } else {
+            // Fallback: regenerate from text only
+            triggerGeneration(null, tweak);
+          }
           return;
       }
 

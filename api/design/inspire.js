@@ -235,6 +235,8 @@ export default async function handler(req, res) {
     intensityLine,
     lightingByVibe(vibe),
     'Hong Kong apartment practicality, compact space planning, clear circulation.',
+    // Push millwork details (cabinet panels/edges/handles) for sharper results
+    'Millwork detail: crisp cabinetry panel lines, accurate proportions, toe-kick + shadow gaps, clean edges, realistic hardware, no blurry surfaces.',
     'Ceiling design: slim gypsum board ceiling with recessed cove lighting + downlights (no office grid ceiling).',
     'Materials: coherent warm textures, clean realistic details; built-in cabinetry with toe-kick and shadow gaps.',
     avoidBySpace,

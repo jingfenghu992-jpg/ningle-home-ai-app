@@ -709,6 +709,12 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         ].join(' ');
 
         const extraReq = compact(requirements, 380);
+        const roomWidthChi = String(renderIntake?.roomWidthChi || '').trim();
+        const roomHeightChi = String(renderIntake?.roomHeightChi || '').trim();
+        const dimsHint =
+          (roomWidthChi || roomHeightChi)
+            ? `Approx room size (chi): width ${roomWidthChi || 'unknown'}, ceiling height ${roomHeightChi || 'unknown'}. Use realistic HK proportions.`
+            : '';
 
         if (!designSpec?.prompt_en) {
           // Make the first ~250 chars fully reflect user selections, so they won't be truncated.
@@ -717,6 +723,7 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
               // Critical: enforce "designed and staged" output early so it won't be truncated away.
               'MUST NOT be an empty room. MUST look like a fully staged interior design proposal render: add complete furniture layout, curtains, rug, artwork, and plants as appropriate, plus built-in cabinetry.',
               'Lighting MUST be layered (cove/indirect + recessed downlights + accent lights), realistic GI, warm 2700-3000K.',
+              dimsHint,
               // User intent as executable instructions (placement/cabinet emphasis)
               focusHint,
               storageHint,
