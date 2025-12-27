@@ -89,9 +89,9 @@ export default async function handler(req, res) {
     // Vision Context
     let visionContext = "";
     if (visionSummary) {
-        visionContext = `\n\n【用戶上傳現場相片智能分析】\n`;
-        if (spaceType) visionContext += `空間類型：${spaceType}\n`;
-        visionContext += `以下是視覺分析報告，請必須引用此內容回答用戶問題：\n${visionSummary}\n\n請只圍繞「櫃體/收納」給 3–5 點可落地建議（位置+高度範圍+開門方式/分區），其餘裝修話題點到即止。\n`;
+        visionContext = `\n\n【用户上传现场照片智能分析】\n`;
+        if (spaceType) visionContext += `空间类型：${spaceType}\n`;
+        visionContext += `以下是视觉分析报告，请必须引用此内容回答用户问题：\n${visionSummary}\n\n请只围绕「柜体/收纳」给 3–5 点可落地建议（位置+高度范围+开门方式/分区），其余装修话题点到即止。\n`;
     }
 
     // Final System Prompt

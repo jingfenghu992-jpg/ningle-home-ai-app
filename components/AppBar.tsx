@@ -1,13 +1,10 @@
 import React from 'react';
 import { MessageCircle } from 'lucide-react';
+import { WHATSAPP_LINK } from '../constants';
 
 export const AppBar: React.FC = () => {
-  const WHATSAPP_NUMBER = "85256273817";
-  const waText = encodeURIComponent("你好，我想了解寧樂家居一對一免費服務，麻煩跟進。謝謝！");
-  const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${waText}`;
-
   const handleWhatsApp = () => {
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    window.open(WHATSAPP_LINK, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -16,7 +13,7 @@ export const AppBar: React.FC = () => {
         <div className="w-9 h-9 bg-[#1F4D3A] rounded-full flex items-center justify-center text-white font-bold">
           N
         </div>
-        <span className="text-[#2F2A23] font-semibold text-[17px]">寧樂家居助手</span>
+        <span className="text-[#2F2A23] font-semibold text-[17px]">宁乐家居助手</span>
       </div>
       <div className="flex items-center gap-3">
         <button 
@@ -24,7 +21,7 @@ export const AppBar: React.FC = () => {
           className="flex items-center gap-1.5 bg-[#1F4D3A] hover:bg-[#173C2D] text-white px-3 py-2 rounded-full text-sm font-semibold transition-colors shadow-sm active:scale-95"
         >
           <MessageCircle size={16} />
-          <span>免費跟進</span>
+          <span>免费跟进</span>
         </button>
       </div>
     </div>

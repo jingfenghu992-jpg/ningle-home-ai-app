@@ -4,11 +4,11 @@ export const INITIAL_MESSAGE: Message = {
   id: 'init-1',
   type: 'text',
   content: `你好 👋  
-我係寧樂家居智能助手。
+我是宁乐家居智能助手。
 
-你可以直接打字問我，
-或者上傳你屋企／房間嘅相片，
-我可以幫你分析同提供設計建議 🙂`,
+你可以直接打字问我，
+或者上传你家/房间的照片，
+我可以帮你分析并提供订造建议 🙂`,
   sender: 'ai',
   timestamp: Date.now(),
 };
@@ -24,5 +24,5 @@ export const INITIAL_MESSAGE: Message = {
 
 // WhatsApp Configuration
 const WA_NUMBER = "85256273817"; 
-const WA_TEXT = "你好，我想一對一了解全屋訂造設計，方便傾下嗎？";
+const WA_TEXT = "你好，我想一对一了解全屋订造设计，方便聊一下吗？";
 export const WHATSAPP_LINK = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(WA_TEXT)}`;
