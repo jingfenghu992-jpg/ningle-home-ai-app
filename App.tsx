@@ -7,7 +7,7 @@ import { Composer } from './components/Composer';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateDesignImage, generateInspireImage, qaDesignImage, uploadImage } from './services/generateClient';
+import { generateInspireImage, qaDesignImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
@@ -42,6 +42,8 @@ const App: React.FC = () => {
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
+  // Keep the last used render intake so "再精修" can regenerate via t2i.
+  const lastRenderIntakeRef = useRef<any>(null);
   
   // Chat history for context, but we display sparingly
   const [messages, setMessages] = useState<Message[]>([]);
@@ -763,6 +765,9 @@ const App: React.FC = () => {
 
   const triggerGeneration = async (intakeData: any, revisionText?: string) => {
       try {
+          if (intakeData && typeof intakeData === 'object') {
+            lastRenderIntakeRef.current = intakeData;
+          }
           const pickStepFunSize = (w?: number, h?: number) => {
               if (!w || !h) return '1280x800';
               const ratio = w / h;
@@ -772,218 +777,65 @@ const App: React.FC = () => {
               return '1024x1024';
           };
 
-          const baseUrl =
-            revisionText
-              ? (lastGeneratedImage || (intakeData?.baseImageBlobUrl ?? ''))
-              : (intakeData?.baseImageBlobUrl ?? '');
+          const base = intakeData || lastRenderIntakeRef.current || {};
+          const uploadId = base?.uploadId;
+          const size = pickStepFunSize(base?.baseWidth, base?.baseHeight);
 
-              const jobId =
-                // @ts-ignore
-                (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
-                  // @ts-ignore
-                  ? crypto.randomUUID()
-                  : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          // For revision, keep previous selections and append modification note
+          const renderIntake = revisionText
+            ? ({ ...(base || {}), requirements: `${String(base?.requirements || '').trim()}\n\n修改要求：${revisionText}`.trim() })
+            : base;
 
-              const payload = {
-              prompt: '', 
-              renderIntake: intakeData || {}, 
-              baseImageBlobUrl: baseUrl,
-              size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
-              // URL response is smaller and more stable; server will persist to Blob when possible.
+          // Single t2i generation as the FINAL render (faster for free trial UX)
+          const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖（文生圖），請稍等…", { loadingType: 'generating', uploadId });
+          try {
+            const res = await generateInspireImage({
+              renderIntake,
+              size,
               response_format: 'url',
-              clientId,
-              uploadId: intakeData?.uploadId,
-              jobId,
-              // StepFun doc: smaller source_weight => more similar to source (less deformation)
-                  source_weight: intakeData?.source_weight ?? 0.4,
-                  steps: intakeData?.steps ?? 40,
-                  cfg_scale: intakeData?.cfg_scale ?? 6.0
-          };
-          
-          // If revision, we assume we use the last generated image as base
-          if (revisionText) {
-              payload.baseImageBlobUrl = lastGeneratedImage || undefined;
-              payload.renderIntake = { requirements: `Modification: ${revisionText}` } as any; 
-          }
+              // Keep it reasonably fast
+              steps: 28,
+              cfg_scale: 6.6,
+            });
+            stopLoadingToast(genLoadingId);
 
-          // IMPORTANT (StepFun concurrency limit):
-          // Do NOT run inspiration (t2i) and final i2i in parallel, otherwise one will 429.
-          // Strategy: generate inspiration first (fast), then start the final i2i.
-          // Inspiration is optional; if it fails, we still proceed with i2i.
-          let progressId: string | null = null;
-          let inspireDelivered = false;
-          let inspireNeedsRetry = false;
-          const tryInspire = async (phase: 'before' | 'after') => {
+            if (!res.ok || !res.resultUrl) {
+              throw new Error(res.message || '生成失败');
+            }
+
+            const resultUrl = res.resultUrl;
+            setLastGeneratedImage(resultUrl);
+            setAppState('RENDER_DONE');
+            setMessages(prev => [
+              ...prev,
+              { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
+            ]);
+
+            const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：软装更丰富"];
+            const bgId = addLoadingToast("效果圖已出，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
             try {
-              const sleepLocal = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-              const hintId =
-                phase === 'before'
-                  ? addLoadingToast(
-                      "我順便幫你出一張「風格靈感圖」（唔一定同你間房結構一樣），等你唔使乾等～",
-                      { loadingType: 'generating', uploadId: intakeData?.uploadId }
-                    )
-                  : addLoadingToast(
-                      "我再補發一張「風格靈感圖」畀你參考～",
-                      { loadingType: 'generating', uploadId: intakeData?.uploadId }
-                    );
-
-              const insp = await generateInspireImage({
-                renderIntake: intakeData || {},
-                size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
-                response_format: 'url',
-                // Keep inspiration fast to avoid blocking final i2i under concurrency=1
-                steps: phase === 'before' ? 18 : 16,
-                cfg_scale: 6.4,
-              });
-              stopLoadingToast(hintId);
-
-              if (insp.ok && insp.resultUrl) {
-                inspireDelivered = true;
-                setMessages(prev => [
-                  ...prev,
-                  { id: `${Date.now()}-inspire-img`, type: 'image', content: insp.resultUrl!, sender: 'ai', timestamp: Date.now() }
-                ]);
-                // Show a "still generating" message WITH a spinner to reduce user anxiety.
-                progressId = addLoadingToast(
-                  "【風格靈感圖】\n- 呢張係方向參考圖（唔一定同你間房門窗結構一樣）\n- 真正「保留你間房結構」嘅效果圖我仍然生成緊～",
-                  { loadingType: 'generating', uploadId: intakeData?.uploadId }
+              const qaRes = await qaDesignImage({ imageUrl: resultUrl, renderIntake });
+              stopLoadingToast(bgId);
+              if (qaRes.ok && qaRes.designExplanation) {
+                await typeOutAI(
+                  `【設計說明（按最终效果图）】\n${qaRes.designExplanation}\n\n想再精修？點下面一個：`,
+                  { options: refineOptions, meta: { kind: 'generated', uploadId } }
                 );
-                return;
-              }
-
-              if ((insp as any)?.errorCode === 'RATE_LIMITED') {
-                inspireNeedsRetry = true;
-                if (phase === 'before') {
-                  // One light retry before starting i2i (keeps ordering "t2i first" when possible)
-                  await sleepLocal(1200);
-                  const insp2 = await generateInspireImage({
-                    renderIntake: intakeData || {},
-                    size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
-                    response_format: 'url',
-                    steps: 14,
-                    cfg_scale: 6.2,
-                  });
-                  if (insp2.ok && insp2.resultUrl) {
-                    inspireDelivered = true;
-                    setMessages(prev => [
-                      ...prev,
-                      { id: `${Date.now()}-inspire-img`, type: 'image', content: insp2.resultUrl!, sender: 'ai', timestamp: Date.now() }
-                    ]);
-                    // Keep user informed while i2i runs
-                    progressId = addLoadingToast(
-                      "【風格靈感圖】\n- 呢張係方向參考圖（唔一定同你間房門窗結構一樣）\n- 真正「保留你間房結構」嘅效果圖我仍然生成緊～",
-                      { loadingType: 'generating', uploadId: intakeData?.uploadId }
-                    );
-                    return;
-                  }
-                  addSystemToast("靈感圖而家排隊中，我先幫你出最終效果圖～");
-                } else {
-                  addSystemToast("靈感圖仲排隊中～等我哋空咗會再補發。");
-                }
-              } else if (phase === 'before') {
-                // Make it visible if t2i fails (avoid looking "stuck")
-                addSystemToast("靈感圖暫時出唔到，我先幫你出最終效果圖～");
+              } else {
+                await typeOutAI(`【設計說明】\n- 说明生成暂时失败，但效果图已生成；你可直接点下面再生成优化。`, {
+                  options: refineOptions,
+                  meta: { kind: 'generated', uploadId }
+                });
               }
             } catch {
-              // ignore inspiration failure
+              stopLoadingToast(bgId);
+              await typeOutAI(`【設計說明】\n- 复核暂时失败，但效果图已生成；你可直接点下面再生成优化。`, {
+                options: refineOptions,
+                meta: { kind: 'generated', uploadId }
+              });
             }
-          };
-
-          if (!revisionText) {
-            await tryInspire('before');
-          }
-
-          const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-          let res = await generateDesignImage(payload as any);
-          // If upstream is rate limited, wait and retry once to avoid looking "stuck"
-          if (!res.ok && (res as any)?.errorCode === 'RATE_LIMITED') {
-            const qid = addLoadingToast("排隊中…我幫你自動再試一次（約 20–40 秒）", { loadingType: 'generating', uploadId: intakeData?.uploadId });
-            await sleep(25000);
-            res = await generateDesignImage(payload as any);
-            stopLoadingToast(qid);
-          }
-          if (progressId) stopLoadingToast(progressId);
-
-          if (res.ok && (res.resultBlobUrl || res.b64_json)) {
-              const resultUrl = res.resultBlobUrl || (res.b64_json ? `data:image/jpeg;base64,${res.b64_json}` : null);
-              setLastGeneratedImage(resultUrl!);
-              setAppState('RENDER_DONE');
-              // Also append generated image into chat flow so it follows conversation
-              setMessages(prev => [
-                  ...prev,
-                  { id: `${Date.now()}-img`, type: 'image', content: resultUrl!, sender: 'ai', timestamp: Date.now() }
-              ]);
-
-              // If inspiration didn't show (rate-limited/failed), try once more after final i2i.
-              if (!revisionText && !inspireDelivered && inspireNeedsRetry) {
-                // Fire-and-forget: do not block UX
-                (async () => {
-                  await sleep(1200);
-                  await tryInspire('after');
-                })();
-              }
-
-              // ALWAYS prefer explanation derived from the FINAL image (most consistent).
-              const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：减少变形"];
-              const bgId = addLoadingToast("效果圖已出，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId: intakeData?.uploadId });
-              try {
-                const qaRes = await qaDesignImage({
-                  imageUrl: resultUrl!,
-                  renderIntake: intakeData || {},
-                });
-                stopLoadingToast(bgId);
-
-                if (qaRes.ok && qaRes.designExplanation) {
-                  const pass = Boolean((qaRes as any)?.qa?.pass);
-                  const issues = Array.isArray((qaRes as any)?.qa?.issues) ? (qaRes as any).qa.issues : [];
-                  const missing = Array.isArray((qaRes as any)?.qa?.missing) ? (qaRes as any).qa.missing : [];
-
-                  const extra =
-                    pass
-                      ? ''
-                      : [
-                          '',
-                          '【智能复核】',
-                          missing.length ? `- 缺失：${missing.slice(0, 5).join('、')}` : '',
-                          issues.length ? `- 问题：${issues.slice(0, 5).join('；')}` : '',
-                        ].filter(Boolean).join('\n');
-
-                  await typeOutAI(
-                    `【設計說明（按最终效果图）】\n${qaRes.designExplanation}${extra}\n\n想再精修？點下面一個：`,
-                    { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
-                  );
-                } else if (res.designExplanation) {
-                  await typeOutAI(
-                    `【設計說明】\n${res.designExplanation}\n\n想再精修？點下面一個：`,
-                    { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
-                  );
-                } else {
-                  await typeOutAI(`【設計說明】\n- 复核暂时失败，但效果图已生成；你可直接点下面精修。`, {
-                    options: refineOptions,
-                    meta: { kind: 'generated', uploadId: intakeData?.uploadId }
-                  });
-                }
-              } catch (e: any) {
-                stopLoadingToast(bgId);
-                if (res.designExplanation) {
-                  await typeOutAI(
-                    `【設計說明】\n${res.designExplanation}\n\n想再精修？點下面一個：`,
-                    { options: refineOptions, meta: { kind: 'generated', uploadId: intakeData?.uploadId } }
-                  );
-                } else {
-                  await typeOutAI(`【設計說明】\n- 复核暂时失败，但效果图已生成；你可直接点下面精修。`, {
-                    options: refineOptions,
-                    meta: { kind: 'generated', uploadId: intakeData?.uploadId }
-                  });
-                }
-              }
-          } else {
-              // Handle "already running" case (idempotency / concurrency)
-              if ((res as any)?.errorCode === 'IN_PROGRESS') {
-                  throw new Error('呢個效果圖仲生成緊，你等我幾秒先～');
-              }
-              throw new Error(res.message);
+          } finally {
+            stopLoadingToast(genLoadingId);
           }
       } catch (e: any) {
           addSystemToast(`生成失敗：${e.message}`);
@@ -999,7 +851,7 @@ const App: React.FC = () => {
       if (opt.startsWith('再精修：')) {
           const tweak = opt.replace('再精修：', '').trim();
           setAppState('GENERATING');
-          // Use the last generated image as base; triggerGeneration handles revisionText mode.
+          // Regenerate via t2i with modification note.
           triggerGeneration(null, tweak);
           return;
       }
@@ -1152,82 +1004,11 @@ const App: React.FC = () => {
                   }) : prev);
 
                   // UX: "direct generate" should start immediately (avoid duplicated "start" button).
-                  const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
-                  setAppState('GENERATING');
-                  const stageHintId = addLoadingToast("生成中：结构锁定 → 设计改造 → 灯光材质精修（约 60–120 秒）", { loadingType: 'generating', uploadId });
-
-                  // Prefer public URL for i2i (more stable); fallback to base64 dataUrl.
-                  const baseImage = u.imageUrl || u.dataUrl;
+                  // Build a compact intake and run a single t2i generation as the final render.
                   const focus = (u.render as any)?.focus || '布置方案（按你选择）';
                   const bedType = (u.render as any)?.bedType || '';
-
-                  const pickConstraints = (summary?: string) => {
-                      if (!summary) return '';
-                      const lines = summary.split('\n').map(l => l.trim()).filter(Boolean);
-                      const picked = lines.filter(l =>
-                        l.startsWith('結構：') ||
-                        l.startsWith('特徵：') ||
-                        l.startsWith('約束：') ||
-                        l.includes('窗') ||
-                        l.includes('梁') ||
-                        l.includes('冷氣') ||
-                        l.includes('柱') ||
-                        l.includes('窗台') ||
-                        l.includes('電箱') ||
-                        l.includes('弱電') ||
-                        l.includes('水表') ||
-                        l.includes('煤氣') ||
-                        l.includes('煤气')
-                      );
-                      const text = (picked.length ? picked : lines.slice(0, 6)).join('；');
-                      return text.length > 220 ? text.slice(0, 220) + '…' : text;
-                  };
-                  const structureNotes = u.visionSummary ? `Constraints: ${pickConstraints(u.visionSummary)}` : '';
-
-                  const spaceTxt = u.spaceType || 'room';
-                  const isDining = String(spaceTxt).includes('餐') || String(spaceTxt).toLowerCase().includes('dining');
-                  const isKitchen = String(spaceTxt).includes('廚') || String(spaceTxt).includes('厨');
-                  const isBathroom = String(spaceTxt).includes('浴') || String(spaceTxt).includes('衛') || String(spaceTxt).includes('卫') || String(spaceTxt).includes('洗手') || String(spaceTxt).includes('厕所') || String(spaceTxt).includes('廁');
-                  const hkHardConstraints =
-                    `Do NOT move windows/doors/beams/columns/window sills; keep camera perspective. ` +
-                    `Do NOT move AC unit/vents; do NOT block electrical panels/access points. ` +
-                    `${(isKitchen || isBathroom) ? 'Do NOT change plumbing/drain/gas/exhaust positions; keep access panels reachable. ' : ''}` +
-                    `INTERIOR ONLY (ignore balcony/exterior).`;
-
-                  const photorealisticSpec =
-                    `Photorealistic interior render based on the uploaded photo, realistic materials and lighting. ` +
-                    `Keep original lighting direction from windows and add warm ambient lighting.`;
-
-                  const bareShellSpec = isBareShellFromSummary(u.visionSummary)
-                    ? `If the room looks bare/unfinished, complete full fit-out: ceiling design (simple HK-style), lighting plan, wall paint, flooring, skirting, and appropriate soft furnishings.`
-                    : '';
-
-                  const suiteSpec = suiteToPrompt(spaceTxt, focus, storage0);
-                  const hallType2 = String((u.render as any)?.hallType || '不确定');
-                  const hkHall =
-                    isLivingDiningSpace(spaceTxt) && hallType2.includes('钻石')
-                      ? 'Hall type: diamond living-dining (钻石厅); prioritize clear circulation, avoid bulky TV wall, use slimmer cabinetry and more integrated storage.'
-                      : isLivingDiningSpace(spaceTxt) && hallType2.includes('长')
-                        ? 'Hall type: long living-dining (长厅); use long-wall TV/storage and keep a clear corridor line; optimize dining sideboard near kitchen/route.'
-                        : isLivingDiningSpace(spaceTxt)
-                          ? 'Hall type: standard living-dining; keep balanced TV + dining zones with clear circulation.'
-                          : '';
-
-                  const requirements = [
-                      `Focus: ${focus}. ${bedType ? `Bed: ${bedType}.` : ''} Storage: ${storage0}. Vibe: ${vibe0}. Decor: ${decor0}.`,
-                      hkHall,
-                      photorealisticSpec,
-                      hkHardConstraints,
-                      `Must include: cabinetry/storage plan; ceiling + floor + wall finishes; lighting; soft furnishings.`,
-                      isDining ? `Dining: include table+chairs with clear circulation; add dining sideboard/tall storage when suitable.` : '',
-                      suiteSpec ? `Package: ${suiteSpec}` : '',
-                      bareShellSpec,
-                      `Material: ENF-grade multi-layer wood/plywood cabinetry.`,
-                      structureNotes ? structureNotes : ''
-                  ].filter(Boolean).join(' ');
-
                   const intake = {
-                      space: spaceTxt,
+                      space,
                       style: style0,
                       color: color0,
                       focus,
@@ -1237,20 +1018,15 @@ const App: React.FC = () => {
                       decor: decor0,
                       intensity: intensity0,
                       hallType: hall0,
-                      requirements,
+                      // For t2i, we keep vision summary only as structure cues (approximate)
                       visionSummary: u.visionSummary,
                       uploadId,
-                      baseImageBlobUrl: baseImage,
                       baseWidth: u.width,
                       baseHeight: u.height
                   };
 
-                  try {
-                      await triggerGeneration(intake);
-                  } finally {
-                      stopLoadingToast(genLoadingId);
-                      stopLoadingToast(stageHintId);
-                  }
+                  setAppState('GENERATING');
+                  await triggerGeneration(intake);
                   return;
               }
 
@@ -1340,7 +1116,7 @@ const App: React.FC = () => {
               const vibe = r.vibe || '溫馨暖光';
               const decor = r.decor || opt;
               await typeOutAI(
-                `好，我幫你用「布置：${layout}｜收纳：${storage}｜风格：${style}｜色板：${color}｜灯光：${vibe}｜软装：${decor}」出一张效果图（保留原本门窗/梁柱/冷气机位）。\n准备好就按下面开始生成～`,
+                `好，我幫你用「布置：${layout}｜收纳：${storage}｜风格：${style}｜色板：${color}｜灯光：${vibe}｜软装：${decor}」出一张效果图。\n准备好就按下面开始生成～`,
                 { options: ["開始生成效果圖"], meta: { kind: 'render_flow', stage: 'confirm', uploadId } }
               );
               return;
@@ -1382,161 +1158,14 @@ const App: React.FC = () => {
               const color = u.render?.color || '淺木+米白';
               const focus = u.render?.focus || '全屋整體';
               const storage = u.render?.storage || '隱藏收納為主';
-              await typeOutAI(`好，我幫你用「${style}｜${color}｜${focus}｜${storage}」出一張效果圖（保留原本門窗/梁柱/結構）。準備好就按下面開始生成～`, {
+              await typeOutAI(`好，我幫你用「${style}｜${color}｜${focus}｜${storage}」出一張效果圖。準備好就按下面開始生成～`, {
                   options: ["開始生成效果圖"],
                   meta: { kind: 'render_flow', stage: 'confirm', uploadId }
               });
               return;
           }
 
-          if (message.meta.stage === 'confirm' && opt === '開始生成效果圖') {
-              const style = u.render?.style || '現代簡約';
-              const color = u.render?.color || '淺木+米白';
-              const focus = u.render?.focus || '全屋整體';
-              const storage = u.render?.storage || '隱藏收納為主';
-              const bedType = (u.render as any)?.bedType || '';
-              const vibe = (u.render as any)?.vibe || '溫馨暖光';
-              const decor = (u.render as any)?.decor || '標準搭配（推薦）';
-
-              const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
-              setAppState('GENERATING');
-              // Extra stage hint (spinner stays in this loading toast)
-              const stageHintId = addLoadingToast("生成中：结构锁定 → 设计改造 → 灯光材质精修（约 60–120 秒）", { loadingType: 'generating', uploadId });
-
-              // Prefer public URL for i2i (more stable); fallback to base64 dataUrl.
-              const baseImage = u.imageUrl || u.dataUrl;
-              // Default goal: "明显改造、像设计效果图" (stronger than previous conservative preset).
-              // StepFun doc: smaller source_weight => closer to source (less deformation).
-              const inferIntensityPreset = (t?: string) => {
-                const s = String(t || '').trim();
-                if (!s) return 'recommended';
-                if (s.includes('輕') || s.includes('轻') || s.includes('保留')) return 'light';
-                if (s.includes('大')) return 'bold';
-                if (s.includes('明顯') || s.includes('明显') || s.includes('推薦') || s.includes('推荐')) return 'recommended';
-                return 'recommended';
-              };
-              const preset = inferIntensityPreset((u.render as any)?.intensity);
-              const genParams =
-                preset === 'light'
-                  ? { source_weight: 0.45, cfg_scale: 6.6, steps: 34 }
-                  : preset === 'bold'
-                    ? { source_weight: 0.82, cfg_scale: 7.6, steps: 46 }
-                    : { source_weight: 0.70, cfg_scale: 7.2, steps: 42 };
-
-              const pickConstraints = (summary?: string) => {
-                  if (!summary) return '';
-                  const lines = summary.split('\n').map(l => l.trim()).filter(Boolean);
-                  // Prefer "結構/特徵/香港" lines only
-                  const picked = lines.filter(l =>
-                    l.startsWith('結構：') ||
-                    l.startsWith('特徵：') ||
-                    l.includes('窗') ||
-                    l.includes('梁') ||
-                    l.includes('冷氣') ||
-                    l.includes('柱') ||
-                    l.includes('窗台') ||
-                    l.includes('電箱') ||
-                    l.includes('弱電') ||
-                    l.includes('水表') ||
-                    l.includes('煤氣') ||
-                    l.includes('煤气')
-                  );
-                  const text = (picked.length ? picked : lines.slice(0, 6)).join('；');
-                  return text.length > 220 ? text.slice(0, 220) + '…' : text;
-              };
-              const structureNotes = u.visionSummary ? `Constraints: ${pickConstraints(u.visionSummary)}` : '';
-
-              const space = u.spaceType || 'room';
-              const isDining = String(space).includes('餐') || String(space).toLowerCase().includes('dining');
-              const isKitchen = String(space).includes('廚') || String(space).includes('厨');
-              const isBathroom = String(space).includes('浴') || String(space).includes('衛') || String(space).includes('卫') || String(space).includes('洗手') || String(space).includes('厕所') || String(space).includes('廁');
-              const hkHardConstraints =
-                `Do NOT move windows/doors/beams/columns/window sills; keep camera perspective. ` +
-                `Do NOT move AC unit/vents; do NOT block electrical panels/access points. ` +
-                `${(isKitchen || isBathroom) ? 'Do NOT change plumbing/drain/gas/exhaust positions; keep access panels reachable. ' : ''}` +
-                `INTERIOR ONLY (ignore balcony/exterior).`;
-
-              const photorealisticSpec =
-                `Photorealistic interior render based on the uploaded photo, realistic materials and lighting. ` +
-                `Keep original lighting direction from windows and add warm ambient lighting.`;
-
-              const bareShellSpec = isBareShellFromSummary(u.visionSummary)
-                ? `If the room looks bare/unfinished, complete full fit-out: ceiling design (simple HK-style), lighting plan, wall paint, flooring, skirting, and appropriate soft furnishings.`
-                : '';
-
-              const suiteSpec = suiteToPrompt(space, focus, storage);
-              const hallType = String((u.render as any)?.hallType || '不确定');
-              const hkHall =
-                isLivingDiningSpace(space) && hallType.includes('钻石')
-                  ? 'Hall type: diamond living-dining (钻石厅); prioritize clear circulation, avoid bulky TV wall, use slimmer cabinetry and more integrated storage.'
-                  : isLivingDiningSpace(space) && hallType.includes('长')
-                    ? 'Hall type: long living-dining (长厅); use long-wall TV/storage and keep a clear corridor line; optimize dining sideboard near kitchen/route.'
-                    : isLivingDiningSpace(space)
-                      ? 'Hall type: standard living-dining; keep balanced TV + dining zones with clear circulation.'
-                      : '';
-
-              const vibeSpec = (() => {
-                const v = String(vibe || '');
-                if (v.includes('明亮')) return 'Lighting mood: bright, airy, clean daylight + balanced downlights.';
-                if (v.includes('酒店') || v.includes('高級') || v.includes('高级')) return 'Lighting mood: premium hotel-like layered lighting, warm accents, elegant highlights.';
-                return 'Lighting mood: warm cozy ambient lighting, soft highlights, comfortable.';
-              })();
-              const decorSpec = (() => {
-                const d = String(decor || '');
-                if (d.includes('克制') || d.includes('清爽')) return 'Soft furnishing density: minimal and clean; a few key pieces only.';
-                if (d.includes('豐富') || d.includes('丰富')) return 'Soft furnishing density: richer styling with rug, curtains, artwork, plants, cushions; still tidy.';
-                return 'Soft furnishing density: balanced standard styling (recommended), natural and livable.';
-              })();
-              const bedSpec = bedType ? `Bedroom bed type: ${String(bedType).includes('地台') ? 'platform bed with storage' : String(bedType).includes('榻榻米') ? 'tatami bed with storage' : String(bedType).includes('活動') || String(bedType).includes('隐形') || String(bedType).includes('隱形') ? 'Murphy/hidden bed (residential, not medical)' : 'standard residential bed (no hospital rails)'}.` : '';
-
-              // Keep requirements concise to avoid StepFun prompt >1024
-              const requirements = [
-                  `Focus: ${focus}. ${bedType ? `Bed: ${bedType}.` : ''} Storage: ${storage}. Vibe: ${vibe}. Decor: ${decor}.`,
-                  hkHall,
-                  photorealisticSpec,
-                  hkHardConstraints,
-                  `Must include: cabinetry/storage plan; ceiling + floor + wall finishes; lighting; soft furnishings.`,
-                  isDining ? `Dining: include table+chairs with clear circulation; add dining sideboard/tall storage when suitable.` : '',
-                  suiteSpec ? `Package: ${suiteSpec}` : '',
-                  bedSpec,
-                  vibeSpec,
-                  decorSpec,
-                  bareShellSpec,
-                  `Material: ENF-grade multi-layer wood/plywood cabinetry.`,
-                  structureNotes ? structureNotes : ''
-              ].filter(Boolean).join(' ');
-
-              const intake = {
-                  space,
-                  style,
-                  color,
-                  // Send structured selections to backend for better prompt alignment
-                  focus,
-                  bedType,
-                  storage,
-                  vibe,
-                  decor,
-                  // intensity influences i2i defaults on server too; default to recommended if not collected in the new flow
-                  intensity: (u.render as any)?.intensity || '明顯改造（推薦）',
-                  requirements,
-                  // Pass vision summary for layout constraints (no persistence; used for this generation only)
-                  visionSummary: u.visionSummary,
-                  uploadId,
-                  baseImageBlobUrl: baseImage,
-                  baseWidth: u.width,
-                  baseHeight: u.height,
-                  source_weight: genParams.source_weight,
-                  cfg_scale: genParams.cfg_scale,
-                  steps: genParams.steps
-              };
-
-              try {
-                  await triggerGeneration(intake);
-              } finally {
-                  stopLoadingToast(genLoadingId);
-                  stopLoadingToast(stageHintId);
-              }
-          }
+          // Note: i2i flow is disabled for the current t2i-only test phase.
       }
   };
 
