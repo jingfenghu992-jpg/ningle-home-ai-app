@@ -33,8 +33,12 @@ const ALL_KEYWORDS = [
 
 // Check if user text hits any business keyword
 export function shouldUseKnowledge(text) {
-    if (!text) return false;
-    return true; // Always on
+    const t0 = String(text || '').trim();
+    if (!t0) return false;
+    // Keep KB opt-in by intent: only run when user is asking business/knowledge questions.
+    // This avoids Blob listing/downloading on every casual chat turn.
+    const t = t0.toLowerCase();
+    return ALL_KEYWORDS.some(kw => t.includes(String(kw).toLowerCase()));
 }
 
 // Load KB from Blob
