@@ -114,7 +114,8 @@ export default async function handler(req, res) {
     const pick = [structureLine, constraintsLine].filter(Boolean).join(' ');
     const clean = pick.replace(/^結構：/,'').replace(/^約束：/,'').trim();
     if (!clean) return '';
-    const short = clean.length > 220 ? clean.slice(0, 220) + '...' : clean;
+    // Keep it short to avoid StepFun t2i prompt limit (<=1024 chars)
+    const short = clean.length > 160 ? clean.slice(0, 160) + '...' : clean;
     return `Structure cues (approximate, not exact): ${short}.`;
   })();
 
@@ -130,7 +131,7 @@ export default async function handler(req, res) {
     return 'Must include: finished ceiling/walls/floor + built-in cabinetry + layered lighting + soft furnishings.';
   })();
 
-  const prompt = [
+  let prompt = [
     'Photorealistic high-end interior design rendering, V-Ray/Corona render style, magazine quality.',
     `${spaceEn}.`,
     `Style: ${styleEn}.`,
@@ -149,6 +150,16 @@ export default async function handler(req, res) {
     'Materials: coherent warm textures, clean realistic details; built-in cabinetry with toe-kick and shadow gaps.',
     'Avoid: cartoon, CGI toy look, low-poly, distorted straight lines, fisheye, clutter, unfinished concrete.',
   ].filter(Boolean).join(' ');
+
+  // StepFun t2i prompt must be 1..1024 chars
+  prompt = String(prompt || '').replace(/\s+/g, ' ').trim();
+  if (prompt.length === 0) {
+    res.status(400).json({ ok: false, errorCode: 'INVALID_PROMPT', message: 'Empty prompt' });
+    return;
+  }
+  if (prompt.length > 1024) {
+    prompt = prompt.slice(0, 1021) + '...';
+  }
 
   try {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));

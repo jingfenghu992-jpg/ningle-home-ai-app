@@ -880,6 +880,9 @@ const App: React.FC = () => {
                 } else {
                   addSystemToast("靈感圖仲排隊中～等我哋空咗會再補發。");
                 }
+              } else if (phase === 'before') {
+                // Make it visible if t2i fails (avoid looking "stuck")
+                addSystemToast("靈感圖暫時出唔到，我先幫你出最終效果圖～");
               }
             } catch {
               // ignore inspiration failure

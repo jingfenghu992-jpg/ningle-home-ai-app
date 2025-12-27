@@ -65,7 +65,7 @@ export default async function handler(req, res) {
   "light": "自然光方向 + 冷/暖（短句）",
   "finish_level": { "level": "毛坯/半装/已装", "evidence": "一句画面证据" },
   "fixed_constraints": [
-    "不可动的硬约束（门窗/梁柱/冷气/电箱/水煤位/走道宽等）"
+    "不可动的硬约束（只写门窗/窗台/立柱/横梁/天花降板相关；不要提电箱/插座/开关等机电细节）"
   ],
   "layout_options": [
     {
@@ -106,6 +106,8 @@ Key checks you MUST explicitly answer:
 - doors_windows: where are door(s)/window(s)/window sill(s)
 - columns: any wall columns / protrusions (or say "未见")
 - beams_ceiling: any ceiling beams / drops (or say "未见")
+Forbidden:
+- Do NOT mention electrical panels / switches / sockets (电箱/开关/插座/弱电/水表等). Keep structure and constraints limited to door/window/column/beam only.
 ${schema}`
                     },
                     {
@@ -159,19 +161,30 @@ ${schema}`
 
         const to4LineSummary = (p) => {
             if (!p) return String(content || '').trim();
+            const forbid = (s) => {
+              const t = String(s || '').trim();
+              if (!t) return '';
+              const bad = ['电箱', '開關', '开关', '插座', '弱電', '弱电', '水表', '煤氣', '煤气', '插頭', '插头'];
+              if (bad.some(k => t.includes(k))) return '';
+              return t;
+            };
             const doors = String(p.doors_windows || '').trim() || '未见';
             const cols = String(p.columns || '').trim() || '未见';
             const beams = String(p.beams_ceiling || '').trim() || '未见';
-            const notesArr = Array.isArray(p.structure_notes) ? p.structure_notes : [];
-            const extra = notesArr.map(x => String(x).trim()).filter(Boolean).slice(0, 1).join('；');
-            const structure = [`门窗：${doors}`, `立柱：${cols}`, `横梁/天花：${beams}`, extra ? `补充：${extra}` : ''].filter(Boolean).join('｜');
+            const structure = [`门窗：${doors}`, `立柱：${cols}`, `横梁/天花：${beams}`].filter(Boolean).join('｜');
             const light = String(p.light || '').trim() || '未见';
             const fin = p.finish_level || {};
             const finLevel = String(fin.level || '').trim() || '未见';
             const finEv = String(fin.evidence || '').trim();
             const finish = finEv ? `${finLevel}，${finEv}` : finLevel;
             const constraintsArr = Array.isArray(p.fixed_constraints) ? p.fixed_constraints : [];
-            const constraints = constraintsArr.map(x => String(x).trim()).filter(Boolean).slice(0, 2).join('；') || '未见';
+            const allowedKeys = ['门', '窗', '窗台', '立柱', '柱', '横梁', '梁', '天花', '降板'];
+            const constraints = constraintsArr
+              .map(x => forbid(x))
+              .filter(Boolean)
+              .filter(x => allowedKeys.some(k => x.includes(k)))
+              .slice(0, 2)
+              .join('；') || '门窗/梁柱不可动';
             return [
                 `結構：${structure}。`,
                 `光線：${light}。`,
