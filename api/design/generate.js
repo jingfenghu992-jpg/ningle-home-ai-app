@@ -27,6 +27,7 @@ export default async function handler(req, res) {
     baseImageBlobUrl,
     size,
     renderIntake,
+    fast_refine,
     // StepFun image2image params (optional overrides)
     source_weight,
     steps,
@@ -1148,7 +1149,10 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
     let qaSkipped = false;
     try {
         const currentImg = resultUrl ? resultUrl : (resultImageB64 ? `data:image/jpeg;base64,${resultImageB64}` : null);
-        if (currentImg && renderIntake) {
+        // For "细节增强" we prioritize speed: skip QA and auto-refine loops.
+        if (fast_refine) {
+            qaSkipped = true;
+        } else if (currentImg && renderIntake) {
             // Skip QA if we're close to Vercel timeout (avoid 504)
             if (timeLeftMs() < 14000) {
                 qaSkipped = true;
@@ -1244,8 +1248,8 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         return `data:${mime};base64,${resultImageB64}`;
     })();
 
-    // Fallback: prompt-based explanation only if we still have time
-    if (!designExplanation && timeLeftMs() > 6000) {
+    // Fallback: prompt-based explanation only if we still have time (skip for fast_refine)
+    if (!fast_refine && !designExplanation && timeLeftMs() > 6000) {
         await ensureDesignExplanation();
     }
 

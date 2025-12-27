@@ -930,13 +930,24 @@ const App: React.FC = () => {
                   renderIntake,
                   response_format: 'url',
                   // Keep structure/layout from the current effect image; focus on detailing
-                  source_weight: 0.55,
-                  steps: 40,
-                  cfg_scale: 7.4,
+                  source_weight: 0.45,
+                  steps: 38,
+                  cfg_scale: 7.2,
+                  fast_refine: true,
               });
 
               stopLoadingToast(genLoadingId);
               if (!res.ok || !res.resultBlobUrl) {
+                  if (res.errorCode === 'RATE_LIMITED') {
+                      await typeOutAI("而家生成排队中（同一时间只能处理一单），建议等 30–60 秒再点一次精修～");
+                      setAppState('ANALYSIS_DONE');
+                      return;
+                  }
+                  if (res.errorCode === 'TIMEOUT') {
+                      await typeOutAI("精修超时了（服务器繁忙时会出现）。你可以稍后再点一次「再精修：柜体更清晰」。");
+                      setAppState('ANALYSIS_DONE');
+                      return;
+                  }
                   throw new Error(res.message || '细节增强失败');
               }
 
@@ -992,6 +1003,14 @@ const App: React.FC = () => {
 
       // One-tap refinement actions (mobile friendly)
       if (opt.startsWith('再精修：')) {
+          // Prevent spamming (StepFun often enforces very low concurrency)
+          if (message.isLocked || appState === 'GENERATING') {
+              await typeOutAI("收到～我而家精修緊，通常要 1–3 分鐘；完成後我會出新效果圖。");
+              return;
+          }
+          // Lock this message so the user won't accidentally queue multiple jobs
+          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
+
           const tweak = opt.replace('再精修：', '').trim();
           setAppState('GENERATING');
           // Prefer detail enhancement using the current generated image as reference.

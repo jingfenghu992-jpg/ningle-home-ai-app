@@ -64,6 +64,7 @@ export async function generateDesignImage(params: {
   cfg_scale?: number;
   seed?: number;
   response_format?: 'b64_json' | 'url';
+  fast_refine?: boolean; // skip slower QA/auto-refine for quicker "细节增强"
 }): Promise<GenerateResponse> {
   try {
     return await fetchJSON<GenerateResponse>('/api/design/generate', {
