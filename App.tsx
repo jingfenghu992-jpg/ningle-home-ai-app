@@ -131,7 +131,7 @@ const App: React.FC = () => {
   const runAnalysisForUpload = async (uploadId: string, spaceTypeText: string) => {
     const active = uploads[uploadId];
     if (!active?.dataUrl) {
-      await typeOutAI("搵唔到對應嘅相片，麻煩你再上傳一次～");
+      await typeOutAI("找不到对应的图片，麻烦你再上传一次～");
       setAppState('START');
       return;
     }
@@ -141,11 +141,11 @@ const App: React.FC = () => {
       return;
     }
     if (active.analysisStatus === 'done' && String(active.spaceType || '') === String(spaceTypeText || '')) {
-      await typeOutAI("呢張相我已經分析完成啦～你可以直接按「生成智能效果圖」。");
+      await typeOutAI("这张图片我已经分析完成啦～你可以直接点「生成智能效果图」。");
       return;
     }
 
-    const analysisLoadingId = addLoadingToast("收到，圖片正在分析中，請稍等…", { loadingType: 'analyzing', uploadId });
+    const analysisLoadingId = addLoadingToast("收到，图片正在分析中，请稍等…", { loadingType: 'analyzing', uploadId });
     setAppState('ANALYZING');
     try {
       // Mark running + update spaceType; clear old analysis messages for this upload to avoid duplicates
@@ -210,19 +210,19 @@ const App: React.FC = () => {
 
         await typeOutAI(
           `【图片分析】\n${visionRes.vision_summary}\n点「生成智能效果图」继续。`,
-          { options: ["生成智能效果圖"], meta: { kind: 'analysis', uploadId } }
+          { options: ["生成智能效果图"], meta: { kind: 'analysis', uploadId } }
         );
       } else {
         stopLoadingToast(analysisLoadingId);
         setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], analysisStatus: 'idle' } }) : prev);
-        await typeOutAI("分析失敗，請重試。");
+        await typeOutAI("分析失败，请重试。");
         setAppState('WAITING_FOR_SPACE');
       }
     } catch (e) {
       console.error(e);
       stopLoadingToast(analysisLoadingId);
       setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], analysisStatus: 'idle' } }) : prev);
-      await typeOutAI("系統錯誤，請重試。");
+      await typeOutAI("系统错误，请重试。");
       setAppState('WAITING_FOR_SPACE');
     }
   };
@@ -281,7 +281,7 @@ const App: React.FC = () => {
                     setAppState('WAITING_FOR_SPACE');
                     // Auto classify space, then ask user to confirm with buttons (more robust than free text)
                     (async () => {
-                      const classifyId = addLoadingToast("我先幫你判斷呢張相係咩空間，請稍等…", { loadingType: 'classifying', uploadId });
+                      const classifyId = addLoadingToast("我先帮你判断这张图是什么空间，请稍等…", { loadingType: 'classifying', uploadId });
                       try {
                         const sres = await classifySpace({ imageUrl: uploadedUrl, imageDataUrl: uploadedUrl ? undefined : dataUrl, clientId });
                         stopLoadingToast(classifyId);
@@ -301,12 +301,12 @@ const App: React.FC = () => {
                         })();
 
                         await typeOutAI(
-                          `我猜你呢張相係「${primary}」\n你點一下確認就得（唔啱都可以改）`,
+                          `我猜你这张图是「${primary}」\n你点一下确认就行（不对也可以改）`,
                           { options, meta: { kind: 'space_pick', uploadId } }
                         );
                       } catch (err) {
                         stopLoadingToast(classifyId);
-                        addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
+                        addSystemToast("收到～想确认一下：这张图是哪个空间？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
                       }
                     })();
                 };
@@ -319,7 +319,7 @@ const App: React.FC = () => {
                         }
                     }));
                     setAppState('WAITING_FOR_SPACE');
-                    addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
+                    addSystemToast("收到～想确认一下：这张图是哪个空间？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
                 };
                 img.src = dataUrl;
             } catch {
@@ -331,7 +331,7 @@ const App: React.FC = () => {
                     }
                 }));
                 setAppState('WAITING_FOR_SPACE');
-                addSystemToast("收到～想確認一下：呢張相係邊個空間？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
+                addSystemToast("收到～想确认一下：这张图是哪个空间？（例如：客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他）");
             }
         };
         reader.readAsDataURL(blob);
@@ -398,7 +398,7 @@ const App: React.FC = () => {
         }
         const uid = activeUploadId;
         if (!uid) {
-          addSystemToast("搵唔到你最新上傳嗰張相，麻煩你再上傳一次～");
+          addSystemToast("找不到你最新上传的图片，麻烦你再上传一次～");
           setAppState('START');
           return;
         }
@@ -462,8 +462,8 @@ const App: React.FC = () => {
   };
 
   const getDefaultVibeForHK = () => "明亮通透";
-  const getDefaultDecorForHK = () => "標準搭配（推薦）";
-  const getDefaultIntensityForHK = () => "明顯改造（推薦）";
+  const getDefaultDecorForHK = () => "标准搭配（推荐）";
+  const getDefaultIntensityForHK = () => "明显改造（推荐）";
   const getDefaultStorageForSpace = (space?: string) => {
       const s = normalizeSpaceKey(space);
       if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return "台面整洁收纳（隐藏小家电）";
@@ -841,7 +841,7 @@ const App: React.FC = () => {
             : base;
 
           // Single t2i generation as the FINAL render (faster for free trial UX)
-          const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
+          const genLoadingId = addLoadingToast("收到～我现在帮你生成效果图，请稍等…", { loadingType: 'generating', uploadId });
           try {
             const res = await generateInspireImage({
               renderIntake,
@@ -872,13 +872,13 @@ const App: React.FC = () => {
             ]);
 
             const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：软装更丰富"];
-            const bgId = addLoadingToast("效果圖已出，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
+            const bgId = addLoadingToast("效果图已出，我再帮你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
             try {
               const qaRes = await qaDesignImage({ imageUrl: resultUrl, renderIntake });
               stopLoadingToast(bgId);
               if (qaRes.ok && qaRes.designExplanation) {
                 await typeOutAI(
-                  `【設計說明（按最终效果图）】\n${qaRes.designExplanation}\n\n想再精修？點下面一個：`,
+                  `【设计说明（按最终效果图）】\n${qaRes.designExplanation}\n\n想再精修？点下面一个：`,
                   { options: refineOptions, meta: { kind: 'generated', uploadId } }
                 );
               } else {
@@ -922,7 +922,7 @@ const App: React.FC = () => {
           });
           lastRenderIntakeRef.current = renderIntake;
 
-          const genLoadingId = addLoadingToast("收到～我而家幫你做细节增强（会比第一次慢一点），请稍等…", { loadingType: 'generating', uploadId });
+          const genLoadingId = addLoadingToast("收到～我现在帮你做细节增强（会比第一次慢一点），请稍等…", { loadingType: 'generating', uploadId });
           try {
               const res = await generateDesignImage({
                   baseImageBlobUrl: baseImageUrl,
@@ -966,13 +966,13 @@ const App: React.FC = () => {
               ]);
 
               const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：软装更丰富"];
-              const bgId = addLoadingToast("细节已增强，我再幫你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
+                const bgId = addLoadingToast("细节已增强，我再帮你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
               try {
                 const qaRes = await qaDesignImage({ imageUrl: resultUrl, renderIntake });
                 stopLoadingToast(bgId);
                 if (qaRes.ok && qaRes.designExplanation) {
                   await typeOutAI(
-                    `【設計說明（按最终效果图）】\n${qaRes.designExplanation}\n\n想再精修？點下面一個：`,
+                    `【设计说明（按最终效果图）】\n${qaRes.designExplanation}\n\n想再精修？点下面一个：`,
                     { options: refineOptions, meta: { kind: 'generated', uploadId } }
                   );
                 } else {
@@ -1005,7 +1005,7 @@ const App: React.FC = () => {
       if (opt.startsWith('再精修：')) {
           // Prevent spamming (StepFun often enforces very low concurrency)
           if (message.isLocked || appState === 'GENERATING') {
-              await typeOutAI("收到～我而家精修緊，通常要 1–3 分鐘；完成後我會出新效果圖。");
+              await typeOutAI("收到～我现在精修中，通常要 1–3 分钟；完成后我会出新效果图。");
               return;
           }
           // Lock this message so the user won't accidentally queue multiple jobs
@@ -1032,7 +1032,7 @@ const App: React.FC = () => {
           return;
       }
 
-      if (opt === '生成智能效果圖') {
+      if (opt === '生成智能效果图') {
           // Prevent repeated taps from spamming; but don't make it "no response"
           if (message.isLocked) {
               await typeOutAI("收到～我已經開始處理緊，你等我幾秒先～");
@@ -1041,7 +1041,7 @@ const App: React.FC = () => {
 
           // If blob URL not ready, guide user to wait to avoid "Missing baseImageBlobUrl"
           if (!uploadId || !u) {
-              await typeOutAI("搵唔到對應嘅相片，麻煩你再上傳一次～");
+              await typeOutAI("找不到对应的图片，麻烦你再上传一次～");
               return;
           }
           // Lock this message after we confirm we can start the flow
@@ -1053,7 +1053,7 @@ const App: React.FC = () => {
           const space = u.spaceType || '';
           // Skip extra intake questions for now: go straight to hall type (if living-dining) or layout.
           if (isLivingDiningSpace(space)) {
-              await typeOutAI("客餐厅再确认一下（更贴合香港常见户型）：你屋企偏边种厅？", {
+              await typeOutAI("客餐厅再确认一下（更贴合香港常见户型）：你家偏哪种厅？", {
                   options: ["标准厅（推荐）", "钻石厅", "长厅", "不确定"],
                   meta: { kind: 'render_flow', stage: 'hall', uploadId }
               });
@@ -1063,7 +1063,7 @@ const App: React.FC = () => {
           const layouts = (u.layoutOptions && u.layoutOptions.length)
             ? u.layoutOptions.slice(0, 2)
             : pickLayoutOptionsHK(space, (u.render as any)?.hallType);
-          await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
+          await typeOutAI("好，先定「布置/动线」（最影响落地和出图准确）。\n你想用哪个摆位？", {
               options: layouts,
               meta: { kind: 'render_flow', stage: 'layout', uploadId }
           });
@@ -1087,7 +1087,7 @@ const App: React.FC = () => {
               const layouts = (u.layoutOptions && u.layoutOptions.length)
                 ? u.layoutOptions.slice(0, 2)
                 : pickLayoutOptionsHK(space, hallType);
-              await typeOutAI("好，先定「布置/动线」（最影响落地同出图准确）。\n你想用邊個摆位？", {
+              await typeOutAI("好，先定「布置/动线」（最影响落地和出图准确）。\n你想用哪个摆位？", {
                   options: layouts,
                   meta: { kind: 'render_flow', stage: 'layout', uploadId }
               });
@@ -1133,7 +1133,7 @@ const App: React.FC = () => {
               }) : prev);
 
               // Next: style+tone selection (directly affects the final render).
-              await typeOutAI("收到～下一步揀「风格色调」（会直接影响出图质感）：", {
+              await typeOutAI("收到～下一步选「风格色调」（会直接影响出图质感）：", {
                 options: getStyleToneOptionsHK(),
                 meta: { kind: 'render_flow', stage: 'style_tone', uploadId }
               });
@@ -1159,14 +1159,14 @@ const App: React.FC = () => {
               const hall0 = r0.hallType || '不确定';
 
               await typeOutAI(
-                `收到～我建議先用「香港推薦預設」直接出圖（更快、更像提案效果圖）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要唔要直接生成？`,
-                { options: ["直接生成（推薦）"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
+                `收到～我建议先用「香港推荐预设」直接出图（更快、更像提案效果图）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要不要直接生成？`,
+                { options: ["直接生成（推荐）"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
               );
               return;
           }
 
           if (message.meta.stage === 'fast_confirm') {
-              if (opt === "直接生成（推薦）") {
+              if (opt === "直接生成（推荐）") {
                   const space = u.spaceType || '';
                   const r0 = (u.render as any) || {};
                   const style0 = r0.style || getDefaultStyleForHK();
@@ -1226,7 +1226,7 @@ const App: React.FC = () => {
               }
 
               // Fine-tuning entry removed for now (post-generation refinements are handled after first render).
-              await typeOutAI("收到～我先按推薦預設直接出圖，你之後可以基於第一張效果圖再精修。");
+              await typeOutAI("收到～我先按推荐预设直接出图，你之后可以基于第一张效果图再精修。");
               return;
           }
 
@@ -1276,8 +1276,8 @@ const App: React.FC = () => {
                   ...prev,
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), color: opt } }
               }) : prev);
-              await typeOutAI("想要咩燈光氛圍？（會直接影響效果圖質感）", {
-                  options: ["明亮通透", "溫馨暖光", "高級氛圍（酒店感）"],
+              await typeOutAI("想要什么灯光氛围？（会直接影响效果图质感）", {
+                  options: ["明亮通透", "温馨暖光", "高级氛围（酒店感）"],
                   meta: { kind: 'render_flow', stage: 'vibe', uploadId }
               });
               return;
@@ -1289,8 +1289,8 @@ const App: React.FC = () => {
                   ...prev,
                   [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), vibe: opt } }
               }) : prev);
-              await typeOutAI("软装丰富度想要几多？（越丰富越有气氛，但也更容易显乱）", {
-                  options: ["克制簡潔（更清爽）", "標準搭配（推薦）", "豐富氛圍（更有層次）"],
+              await typeOutAI("软装丰富度想要多少？（越丰富越有氛围，但也更容易显乱）", {
+                  options: ["克制简洁（更清爽）", "标准搭配（推荐）", "丰富氛围（更有层次）"],
                   meta: { kind: 'render_flow', stage: 'decor', uploadId }
               });
               return;
@@ -1308,11 +1308,11 @@ const App: React.FC = () => {
               const color = r.color || '淺木+米白';
               const layout = r.focus || '布置方案（按你选择）';
               const storage = r.storage || '隐藏收纳为主';
-              const vibe = r.vibe || '溫馨暖光';
+              const vibe = r.vibe || '温馨暖光';
               const decor = r.decor || opt;
               await typeOutAI(
-                `好，我幫你用「布置：${layout}｜收纳：${storage}｜风格：${style}｜色板：${color}｜灯光：${vibe}｜软装：${decor}」出一张效果图。\n准备好就按下面开始生成～`,
-                { options: ["開始生成效果圖"], meta: { kind: 'render_flow', stage: 'confirm', uploadId } }
+                `好，我帮你用「布置：${layout}｜收纳：${storage}｜风格：${style}｜色板：${color}｜灯光：${vibe}｜软装：${decor}」出一张效果图。\n准备好就按下面开始生成～`,
+                { options: ["开始生成效果图"], meta: { kind: 'render_flow', stage: 'confirm', uploadId } }
               );
               return;
           }
@@ -1337,7 +1337,7 @@ const App: React.FC = () => {
               }) : prev);
 
               await typeOutAI("想改造得幾明顯？（越明顯，變化越大但可能更易走樣）", {
-                  options: ["保留結構（輕改）", "明顯改造（推薦）", "大改造（更大變化）"],
+                  options: ["保留结构（轻改）", "明显改造（推荐）", "大改造（更大变化）"],
                   meta: { kind: 'render_flow', stage: 'intensity', uploadId }
               });
               return;
@@ -1353,8 +1353,8 @@ const App: React.FC = () => {
               const color = u.render?.color || '淺木+米白';
               const focus = u.render?.focus || '全屋整體';
               const storage = u.render?.storage || '隱藏收納為主';
-              await typeOutAI(`好，我幫你用「${style}｜${color}｜${focus}｜${storage}」出一張效果圖。準備好就按下面開始生成～`, {
-                  options: ["開始生成效果圖"],
+              await typeOutAI(`好，我帮你用「${style}｜${color}｜${focus}｜${storage}」出一张效果图。准备好就按下面开始生成～`, {
+                  options: ["开始生成效果图"],
                   meta: { kind: 'render_flow', stage: 'confirm', uploadId }
               });
               return;

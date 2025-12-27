@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "kb:build": "node scripts/build_kb.js",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

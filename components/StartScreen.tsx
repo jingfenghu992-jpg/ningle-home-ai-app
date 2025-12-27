@@ -1,15 +1,12 @@
 import React from 'react';
 import { Camera, Upload, MessageCircle } from 'lucide-react';
+import { WHATSAPP_LINK } from '../constants';
 
 interface StartScreenProps {
   onUpload: (file: File) => void;
 }
 
 export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
-  const WHATSAPP_NUMBER = "85256273817";
-  const waText = encodeURIComponent("你好，我想了解寧樂家居一對一免費服務，麻煩跟進。謝謝！");
-  const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${waText}`;
-
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const cameraInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -27,7 +24,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
   };
 
   const handleWhatsApp = () => {
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    window.open(WHATSAPP_LINK, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -36,25 +33,25 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
         <div className="mt-4 rounded-3xl bg-[#FFFCF7] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] border border-black/5">
           {/* A) Title + Intro */}
           <h1 className="text-[28px] font-extrabold text-[#2F2A23] tracking-tight leading-tight">
-            上傳照片，生成訂造建議
+            上传照片，生成订造建议
           </h1>
           <p className="mt-3 text-[#4A453C]/75 text-[16px] leading-relaxed">
-            我會先分析空間與收納，再提供用料同預算方向（你可再補充需求）。
+            我会先分析空间与收纳，再提供用料和预算方向（你也可以补充需求）。
           </p>
 
           {/* B) Selling points */}
           <div className="mt-6 space-y-3 text-[15px] text-[#2F2A23]">
             <div className="flex gap-3">
               <div className="shrink-0">✅</div>
-              <div>支持 廚房 / 衣櫃 / 全屋訂造</div>
+              <div>支持 厨房 / 衣柜 / 全屋订造</div>
             </div>
             <div className="flex gap-3">
               <div className="shrink-0">✅</div>
-              <div>自動整理重點問題同改善方向</div>
+              <div>自动整理重点问题和改善方向</div>
             </div>
             <div className="flex gap-3">
               <div className="shrink-0">✅</div>
-              <div>你可選擇偏好：耐用 / 易打理 / 性價比</div>
+              <div>你可选择偏好：耐用 / 易打理 / 性价比</div>
             </div>
           </div>
 
@@ -83,7 +80,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
               className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white py-4 rounded-2xl font-extrabold text-[17px] shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <Camera size={20} />
-              直接拍攝並開始分析
+              直接拍摄并开始分析
             </button>
 
             <button
@@ -92,7 +89,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
               className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white py-4 rounded-2xl font-extrabold text-[17px] shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <Upload size={20} />
-              上傳相片並開始分析
+              上传相片并开始分析
             </button>
 
             <button
@@ -101,13 +98,13 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
               className="w-full bg-[#DCE9E2] hover:bg-[#CFE2D8] text-[#1F4D3A] py-3.5 rounded-2xl font-semibold text-[15px] active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <MessageCircle size={18} />
-              想了解更多／一對一免費服務（WhatsApp）
+              想了解更多 / 一对一免费服务（WhatsApp）
             </button>
           </div>
 
           {/* D) Bottom hint text (must be visible) */}
           <div className="mt-4 text-center text-xs text-[#4A453C]/65 leading-relaxed">
-            iPhone/Android 均可用：按「直接拍攝」會開相機；按「上傳相片」會開相簿/檔案。WhatsApp 會以預填訊息向我哋免費跟進。
+            iPhone/Android 均可用：点「直接拍摄」会开相机；点「上传相片」会开相册/文件。WhatsApp 会带预填消息，我们会免费跟进。
           </div>
         </div>
       </div>

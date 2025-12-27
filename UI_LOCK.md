@@ -1,10 +1,10 @@
 # UI LOCK
-The following elements are STRICTLY PROHIBITED from modification:
+以下元素 **禁止随意改动**（用于保证视觉与交互稳定）：
 
-1. **Header**: The top navigation bar style and layout.
-2. **Mode Buttons**: The "Smart Consultant" and "Smart Design" buttons.
-3. **Chat Bubbles**: The styling of user and AI message bubbles (WhatsApp dark mode style).
-4. **Input Area**: The input bar, image upload button, and send button styles.
-5. **General Layout**: The overall app structure (Header -> Chat Area -> Input Area).
+1. **顶部栏**：`components/AppBar.tsx` 的布局与按钮（“免费跟进”）。
+2. **启动页 CTA**：`components/StartScreen.tsx` 的三个主按钮（拍摄/上传/WhatsApp）。
+3. **聊天消息渲染**：`components/MessageCard.tsx` 的气泡/选项按钮/加载状态样式。
+4. **输入区**：`components/Composer.tsx` 的输入框、上传按钮、发送按钮样式。
+5. **整体布局**：`components/AppShell.tsx` 的整体结构（顶部栏 -> 内容区 -> 输入区）。
 
-Any changes to CSS classes or DOM structure related to these elements are forbidden.
+如果确实要改上述部分，必须先明确“为什么要改”和“预期的视觉基线”，并同步更新 `VISUAL_BASELINE.md`。
