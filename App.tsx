@@ -815,6 +815,7 @@ const App: React.FC = () => {
           let inspireNeedsRetry = false;
           const tryInspire = async (phase: 'before' | 'after') => {
             try {
+              const sleepLocal = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
               const hintId =
                 phase === 'before'
                   ? addLoadingToast(
@@ -853,6 +854,28 @@ const App: React.FC = () => {
               if ((insp as any)?.errorCode === 'RATE_LIMITED') {
                 inspireNeedsRetry = true;
                 if (phase === 'before') {
+                  // One light retry before starting i2i (keeps ordering "t2i first" when possible)
+                  await sleepLocal(1200);
+                  const insp2 = await generateInspireImage({
+                    renderIntake: intakeData || {},
+                    size: pickStepFunSize(intakeData?.baseWidth, intakeData?.baseHeight),
+                    response_format: 'url',
+                    steps: 14,
+                    cfg_scale: 6.2,
+                  });
+                  if (insp2.ok && insp2.resultUrl) {
+                    inspireDelivered = true;
+                    setMessages(prev => [
+                      ...prev,
+                      { id: `${Date.now()}-inspire-img`, type: 'image', content: insp2.resultUrl!, sender: 'ai', timestamp: Date.now() }
+                    ]);
+                    // Keep user informed while i2i runs
+                    progressId = addLoadingToast(
+                      "【風格靈感圖】\n- 呢張係方向參考圖（唔一定同你間房門窗結構一樣）\n- 真正「保留你間房結構」嘅效果圖我仍然生成緊～",
+                      { loadingType: 'generating', uploadId: intakeData?.uploadId }
+                    );
+                    return;
+                  }
                   addSystemToast("靈感圖而家排隊中，我先幫你出最終效果圖～");
                 } else {
                   addSystemToast("靈感圖仲排隊中～等我哋空咗會再補發。");
@@ -1125,10 +1148,106 @@ const App: React.FC = () => {
                       }
                   }) : prev);
 
-                  await typeOutAI("好，準備好就按下面開始生成～", {
-                      options: ["開始生成效果圖"],
-                      meta: { kind: 'render_flow', stage: 'confirm', uploadId }
-                  });
+                  // UX: "direct generate" should start immediately (avoid duplicated "start" button).
+                  const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
+                  setAppState('GENERATING');
+                  const stageHintId = addLoadingToast("生成中：结构锁定 → 设计改造 → 灯光材质精修（约 60–120 秒）", { loadingType: 'generating', uploadId });
+
+                  // Prefer public URL for i2i (more stable); fallback to base64 dataUrl.
+                  const baseImage = u.imageUrl || u.dataUrl;
+                  const focus = (u.render as any)?.focus || '布置方案（按你选择）';
+                  const bedType = (u.render as any)?.bedType || '';
+
+                  const pickConstraints = (summary?: string) => {
+                      if (!summary) return '';
+                      const lines = summary.split('\n').map(l => l.trim()).filter(Boolean);
+                      const picked = lines.filter(l =>
+                        l.startsWith('結構：') ||
+                        l.startsWith('特徵：') ||
+                        l.startsWith('約束：') ||
+                        l.includes('窗') ||
+                        l.includes('梁') ||
+                        l.includes('冷氣') ||
+                        l.includes('柱') ||
+                        l.includes('窗台') ||
+                        l.includes('電箱') ||
+                        l.includes('弱電') ||
+                        l.includes('水表') ||
+                        l.includes('煤氣') ||
+                        l.includes('煤气')
+                      );
+                      const text = (picked.length ? picked : lines.slice(0, 6)).join('；');
+                      return text.length > 220 ? text.slice(0, 220) + '…' : text;
+                  };
+                  const structureNotes = u.visionSummary ? `Constraints: ${pickConstraints(u.visionSummary)}` : '';
+
+                  const spaceTxt = u.spaceType || 'room';
+                  const isDining = String(spaceTxt).includes('餐') || String(spaceTxt).toLowerCase().includes('dining');
+                  const isKitchen = String(spaceTxt).includes('廚') || String(spaceTxt).includes('厨');
+                  const isBathroom = String(spaceTxt).includes('浴') || String(spaceTxt).includes('衛') || String(spaceTxt).includes('卫') || String(spaceTxt).includes('洗手') || String(spaceTxt).includes('厕所') || String(spaceTxt).includes('廁');
+                  const hkHardConstraints =
+                    `Do NOT move windows/doors/beams/columns/window sills; keep camera perspective. ` +
+                    `Do NOT move AC unit/vents; do NOT block electrical panels/access points. ` +
+                    `${(isKitchen || isBathroom) ? 'Do NOT change plumbing/drain/gas/exhaust positions; keep access panels reachable. ' : ''}` +
+                    `INTERIOR ONLY (ignore balcony/exterior).`;
+
+                  const photorealisticSpec =
+                    `Photorealistic interior render based on the uploaded photo, realistic materials and lighting. ` +
+                    `Keep original lighting direction from windows and add warm ambient lighting.`;
+
+                  const bareShellSpec = isBareShellFromSummary(u.visionSummary)
+                    ? `If the room looks bare/unfinished, complete full fit-out: ceiling design (simple HK-style), lighting plan, wall paint, flooring, skirting, and appropriate soft furnishings.`
+                    : '';
+
+                  const suiteSpec = suiteToPrompt(spaceTxt, focus, storage0);
+                  const hallType2 = String((u.render as any)?.hallType || '不确定');
+                  const hkHall =
+                    isLivingDiningSpace(spaceTxt) && hallType2.includes('钻石')
+                      ? 'Hall type: diamond living-dining (钻石厅); prioritize clear circulation, avoid bulky TV wall, use slimmer cabinetry and more integrated storage.'
+                      : isLivingDiningSpace(spaceTxt) && hallType2.includes('长')
+                        ? 'Hall type: long living-dining (长厅); use long-wall TV/storage and keep a clear corridor line; optimize dining sideboard near kitchen/route.'
+                        : isLivingDiningSpace(spaceTxt)
+                          ? 'Hall type: standard living-dining; keep balanced TV + dining zones with clear circulation.'
+                          : '';
+
+                  const requirements = [
+                      `Focus: ${focus}. ${bedType ? `Bed: ${bedType}.` : ''} Storage: ${storage0}. Vibe: ${vibe0}. Decor: ${decor0}.`,
+                      hkHall,
+                      photorealisticSpec,
+                      hkHardConstraints,
+                      `Must include: cabinetry/storage plan; ceiling + floor + wall finishes; lighting; soft furnishings.`,
+                      isDining ? `Dining: include table+chairs with clear circulation; add dining sideboard/tall storage when suitable.` : '',
+                      suiteSpec ? `Package: ${suiteSpec}` : '',
+                      bareShellSpec,
+                      `Material: ENF-grade multi-layer wood/plywood cabinetry.`,
+                      structureNotes ? structureNotes : ''
+                  ].filter(Boolean).join(' ');
+
+                  const intake = {
+                      space: spaceTxt,
+                      style: style0,
+                      color: color0,
+                      focus,
+                      bedType,
+                      storage: storage0,
+                      vibe: vibe0,
+                      decor: decor0,
+                      intensity: intensity0,
+                      hallType: hall0,
+                      requirements,
+                      visionSummary: u.visionSummary,
+                      uploadId,
+                      baseImageBlobUrl: baseImage,
+                      baseWidth: u.width,
+                      baseHeight: u.height
+                  };
+
+                  try {
+                      await triggerGeneration(intake);
+                  } finally {
+                      stopLoadingToast(genLoadingId);
+                      stopLoadingToast(stageHintId);
+                  }
                   return;
               }
 

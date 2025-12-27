@@ -103,6 +103,21 @@ export default async function handler(req, res) {
   const storageLine = storage ? `Storage strategy: ${storage}.` : 'Storage strategy: practical full-height cabinetry, space-saving built-ins.';
   const decorLine = decor ? `Soft furnishing density: ${decor}.` : 'Soft furnishing density: balanced and livable.';
 
+  // Optional: add loose structure cues from vision summary to make the inspiration image closer
+  // to the user's photo "at a glance" (still NOT exact structure; t2i cannot replicate).
+  const structureCues = (() => {
+    const vs = String(intake?.visionSummary || '').trim();
+    if (!vs) return '';
+    const lines = vs.split('\n').map(l => l.trim()).filter(Boolean);
+    const structureLine = lines.find(l => l.startsWith('結構：')) || '';
+    const constraintsLine = lines.find(l => l.startsWith('約束：')) || '';
+    const pick = [structureLine, constraintsLine].filter(Boolean).join(' ');
+    const clean = pick.replace(/^結構：/,'').replace(/^約束：/,'').trim();
+    if (!clean) return '';
+    const short = clean.length > 220 ? clean.slice(0, 220) + '...' : clean;
+    return `Structure cues (approximate, not exact): ${short}.`;
+  })();
+
   const mustHave = (() => {
     const s = normalize(intake?.space);
     if (s.includes('客餐')) return 'Must include: TV wall + sofa seating + dining table for 4 + pendant above dining table + dining sideboard/pantry.';
@@ -120,6 +135,7 @@ export default async function handler(req, res) {
     `${spaceEn}.`,
     `Style: ${styleEn}.`,
     `Color palette: ${colorEn}.`,
+    structureCues,
     housingType ? `Hong Kong home type: ${housingType}.` : '',
     needsWorkstation ? `Workstation needed: ${needsWorkstation}.` : '',
     hallType ? `Hall type: ${hallType}.` : '',
