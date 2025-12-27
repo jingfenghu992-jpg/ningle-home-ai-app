@@ -83,6 +83,10 @@ Rules:
 - layout_options must be 2-3 options, each <= 90 Chinese chars total across fields.
 - Must respect: do NOT hallucinate what you cannot see; if not visible, say "未见".
 - If user confirmed space_type, MUST keep it consistent and do NOT mention other spaces.
+- For 小睡房:
+  - Always include bed + wardrobe as the core; prioritize space-saving (platform/tatami/Murphy) and sliding doors.
+  - Do NOT default to calling it "书房/工作间". Only mention a desk as "可选（如需要）" unless a desk is clearly visible in the photo.
+  - Ensure circulation is realistic for HK units; avoid placing bed blocking window access.
 - Focus on layout/placement/cabinet feasibility for Hong Kong flats.`;
 
         const response = await fetch('https://api.stepfun.com/v1/chat/completions', {

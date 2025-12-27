@@ -787,7 +787,7 @@ const App: React.FC = () => {
             : base;
 
           // Single t2i generation as the FINAL render (faster for free trial UX)
-          const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖（文生圖），請稍等…", { loadingType: 'generating', uploadId });
+          const genLoadingId = addLoadingToast("收到～我而家幫你生成效果圖，請稍等…", { loadingType: 'generating', uploadId });
           try {
             const res = await generateInspireImage({
               renderIntake,

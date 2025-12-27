@@ -30,34 +30,20 @@ export default async function handler(req, res) {
     return;
   }
 
-  const inferSpaceKind = (spaceText, focusText, reqText, bedTypeText) => {
-    const s0 = String(spaceText || '');
+  const inferSpaceKind = (spaceText) => {
+    // IMPORTANT: Space type must follow user's selected space; never reclassify to another space (e.g. study) based on desk words.
+    const s0 = String(spaceText || '').trim();
     const s = s0.toLowerCase();
-    const f0 = String(focusText || '');
-    const f = f0.toLowerCase();
-    const r0 = String(reqText || '');
-    const r = r0.toLowerCase();
-    const b0 = String(bedTypeText || '');
-    const b = b0.toLowerCase();
-    const hint = `${f0} ${r0} ${b0}`;
-    const hintL = `${f} ${r} ${b}`;
-    const has = (arr) => arr.some(k => hint.includes(k) || hintL.includes(String(k).toLowerCase()));
-    if (has(['廚', '厨', '廚櫃', '橱柜', '吊櫃', '吊柜', '星盆', '爐頭', '炉头', 'kitchen', 'cooktop', 'sink'])) return 'kitchen';
-    if (has(['浴', '厕', '衛', '卫', '洗手', 'bath', 'vanity', 'shower'])) return 'bath';
-    if (has(['玄', '關', '关', '鞋', 'entry', 'shoe cabinet'])) return 'entry';
-    if (has(['書', '书', 'study', 'desk', 'bookcase'])) return 'study';
-    if (has(['床', '睡', '卧', '房', '衣櫃', '衣柜', 'bed', 'wardrobe', 'closet'])) return 'bedroom';
-    if (has(['餐', '餐桌', '餐邊', '餐边', 'dining', 'dining table'])) return 'dining';
-    if (has(['電視', '电视', 'tv', 'sofa', '客厅', '客廳', 'living'])) return 'living';
-
-    if (s0.includes('客') || s.includes('living')) return 'living';
-    if (s0.includes('餐') || s.includes('dining')) return 'dining';
-    if (s0.includes('書') || s0.includes('书') || s.includes('study')) return 'study';
+    if (s0.includes('客餐')) return 'living_dining';
+    if (s0.includes('小睡房') || s0.includes('眼镜房') || s0.includes('次卧') || s0.includes('儿童房')) return 'bedroom_small';
+    if (s0.includes('大睡房') || s0.includes('主人房') || s0.includes('主卧')) return 'bedroom';
     if (s0.includes('睡') || s0.includes('卧') || s0.includes('房') || s.includes('bed')) return 'bedroom';
-    if (s0.includes('廚') || s0.includes('厨') || s.includes('kitchen')) return 'kitchen';
-    if (s0.includes('浴') || s0.includes('厕') || s0.includes('衛') || s0.includes('卫') || s.includes('bath')) return 'bath';
-    if (s0.includes('玄') || s0.includes('关') || s0.includes('關') || s.includes('entry')) return 'entry';
+    if (s0.includes('厨房') || s0.includes('廚') || s0.includes('厨') || s.includes('kitchen')) return 'kitchen';
+    if (s0.includes('卫生间') || s0.includes('衛') || s0.includes('卫') || s0.includes('浴') || s0.includes('厕') || s.includes('bath')) return 'bath';
+    if (s0.includes('入户') || s0.includes('玄') || s0.includes('關') || s0.includes('关') || s.includes('entry')) return 'entry';
     if (s0.includes('走廊') || s0.includes('通道') || s.includes('corridor') || s.includes('hallway')) return 'corridor';
+    if (s0.includes('餐') || s.includes('dining')) return 'dining';
+    if (s0.includes('客') || s.includes('living')) return 'living';
     return 'other';
   };
 
@@ -74,8 +60,10 @@ export default async function handler(req, res) {
   };
 
   const must = (spaceKind) => {
+    if (spaceKind === 'bedroom_small') return ['bed', 'wardrobe', 'curtains', 'space-saving storage', 'layered lighting (cove+downlights+accent)'];
     if (spaceKind === 'bedroom') return ['bed', 'wardrobe', 'curtains', 'layered lighting (cove+downlights+accent)'];
     if (spaceKind === 'living') return ['tv', 'tv console', 'sofa', 'layered lighting (cove+downlights+accent)'];
+    if (spaceKind === 'living_dining') return ['tv', 'tv console', 'sofa', 'dining table', 'chairs', 'pendant lights above table', 'sideboard/pantry', 'layered lighting'];
     if (spaceKind === 'dining') return ['dining table', 'chairs', 'pendant lights above table', 'sideboard/pantry', 'layered lighting'];
     if (spaceKind === 'kitchen') return ['base cabinets', 'wall cabinets', 'countertop', 'sink/cooktop zone', 'under-cabinet lighting'];
     if (spaceKind === 'bath') return ['vanity cabinet', 'mirror cabinet', 'shower zone/screen', 'anti-slip floor', 'mirror/vanity light'];
@@ -86,7 +74,7 @@ export default async function handler(req, res) {
 
   try {
     const intake = renderIntake || {};
-    const spaceKind = inferSpaceKind(intake?.space, intake?.focus, intake?.requirements, intake?.bedType);
+    const spaceKind = inferSpaceKind(intake?.space);
     const required = must(spaceKind);
 
     const system =
@@ -97,6 +85,7 @@ export default async function handler(req, res) {
       `- Lighting must be layered: cove/indirect + recessed downlights + space-appropriate accent lights; warm 2700-3000K; no flat lighting.\n` +
       `- Keep straight lines; report warped windows/doors/walls or fisheye distortion.\n` +
       `- Required objects for this space MUST be visible.\n` +
+      `- You MUST NOT claim a different room type than the user's selected space.\n` +
       `Return schema:\n` +
       `{\n` +
       `  "pass": true/false,\n` +
@@ -110,7 +99,8 @@ export default async function handler(req, res) {
       `}\n`;
 
     const user =
-      `Space kind: ${spaceKind}\n` +
+      `Selected space (fixed): ${String(intake?.space || '').trim()}\n` +
+      `Space kind (fixed): ${spaceKind}\n` +
       `User selections (reference only): ${JSON.stringify({
         style: intake?.style,
         color: intake?.color,
