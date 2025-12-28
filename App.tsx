@@ -32,7 +32,7 @@ const App: React.FC = () => {
     hkAnchorsLite?: any;
     hkLayouts?: any;
     layoutChoice?: 'A' | 'B';
-    revisionIndex?: number; // 0=首张, 1/2=改图, >=3停止
+    revisionIndex?: number; // 0=首張；1=第一次調整；2=第二次調整；>2 不再出圖（改用 WhatsApp 跟進）
     visionSummary?: string;
     visionExtraction?: any;
     // Layout suggestions inferred from vision (2-3 options). Used as the FIRST-STEP before generation.
@@ -714,14 +714,32 @@ const App: React.FC = () => {
         }
         await runAnalysisForUpload(uid, text);
     } else if (appState === 'RENDER_DONE' || lastGeneratedImage) {
-        // Revision logic
-        if (text.includes('改') || text.includes('換') || text.includes('唔好')) {
-             setAppState('GENERATING');
-             triggerGeneration(null, text); // Pass revision text
-        } else {
-             // Normal chat (after render)
+        // Revision logic (chat-only adjustments; allow up to 2 edits after the first image)
+        const looksLikeEditRequest = text.includes('改') || text.includes('換') || text.includes('唔好');
+        if (!looksLikeEditRequest) {
              await runChat();
+             return;
         }
+
+        const upId = String((lastRenderIntakeRef.current as any)?.uploadId || activeUploadId || '').trim();
+        if (!upId || !uploads[upId]) {
+          // Fall back to normal chat if we cannot bind the edit to an upload
+          await runChat();
+          return;
+        }
+        const current = Number.isInteger(uploads[upId]?.revisionIndex) ? (uploads[upId]!.revisionIndex as number) : 0;
+        if (current >= 2) {
+          await typeOutAI("我可以一對一免費幫你再調到更貼合你屋企，方便 WhatsApp 我哋：+852 56273817");
+          return;
+        }
+        const next = current + 1;
+        setUploads(prev => prev[upId] ? ({ ...prev, [upId]: { ...prev[upId], revisionIndex: next } }) : prev);
+        if (lastRenderIntakeRef.current && typeof lastRenderIntakeRef.current === 'object') {
+          lastRenderIntakeRef.current = { ...lastRenderIntakeRef.current, revisionIndex: next };
+        }
+
+        setAppState('GENERATING');
+        triggerGeneration(null, text); // Pass revision text
     } else {
         // Normal chat (generic)
         await runChat();
@@ -1457,12 +1475,12 @@ const App: React.FC = () => {
             [uploadId]: {
               ...prev[uploadId],
               spaceType: opt,
-              revisionIndex: prev[uploadId].revisionIndex ?? 0,
+              revisionIndex: 0,
               render: {
                 ...(prev[uploadId].render || {}),
-                style: (prev[uploadId].render as any)?.style || '现代简约',
-                priority: (prev[uploadId].render as any)?.priority || '收纳优先',
-                intensity: (prev[uploadId].render as any)?.intensity || '保守（更对位）',
+                style: (prev[uploadId].render as any)?.style || '現代簡約（白＋淺木）',
+                priority: (prev[uploadId].render as any)?.priority || '收納優先',
+                intensity: (prev[uploadId].render as any)?.intensity || '更貼近原相',
               }
             }
           }) : prev);
@@ -1513,7 +1531,7 @@ const App: React.FC = () => {
 
           if (cleaned === '一鍵出圖' || cleaned === '一键出图（推荐）' || cleaned === '一键出图') {
             const rev = Number.isInteger(u.revisionIndex) ? (u.revisionIndex as number) : 0;
-            if (rev >= 3) {
+            if (rev > 2) {
               await typeOutAI("我可以一對一免費幫你再調到更貼合你屋企，方便 WhatsApp 我哋：+852 56273817");
               return;
             }
@@ -1535,7 +1553,9 @@ const App: React.FC = () => {
               hkAnchorsLite: u.hkAnchorsLite,
             };
 
-            setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], revisionIndex: rev + 1 } }) : prev);
+            // Initial render keeps revisionIndex=0 (first image). Edits via chat will move it to 1/2.
+            setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], revisionIndex: 0 } }) : prev);
+            lastRenderIntakeRef.current = renderIntake;
 
             const sourceImageUrl = u.imageUrl;
             if (!sourceImageUrl) {
@@ -1626,7 +1646,7 @@ const App: React.FC = () => {
           return;
         }
 
-        if (cleaned === '概念示意（较快，不保证对位）') {
+        if (cleaned === '概念示意（較快，不保證對位）' || cleaned === '概念示意（较快，不保证对位）') {
           const picks = getQuickRenderPicks(u0);
           const base = {
             uploadId,
