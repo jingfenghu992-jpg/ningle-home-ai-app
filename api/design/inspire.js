@@ -550,11 +550,12 @@ export default async function handler(req, res) {
     const preset = String(qualityPreset || '').trim();
     const finalKeepStructure = typeof keep_structure === 'boolean' ? keep_structure : true;
     const defaultSW = preset === 'STRUCTURE_LOCK' ? 0.90 : 0.85;
-    const defaultStrength = preset === 'STRUCTURE_LOCK' ? 0.55 : 0.80;
-    const defaultCfg = preset === 'STRUCTURE_LOCK' ? 5.6 : finalCfgScale;
+    const defaultStrength = preset === 'STRUCTURE_LOCK' ? 0.50 : 0.80;
+    const defaultCfg = preset === 'STRUCTURE_LOCK' ? 5.0 : finalCfgScale;
+    const defaultSW2 = preset === 'STRUCTURE_LOCK' ? 0.92 : defaultSW;
     const finalI2ISourceWeight = (typeof i2i_source_weight === 'number' && i2i_source_weight > 0 && i2i_source_weight <= 1)
       ? i2i_source_weight
-      : defaultSW;
+      : defaultSW2;
     const finalI2IStrength = (typeof i2i_strength === 'number' && i2i_strength > 0 && i2i_strength <= 1)
       ? i2i_strength
       : defaultStrength;
