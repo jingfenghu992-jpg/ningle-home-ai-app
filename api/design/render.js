@@ -1,4 +1,3 @@
-import sharp from 'sharp';
 import { stepfunImage2Image } from '../../lib/stepfunImageClient.js';
 
 export const config = {
@@ -39,6 +38,17 @@ export default async function handler(req, res) {
     goalKey,
     intensityKey,
   } = req.body || {};
+
+  // Lazy-load sharp to avoid deploy bundling issues.
+  // (If sharp fails to load, we still render without padding/metadata.)
+  let sharpLib = null;
+  try {
+    // eslint-disable-next-line no-undef
+    const m = await import('sharp');
+    sharpLib = m?.default || m;
+  } catch {
+    sharpLib = null;
+  }
 
   const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const debug = {
@@ -166,7 +176,7 @@ export default async function handler(req, res) {
   // Read metadata (w/h) with sharp (no transform).
   let w = null, h = null;
   try {
-    const meta = await sharp(inputBuf).metadata();
+    const meta = sharpLib ? await sharpLib(inputBuf).metadata() : null;
     w = meta.width || null;
     h = meta.height || null;
   } catch {
@@ -182,15 +192,15 @@ export default async function handler(req, res) {
   // Letterbox padding if aspect ratio differs too much (avoid black corners).
   let sourceBufToSend = inputBuf;
   try {
-    if (w && h) {
+    if (sharpLib && w && h) {
       const r0 = w / h;
       const r1 = chosen.r;
       const diff = Math.abs(r0 - r1);
       if (diff > 0.03) {
         // blurred background + contain foreground
-        const bg = await sharp(inputBuf).resize(chosen.w, chosen.h, { fit: 'cover' }).blur(18).jpeg({ quality: 82 }).toBuffer();
-        const fg = await sharp(inputBuf).resize(chosen.w, chosen.h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).jpeg({ quality: 92 }).toBuffer();
-        sourceBufToSend = await sharp(bg).composite([{ input: fg }]).jpeg({ quality: 88 }).toBuffer();
+        const bg = await sharpLib(inputBuf).resize(chosen.w, chosen.h, { fit: 'cover' }).blur(18).jpeg({ quality: 82 }).toBuffer();
+        const fg = await sharpLib(inputBuf).resize(chosen.w, chosen.h, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).jpeg({ quality: 92 }).toBuffer();
+        sourceBufToSend = await sharpLib(bg).composite([{ input: fg }]).jpeg({ quality: 88 }).toBuffer();
         debug.padded = true;
         debug.paddingMethod = 'blur';
         debug.resizeMode = 'contain+blur';
