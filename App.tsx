@@ -887,7 +887,14 @@ const App: React.FC = () => {
             stopLoadingToast(genLoadingId);
 
             if (!res.ok || !res.resultUrl) {
-              throw new Error(res.message || '生成失败');
+              const code = (res as any)?.errorCode;
+              const msg = (res as any)?.message || '生成失败';
+              if (code === 'BASE_IMAGE_REQUIRED') {
+                await typeOutAI("相片链接无法读取（更贴原相需要相片可访问）。请重新上传同一张图片再试一次。");
+                setAppState('ANALYSIS_DONE');
+                return;
+              }
+              throw new Error(msg);
             }
 
             const resultUrl = res.resultUrl;
@@ -902,6 +909,9 @@ const App: React.FC = () => {
                   ...prev,
                   { id: `${Date.now()}-debug-prompt`, type: 'text', content: `[[DEBUG_PROMPT]]\n${header}\n\n${usedText}`, sender: 'ai', timestamp: Date.now() }
                 ]);
+              }
+              if (d.fallbackUsed) {
+                await typeOutAI("提示：精準模式暫時失敗，已改用快速概念圖（可能不对位）。");
               }
             }
             setLastGeneratedImage(resultUrl);

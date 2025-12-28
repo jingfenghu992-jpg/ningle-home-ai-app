@@ -567,15 +567,19 @@ export default async function handler(req, res) {
 
     let response;
     let baseImage = null;
+    let baseImageBytes = 0;
+    let requestedEndpoint = desiredMode === 'PRECISE_I2I' ? 'image2image' : 'generations';
+    let aspectRatio = null;
     if (desiredMode === 'PRECISE_I2I') {
       const v = await validateSourceUrl(sourceImageUrl);
       if (!v.ok) {
         res.status(400).json({
           ok: false,
-          errorCode: 'IMAGE_URL_UNREACHABLE',
-          message: `sourceImageUrl unreachable (${v.reason}). Please re-upload.`,
+          errorCode: 'BASE_IMAGE_REQUIRED',
+          message: '请重新上传相片再试（更贴原相需要相片可访问）',
           debug: {
             outputMode: 'PRECISE_I2I',
+            requestedEndpoint: 'image2image',
             usedKey,
             model: 'step-1x-medium',
             elapsedMs: Date.now() - startedAt,
@@ -585,26 +589,105 @@ export default async function handler(req, res) {
             layoutVariant: built?.layoutVariant,
             dropped: built?.dropped,
             anchorDropped: built?.anchorDropped,
+            antiDistortDropped: built?.antiDistortDropped,
             userSelected,
             applied,
             mismatch,
             i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
             sentSize: finalSize,
+            baseImageBytes: v?.probe?.bytes || 0,
             baseImage: v?.probe ? { w: v.probe.w, h: v.probe.h, contentType: v.probe.contentType, bytes: v.probe.bytes, contentLength: v.probe.contentLength } : undefined,
+            baseImageContentType: v?.probe?.contentType || null,
+            baseImageWidth: v?.probe?.w || null,
+            baseImageHeight: v?.probe?.h || null,
+            aspectRatio: (v?.probe?.w && v?.probe?.h) ? (v.probe.w / v.probe.h) : null,
           }
         });
         return;
       }
 
       baseImage = v?.probe ? { w: v.probe.w, h: v.probe.h, contentType: v.probe.contentType, bytes: v.probe.bytes, contentLength: v.probe.contentLength } : null;
+      baseImageBytes = v?.probe?.bytes || 0;
+      aspectRatio = (v?.probe?.w && v?.probe?.h) ? (v.probe.w / v.probe.h) : null;
+      if (!baseImageBytes || baseImageBytes <= 0) {
+        res.status(400).json({
+          ok: false,
+          errorCode: 'BASE_IMAGE_REQUIRED',
+          message: '请重新上传相片再试（更贴原相需要相片可访问）',
+          debug: {
+            outputMode: 'PRECISE_I2I',
+            requestedEndpoint: 'image2image',
+            usedKey,
+            model: 'step-1x-medium',
+            elapsedMs: Date.now() - startedAt,
+            promptChars: built?.promptChars,
+            promptHash: built?.promptHash,
+            hkSpace: built?.hkSpace,
+            layoutVariant: built?.layoutVariant,
+            dropped: built?.dropped,
+            anchorDropped: built?.anchorDropped,
+            antiDistortDropped: built?.antiDistortDropped,
+            userSelected,
+            applied,
+            mismatch,
+            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+            sentSize: finalSize,
+            baseImageBytes,
+            baseImage,
+            baseImageContentType: baseImage?.contentType || null,
+            baseImageWidth: baseImage?.w || null,
+            baseImageHeight: baseImage?.h || null,
+            aspectRatio,
+          }
+        });
+        return;
+      }
       response = await withRetry429(doI2I);
       if (!response.ok) {
-        // Fallback to FAST_T2I unless it's a key issue
+        // Only allow fallback for temporary upstream failures (NOT base image issues).
+        const status = response.status;
         const errText = await response.text().catch(() => '');
+        const isTemporary = status === 429 || status === 500 || status === 502 || status === 503 || status === 504 || status === 408;
+        if (!isTemporary) {
+          res.status(status).json({
+            ok: false,
+            errorCode: `UPSTREAM_I2I_${status}`,
+            message: '精準模式生成失败（image2image）。请稍后再试，或取消勾选改用快速概念图。',
+            debug: {
+              outputMode: 'PRECISE_I2I',
+              requestedEndpoint: 'image2image',
+              usedKey,
+              model: 'step-1x-medium',
+              elapsedMs: Date.now() - startedAt,
+              promptChars: built?.promptChars,
+              promptHash: built?.promptHash,
+              hkSpace: built?.hkSpace,
+              layoutVariant: built?.layoutVariant,
+              dropped: built?.dropped,
+              anchorDropped: built?.anchorDropped,
+              antiDistortDropped: built?.antiDistortDropped,
+              userSelected,
+              applied,
+              mismatch,
+              i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+              sentSize: finalSize,
+              baseImageBytes,
+              baseImage,
+              baseImageContentType: baseImage?.contentType || null,
+              baseImageWidth: baseImage?.w || null,
+              baseImageHeight: baseImage?.h || null,
+              aspectRatio,
+              upstreamStatus: status,
+              upstreamError: errText ? errText.slice(0, 600) : null,
+            }
+          });
+          return;
+        }
         fallbackUsed = true;
-        fallbackErrorCode = `UPSTREAM_I2I_${response.status}`;
+        fallbackErrorCode = `UPSTREAM_I2I_${status}`;
         fallbackErrorMessage = errText || 'i2i failed';
         actualMode = 'FAST_T2I';
+        requestedEndpoint = 'generations';
         response = await withRetry429(doT2I);
       }
     } else {
@@ -646,6 +729,7 @@ export default async function handler(req, res) {
         resultUrl: resultUrl || `data:image/jpeg;base64,${resultB64}`,
         debug: {
           outputMode: actualMode,
+          requestedEndpoint,
           seed: resultSeed,
           finish_reason: finishReason,
           size: finalSize,
@@ -666,7 +750,17 @@ export default async function handler(req, res) {
           userSelected,
           applied: { ...applied, outputMode: actualMode },
           mismatch,
-          ...(actualMode === 'PRECISE_I2I' ? { i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps }, baseImage, sentSize: finalSize, mode: 'PRECISE_I2I' } : {}),
+          ...(desiredMode === 'PRECISE_I2I' ? {
+            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+            baseImage,
+            baseImageBytes,
+            baseImageContentType: baseImage?.contentType || null,
+            baseImageWidth: baseImage?.w || null,
+            baseImageHeight: baseImage?.h || null,
+            aspectRatio,
+            sentSize: finalSize,
+            mode: 'PRECISE_I2I'
+          } : {}),
           ...(debugEnabled ? { usedText: prompt } : {}),
         },
       });
@@ -682,6 +776,7 @@ export default async function handler(req, res) {
       resultUrl: `data:image/png;base64,${resultB64}`,
       debug: {
         outputMode: actualMode,
+        requestedEndpoint,
         seed: resultSeed,
         finish_reason: finishReason,
         size: finalSize,
@@ -702,7 +797,17 @@ export default async function handler(req, res) {
         userSelected,
         applied: { ...applied, outputMode: actualMode },
         mismatch,
-        ...(actualMode === 'PRECISE_I2I' ? { i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps }, baseImage, sentSize: finalSize, mode: 'PRECISE_I2I' } : {}),
+        ...(desiredMode === 'PRECISE_I2I' ? {
+          i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+          baseImage,
+          baseImageBytes,
+          baseImageContentType: baseImage?.contentType || null,
+          baseImageWidth: baseImage?.w || null,
+          baseImageHeight: baseImage?.h || null,
+          aspectRatio,
+          sentSize: finalSize,
+          mode: 'PRECISE_I2I'
+        } : {}),
         ...(debugEnabled ? { usedText: prompt } : {}),
       },
     });
