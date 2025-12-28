@@ -966,9 +966,10 @@ const App: React.FC = () => {
               const ar = d.aspectRatio ? ` ar=${Number(d.aspectRatio).toFixed(3)}` : '';
               const sizeInfo = d.targetSize ? ` target=${d.targetSize}` : (d.sentSize ? ` target=${d.sentSize}` : '');
               const pad = (typeof d.padded === 'boolean') ? ` padded=${d.padded}` : '';
+              const fetchOk = (typeof d.imageFetchOk === 'boolean') ? ` fetchOk=${d.imageFetchOk}` : '';
               const header =
-                `endpoint=${d.requestedEndpoint ?? ''} | mode=${d.outputMode ?? ''} | fallback=${d.fallbackUsed ?? ''} | mismatch=${d.mismatch ?? ''} | chars=${d.promptChars ?? ''} | hash=${d.promptHash ?? ''} | hkSpace=${d.hkSpace ?? ''} | A/B=${d.layoutVariant ?? ''} | dropped=${(d.dropped || []).join(',')}` +
-                `${i2i}${base}${ar}${sizeInfo}${pad}`;
+                `endpoint=${d.usedEndpoint ?? d.requestedEndpoint ?? ''} | mode=${d.outputMode ?? ''} | fallback=${d.fallbackUsed ?? ''} | mismatch=${d.mismatch ?? ''} | chars=${d.promptChars ?? ''} | hash=${d.promptHash ?? ''} | hkSpace=${d.hkSpace ?? ''} | A/B=${d.layoutVariant ?? ''} | dropped=${(d.dropped || []).join(',')}` +
+                `${fetchOk}${i2i}${base}${ar}${sizeInfo}${pad}`;
               const usedText = String(d.usedText || '').trim();
               if (usedText) {
                 console.log('[DEBUG] inspire usedText', usedText);

@@ -621,6 +621,7 @@ export default async function handler(req, res) {
     let baseImage = null;
     let baseImageBytes = 0;
     let baseImageBytesSent = 0;
+    let imageFetchOk = false;
     let requestedEndpoint = desiredMode === 'PRECISE_I2I' ? 'image2image' : 'generations';
     let aspectRatio = null;
     let targetSizeUsed = finalSize;
@@ -637,6 +638,8 @@ export default async function handler(req, res) {
           debug: {
             outputMode: 'PRECISE_I2I',
             requestedEndpoint: 'image2image',
+            usedEndpoint: 'image2image',
+            imageFetchOk: false,
             usedKey,
             model: 'step-1x-medium',
             elapsedMs: Date.now() - startedAt,
@@ -674,6 +677,8 @@ export default async function handler(req, res) {
           debug: {
             outputMode: 'PRECISE_I2I',
             requestedEndpoint: 'image2image',
+            usedEndpoint: 'image2image',
+            imageFetchOk: false,
             usedKey,
             model: 'step-1x-medium',
             elapsedMs: Date.now() - startedAt,
@@ -703,6 +708,7 @@ export default async function handler(req, res) {
       // Download the base image and send as data URL so StepFun definitely uses the same pixels.
       // No resize, no crop, preserve aspect ratio.
       const full = await fetchFullImageAsDataUrl(String(sourceImageUrl));
+      imageFetchOk = Boolean(full.ok && full.bytes && full.bytes > 0);
       if (!full.ok || !full.dataUrl || !full.bytes) {
         res.status(400).json({
           ok: false,
@@ -711,6 +717,8 @@ export default async function handler(req, res) {
           debug: {
             outputMode: 'PRECISE_I2I',
             requestedEndpoint: 'image2image',
+            usedEndpoint: 'image2image',
+            imageFetchOk,
             usedKey,
             model: 'step-1x-medium',
             elapsedMs: Date.now() - startedAt,
@@ -775,6 +783,8 @@ export default async function handler(req, res) {
             debug: {
               outputMode: 'PRECISE_I2I',
               requestedEndpoint: 'image2image',
+              usedEndpoint: 'image2image',
+              imageFetchOk,
               usedKey,
               model: 'step-1x-medium',
               elapsedMs: Date.now() - startedAt,
@@ -796,6 +806,10 @@ export default async function handler(req, res) {
               baseImageWidth: baseImage?.w || null,
               baseImageHeight: baseImage?.h || null,
               aspectRatio,
+              targetSize: targetSizeUsed,
+              padded,
+              paddingMethod,
+              resizeMode,
               upstreamStatus: status,
               upstreamError: errText ? errText.slice(0, 600) : null,
             }
@@ -979,6 +993,7 @@ Rules:
         debug: {
           outputMode: actualMode,
           requestedEndpoint,
+          usedEndpoint: requestedEndpoint,
           seed: resultSeed,
           finish_reason: finishReason,
           size: finalSize,
@@ -1001,6 +1016,7 @@ Rules:
           mismatch,
           ...(desiredMode === 'PRECISE_I2I' ? {
             i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+            imageFetchOk,
             baseImage,
             baseImageBytes,
             baseImageBytesSent,
@@ -1031,6 +1047,7 @@ Rules:
       debug: {
         outputMode: actualMode,
         requestedEndpoint,
+        usedEndpoint: requestedEndpoint,
         seed: resultSeed,
         finish_reason: finishReason,
         size: finalSize,
@@ -1053,6 +1070,7 @@ Rules:
         mismatch,
         ...(desiredMode === 'PRECISE_I2I' ? {
           i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+          imageFetchOk,
           baseImage,
           baseImageBytes,
           baseImageBytesSent,
