@@ -1328,6 +1328,15 @@ const App: React.FC = () => {
         }
 
         if (isStyle || isGoal || isIntensity) {
+          const previewU = {
+            ...(u0 || {}),
+            render: {
+              ...(u0?.render || {}),
+              ...(isStyle ? { style: cleaned } : {}),
+              ...(isGoal ? { priority: cleaned } : {}),
+              ...(isIntensity ? { intensity: cleaned } : {}),
+            }
+          };
           setUploads(prev => prev[uploadId] ? ({
             ...prev,
             [uploadId]: {
@@ -1341,11 +1350,10 @@ const App: React.FC = () => {
             }
           }) : prev);
 
-          const nextU = uploads[uploadId] || u0;
-          const picks = getQuickRenderPicks(nextU);
+          const picks = getQuickRenderPicks(previewU);
           await typeOutAI(
             `已选：风格=${picks.style}｜目标=${picks.goal}｜强度=${picks.intensity}\n点「一键出图（推荐）」就会开始生成。`,
-            { options: getQuickRenderOptions(nextU, debugEnabled), meta: { kind: 'quick_render', stage: 'picks', uploadId } }
+            { options: getQuickRenderOptions(previewU, debugEnabled), meta: { kind: 'quick_render', stage: 'picks', uploadId } }
           );
           return;
         }
