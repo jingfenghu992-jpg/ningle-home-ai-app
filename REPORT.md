@@ -355,3 +355,43 @@
      - response（ok、errorCode、耗时、resultUrl）
      - 如有 429/504/500，务必截到 status 与返回体
 
+---
+
+## 12) 最新「香港精準模式」实现现况（2025-12-28）
+
+### 12.1 双模式策略
+- **FAST_T2I（概念图）**：`/api/design/inspire` 走 StepFun `images/generations`
+- **PRECISE_I2I（更贴原相/对位）**：`/api/design/inspire` 走 StepFun `images/image2image`
+  - **硬性要求**：必须可读取 `sourceImageUrl` 且 `baseImageBytes > 0`，否则返回 `BASE_IMAGE_REQUIRED`（不会静默出怪图）
+
+### 12.2 PRECISE_I2I 的“保几何”要点
+- **不改比例**：后端会下载 base image（不 resize/crop），并按最接近比例选择 `targetSize`（当前候选：`1280x800` / `800x1280` / `1024x1024`）
+- **必要时 letterbox**：若比例差异明显，会做 **blur letterbox padding**（避免黑边/暗角），`debug.padded=true` 且给出 `paddingMethod/resizeMode`
+- **结构锁定参数（STRUCTURE_LOCK 默认）**
+  - `strength`（产品层，仅用于 debug/选参）：`0.35`
+  - `source_weight`（StepFun i2i）：`0.95`
+  - `cfg_scale`：`4.5`
+  - `steps`：`24`
+
+### 12.3 Prompt “不可 drop”硬约束
+- `CAMERA_LOCK`：Normal lens / no wide-angle / no fisheye / vertical lines straight
+- `NO_VIGNETTE`：no vignette / no dark corners / no circular frame
+- `ANTI_DISTORT_LOCK`：keep geometry/perspective, no stretch proportions
+- `ANCHOR_LOCK`：由 `hkAnchors` 拼窗位/光向/镜头（UNKNOWN 跳过）
+- `NEGATIVE`：包含 fisheye/wide-angle/vignette/curved lines 等关键词（双重保险）
+
+### 12.4 “怪图保险丝”（Guardrail）
+- PRECISE_I2I 出图后会做一次 **失真检查**；若怀疑鱼眼/广角/暗角/弯曲线条等：
+  - 返回 `DISTORTION_SUSPECTED`（不会把怪图当结果返回）
+  - 前端提供 2 个按钮：
+    - **再试：更保守（推荐）**（更强结构锁定）
+    - **改用概念图（较快）**（FAST_T2I）
+
+### 12.5 debug=1 证据链（必须截图）
+访问加 `?debug=1` 后，每次生成会在折叠块显示（核心）：
+- `requestedEndpoint`：`image2image` or `generations`
+- `baseImageBytes / baseImageWidth/Height / aspectRatio`
+- `targetSize / padded / paddingMethod / resizeMode`
+- `i2iParams`：strength/source_weight/cfg_scale/steps
+- `fallbackUsed / mismatch`
+
