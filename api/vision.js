@@ -32,10 +32,85 @@ export default async function handler(req, res) {
             return String(req?.body?.mode || req?.query?.mode || '').trim();
         }
     })();
-    const fastMode = String(mode || '').toUpperCase() === 'FAST';
+    const modeUpper = String(mode || '').toUpperCase();
+    const fastMode = modeUpper === 'FAST';
+    const layoutMode = modeUpper === 'LAYOUT_HK';
 
     const imageUrl = req.body.imageUrl || req.body.imageDataUrl || req.body.image;
     const spaceType = req.body.spaceType; // New: Accept space type hint
+
+    // LAYOUT_HK mode: deterministic A/B suggestions based on hkAnchorsLite (no image needed).
+    if (layoutMode) {
+        const started = Date.now();
+        const a0 = req.body.hkAnchorsLite || req.body.anchorsLite || req.body.anchors || {};
+        const a = (a0 && typeof a0 === 'object') ? a0 : {};
+        const st = String(req.body.spaceType || req.body.spaceHint || '').trim();
+
+        const ww = String(a.window_wall || 'unknown').trim();
+        const wc = a.window_count ?? 'unknown';
+        const uw = String(a.usable_wall || 'unknown').trim();
+        const anchorRef = ww !== 'unknown' ? `以${ww}墙窗位为基准` : '以原相门窗为基准';
+        const whyBase = `根据结构锚点：窗墙=${ww}、窗数=${String(wc)}、可用墙=${uw}，避免挡窗光与压通道。`;
+
+        const mk = (layout_name, circulation, storage_strategy, key_dimensions_hint, extraWhy) => ({
+            layout_name,
+            anchor_reference: anchorRef,
+            circulation,
+            storage_strategy,
+            key_dimensions_hint,
+            why: `${whyBase}${extraWhy ? ` ${extraWhy}` : ''}`
+        });
+
+        const layouts = (() => {
+            if (st.includes('小睡房')) {
+                return {
+                    A: mk('A 地台床+到顶趟门衣柜', '动线：门口保留净通道，床不挡窗光。', '收纳：地台床下抽屉/上翻+到顶衣柜分区。', '香港常用：到顶/趟门/薄柜/窗台位不遮挡。', '地台方案更稳更对位。'),
+                    B: mk('B 隐形活动床+到顶衣柜', '动线：白天释放通道，夜间展开不顶门。', '收纳：床柜一体+到顶衣柜，书枱可做贴墙窄台。', '香港常用：活动床+趟门衣柜+窄书枱（不默认加大书房感）。', '适合想“显大清爽”的选择。'),
+                };
+            }
+            if (st.includes('大睡房')) {
+                return {
+                    A: mk('A 床靠实墙+到顶衣柜', '动线：床侧留≥55cm，窗边留开窗位。', '收纳：到顶衣柜（挂衣/抽屉/被褥位）+床头薄收纳。', '香港常用：趟门优先，衣柜控深避免压通道。', ''),
+                    B: mk('B 衣柜+梳妆/书枱一体', '动线：桌面不挡窗，床尾留净通道。', '收纳：到顶衣柜+一体梳妆/书枱（浅台面）+上部开放格少量。', '香港常用：浅台面/到顶/灯槽+床头壁灯。', ''),
+                };
+            }
+            if (st.includes('客餐')) {
+                return {
+                    A: mk('A 电视墙收纳+餐边高柜', '动线：主通道≥90cm，餐桌不挡门洞。', '收纳：薄电视墙到顶+餐边高柜/电器高柜。', '香港常用：薄柜到顶、餐边高柜、走线隐藏。', ''),
+                    B: mk('B 餐区主导+薄电视墙', '动线：钻石/长厅优先留走道，沙发不压通道。', '收纳：餐边高柜到顶+薄电视墙（少展示）。', '香港常用：餐边高柜+吊柜/地柜组合、灯槽层次。', ''),
+                };
+            }
+            if (st.includes('厨房') || st.includes('廚') || st.includes('厨')) {
+                return {
+                    A: mk('A 一字型到顶厨柜', '动线：洗-备-煮顺手，保留操作通道。', '收纳：地柜+吊柜到顶+电器高柜。', '香港常用：吊柜到顶、底灯、台面尽量清爽。', '默认不做中岛。'),
+                    B: mk('B L 型转角+高柜', '动线：转角不做死角，开门不互撞。', '收纳：L型+转角五金+高柜分区。', '香港常用：控深、转角五金、底灯补光。', ''),
+                };
+            }
+            if (st.includes('卫生间') || st.includes('衛') || st.includes('卫') || st.includes('浴')) {
+                return {
+                    A: mk('A 干湿分离+镜柜', '动线：门口干区先用，淋浴不溅水。', '收纳：浴室柜+镜柜+壁龛（可选）。', '香港常用：镜柜主收纳、玻璃屏风、易清洁。', '默认不做大浴缸。'),
+                    B: mk('B 一字型紧凑布局', '动线：保持净通道，五金不外凸。', '收纳：窄高柜+镜柜+浴室柜。', '香港常用：控深、镜前灯、暖白光。', ''),
+                };
+            }
+            if (st.includes('入户') || st.includes('玄') || st.includes('走廊')) {
+                return {
+                    A: mk('A 到顶鞋柜+换鞋凳', '动线：不挡门扇，通道≥80cm。', '收纳：到顶鞋柜分常用/季节+中段开放格。', '香港常用：薄柜到顶、感应灯带、全身镜。', ''),
+                    B: mk('B 走廊浅柜+端头高柜', '动线：控深25–30cm，端头留转身位。', '收纳：浅柜到顶+清洁高柜（吸尘器位）。', '香港常用：浅柜控深、端头壁洗灯。', ''),
+                };
+            }
+            return {
+                A: mk('A 标准落位（保守）', '动线：不挡门窗，优先留净通道。', '收纳：到顶薄柜为主，少量展示。', '香港常用：薄柜到顶、趟门优先、灯槽层次。', ''),
+                B: mk('B 备选落位（更清爽）', '动线：保持走道宽，减少外凸。', '收纳：薄柜+功能角（可选）。', '香港常用：控深、隐藏把手、重点灯带。', ''),
+            };
+        })();
+
+        res.status(200).json({
+            ok: true,
+            layouts,
+            ...(debugEnabled ? { debug: { elapsedMs: Date.now() - started, anchorsLite: a } } : {})
+        });
+        return;
+    }
 
     if (!imageUrl) {
         res.status(400).json({ error: 'Missing imageUrl' });
