@@ -395,7 +395,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const analysisLoadingId = addLoadingToast("收到，图片正在分析中，请稍等…", { loadingType: 'analyzing', uploadId });
+    const analysisLoadingId = addLoadingToast("收到，我幫你睇緊，請稍等…", { loadingType: 'analyzing', uploadId });
     setAppState('ANALYZING');
     try {
       // Mark running + update spaceType; clear old analysis messages for this upload to avoid duplicates
@@ -589,7 +589,7 @@ const App: React.FC = () => {
                     setAppState('WAITING_FOR_SPACE');
                     // Auto classify space, then ask user to confirm with buttons (more robust than free text)
                     (async () => {
-                      const classifyId = addLoadingToast("我先帮你判断这张图是什么空间，请稍等…", { loadingType: 'classifying', uploadId });
+                      const classifyId = addLoadingToast("我先幫你判斷呢張相係咩空間，請稍等…", { loadingType: 'classifying', uploadId });
                       try {
                         const sres = await classifySpace({ imageUrl: uploadedUrl, imageDataUrl: uploadedUrl ? undefined : dataUrl, clientId });
                         stopLoadingToast(classifyId);
@@ -1152,7 +1152,7 @@ const App: React.FC = () => {
             : base;
 
           // FINAL render：使用文生图（/api/design/inspire），但通过 visionExtraction + 动线/尺寸指令尽量贴近原图结构（目标 80%+）
-          const genLoadingId = addLoadingToast("收到～我现在帮你生成效果图，请稍等…", { loadingType: 'generating', uploadId });
+          const genLoadingId = addLoadingToast("收到，我而家幫你出效果圖，請稍等…", { loadingType: 'generating', uploadId });
           try {
             const u = uploadId ? uploads[uploadId] : undefined;
             const sourceImageUrl = u?.imageUrl;
@@ -1268,12 +1268,12 @@ const App: React.FC = () => {
             const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
             if (notes) {
               await typeOutAI(
-                `【设计说明（与本次效果图一致）】${renderId ? `\nrenderId: ${renderId}` : ''}\n${notes}\n\n想再改一张？点下面一个：`,
+                `【设计说明（与本次效果图一致）】${renderId ? `\nrenderId: ${renderId}` : ''}\n${notes}\n\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
                 { options: refineOptions, meta: { kind: 'generated', uploadId } }
               );
             } else {
               await typeOutAI(
-                `效果图已出。${renderId ? `\nrenderId: ${renderId}` : ''}\n想再改一张？点下面一个：`,
+                `效果圖已出。${renderId ? `\nrenderId: ${renderId}` : ''}\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
                 { options: refineOptions, meta: { kind: 'generated', uploadId } }
               );
             }
@@ -1305,7 +1305,7 @@ const App: React.FC = () => {
           });
           lastRenderIntakeRef.current = renderIntake;
 
-          const genLoadingId = addLoadingToast("收到～我现在帮你做细节增强（会比第一次慢一点），请稍等…", { loadingType: 'generating', uploadId });
+          const genLoadingId = addLoadingToast("收到，我而家幫你再出一張，請稍等…", { loadingType: 'generating', uploadId });
           try {
               const res = await generateDesignImage({
                   baseImageBlobUrl: baseImageUrl,
@@ -1438,7 +1438,7 @@ const App: React.FC = () => {
 
           const u0 = uploadId ? uploads[uploadId] : undefined;
           if (u0 && Number.isInteger(u0.revisionIndex) && (u0.revisionIndex as number) >= 3) {
-            await typeOutAI("我已帮你改到第 3 次啦～为保证对位和落地质量，建议你直接 WhatsApp 我哋 1对1继续：+852 56273817");
+            await typeOutAI("我可以一對一免費幫你再調到更貼合你屋企，方便 WhatsApp 我哋：+852 56273817");
             return;
           }
           const base0 = (lastRenderIntakeRef.current && typeof lastRenderIntakeRef.current === 'object')
@@ -1559,7 +1559,7 @@ const App: React.FC = () => {
           if (cleaned === '一鍵出圖' || cleaned === '一键出图（推荐）' || cleaned === '一键出图') {
             const rev = Number.isInteger(u.revisionIndex) ? (u.revisionIndex as number) : 0;
             if (rev >= 3) {
-              await typeOutAI("我已帮你改到第 3 次啦～为保证对位和落地质量，建议你直接 WhatsApp 我哋 1对1继续：+852 56273817");
+              await typeOutAI("我可以一對一免費幫你再調到更貼合你屋企，方便 WhatsApp 我哋：+852 56273817");
               return;
             }
             // Build render intake
@@ -1595,7 +1595,7 @@ const App: React.FC = () => {
               ...quickI2IOverridesByIntensity(picks.intensity),
             };
             setAppState('GENERATING');
-            const genLoadingId = addLoadingToast("收到～我而家帮你生成对位效果图（图生图），请稍等…", { loadingType: 'generating', uploadId });
+            const genLoadingId = addLoadingToast("收到，我而家幫你出效果圖，請稍等…", { loadingType: 'generating', uploadId });
             const res = await generateRenderImage({
               renderIntake,
               sourceImageUrl,
@@ -1615,7 +1615,7 @@ const App: React.FC = () => {
             setMessages(prev => [...prev, { id: `${Date.now()}-img`, type: 'image', content: res.resultUrl!, sender: 'ai', timestamp: Date.now() }]);
             const note = String(res.designNotes || '').trim();
             await typeOutAI(
-              `【设计说明（与本次效果图一致）】${res.renderId ? `\nrenderId: ${res.renderId}` : ''}\n${note || '（已按结构锁定生成，可继续点下面微调）'}\n\n最多还能再改 2 次（超过会引导 WhatsApp）。`,
+              `【设计说明（與本次效果圖一致）】${res.renderId ? `\nrenderId: ${res.renderId}` : ''}\n${note || ''}\n\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
               { options: ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"], meta: { kind: 'generated', uploadId } }
             );
             return;
