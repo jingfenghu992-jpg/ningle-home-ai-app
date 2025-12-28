@@ -1,11 +1,5 @@
 import { stepfunImage2Image } from '../../lib/stepfunImageClient.js';
 
-export const config = {
-  api: {
-    bodyParser: { sizeLimit: '2mb' },
-  },
-};
-
 // Single-pass I2I render (HK delivery mode): fast first image, structure-locked.
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
