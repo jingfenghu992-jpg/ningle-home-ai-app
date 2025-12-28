@@ -30,6 +30,16 @@ export default async function handler(req, res) {
 
   const {
     renderIntake,
+    // C3: dual mode
+    sourceImageUrl,
+    outputMode,
+    i2i_strength,
+    i2i_source_weight,
+    keep_structure,
+    // user-selected debug (optional)
+    layoutVariant,
+    sizeChoice,
+    styleChoice,
     size,
     response_format,
     steps,
@@ -51,6 +61,7 @@ export default async function handler(req, res) {
 
   // Unified key (same as chat/vision/i2i)
   const apiKey = process.env.STEPFUN_API_KEY || process.env.STEPFUN_IMAGE_API_KEY;
+  const usedKey = process.env.STEPFUN_API_KEY ? 'STEPFUN_API_KEY' : 'STEPFUN_IMAGE_API_KEY';
   if (!apiKey) {
     res.status(500).json({ ok: false, errorCode: 'MISSING_KEY', message: 'Missing STEPFUN_API_KEY' });
     return;
@@ -349,7 +360,14 @@ export default async function handler(req, res) {
   })();
 
   // P1: Hong Kong 6-space prompt builder (short, hard, <= 1024 chars)
-  const built = buildHKPrompt({ renderIntake: intake });
+  const built = buildHKPrompt({
+    renderIntake: intake,
+    hkAnchors: intake?.visionExtraction?.hkAnchors || intake?.extraction?.hkAnchors || intake?.hkAnchors,
+    spaceType: intake?.space,
+    layoutVariant,
+    sizeChoice,
+    styleChoice,
+  });
   const prompt = String(built?.prompt || '').replace(/\s+/g, ' ').trim();
   if (!prompt) {
     res.status(400).json({ ok: false, errorCode: 'INVALID_PROMPT', message: 'Empty prompt' });
@@ -358,7 +376,7 @@ export default async function handler(req, res) {
 
   try {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    const doFetch = async () =>
+    const doT2I = async () =>
       await fetch('https://api.stepfun.com/v1/images/generations', {
         method: 'POST',
         headers: {
@@ -377,11 +395,140 @@ export default async function handler(req, res) {
         }),
       });
 
+    const validateSourceUrl = async (u) => {
+      const raw = String(u || '').trim();
+      if (!raw) return { ok: false, reason: 'EMPTY' };
+      if (raw.startsWith('blob:')) return { ok: false, reason: 'BLOB_URL' };
+      if (raw.startsWith('data:')) return { ok: true, reason: 'DATA_URL' };
+      if (!raw.startsWith('http')) return { ok: false, reason: 'INVALID_SCHEME' };
+      try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 8000);
+        try {
+          // Range preflight: avoid downloading full image
+          const r = await fetch(raw, { method: 'GET', headers: { Range: 'bytes=0-0' }, signal: controller.signal });
+          const ok = r.ok && (r.status === 200 || r.status === 206);
+          const ct = r.headers.get('content-type') || '';
+          return { ok, reason: ok ? 'OK' : `HTTP_${r.status}`, contentType: ct };
+        } finally {
+          clearTimeout(t);
+        }
+      } catch {
+        return { ok: false, reason: 'FETCH_ERROR' };
+      }
+    };
+
+    const hasSource = Boolean(String(sourceImageUrl || '').trim());
+    const desiredMode = outputMode === 'FAST_T2I' || outputMode === 'PRECISE_I2I'
+      ? outputMode
+      : (hasSource ? 'PRECISE_I2I' : 'FAST_T2I');
+
+    const userSelected = {
+      spaceType: String(intake?.space || '').trim(),
+      layoutVariant: (layoutVariant === 'A' || layoutVariant === 'B') ? layoutVariant : undefined,
+      sizeChoice: typeof sizeChoice === 'string' ? sizeChoice : undefined,
+      styleChoice: typeof styleChoice === 'string' ? styleChoice : undefined,
+    };
+    const applied = {
+      hkSpace: built?.hkSpace,
+      layoutVariant: built?.layoutVariant,
+      sizeHint: built?.sizeHintKey,
+      styleKey: built?.styleKey,
+      outputMode: desiredMode,
+    };
+    const mismatch = Boolean(
+      (userSelected.layoutVariant && applied.layoutVariant && userSelected.layoutVariant !== applied.layoutVariant) ||
+      (userSelected.styleChoice && applied.styleKey && !String(applied.styleKey).includes(String(userSelected.styleChoice))) // best-effort
+    );
+
+    // PRECISE_I2I settings (default as requested)
+    const finalKeepStructure = typeof keep_structure === 'boolean' ? keep_structure : true;
+    const finalI2ISourceWeight = (typeof i2i_source_weight === 'number' && i2i_source_weight > 0 && i2i_source_weight <= 1)
+      ? i2i_source_weight
+      : 0.85;
+    const finalI2IStrength = (typeof i2i_strength === 'number' && i2i_strength > 0 && i2i_strength <= 1)
+      ? i2i_strength
+      : 0.80;
+
+    const doI2I = async () =>
+      await fetch('https://api.stepfun.com/v1/images/image2image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'step-1x-medium',
+          prompt,
+          source_url: String(sourceImageUrl),
+          // StepFun param naming matches /api/design/generate usage
+          source_weight: finalI2ISourceWeight,
+          size: finalSize,
+          n: 1,
+          response_format: finalResponseFormat,
+          seed: finalSeed,
+          steps: finalSteps,
+          cfg_scale: finalCfgScale,
+          // keep_structure is a soft flag for our product logic; upstream may ignore
+          keep_structure: finalKeepStructure,
+          strength: finalI2IStrength,
+        }),
+      });
+
+    let actualMode = desiredMode;
+    let fallbackUsed = false;
+    let fallbackErrorCode = undefined;
+    let fallbackErrorMessage = undefined;
+
     // StepFun may enforce limit=1 concurrency. Retry lightly on 429.
-    let response = await doFetch();
-    if (response.status === 429) {
-      await sleep(800);
-      response = await doFetch();
+    const withRetry429 = async (fn) => {
+      let r = await fn();
+      if (r.status === 429) {
+        await sleep(800);
+        r = await fn();
+      }
+      return r;
+    };
+
+    let response;
+    if (desiredMode === 'PRECISE_I2I') {
+      const v = await validateSourceUrl(sourceImageUrl);
+      if (!v.ok) {
+        res.status(400).json({
+          ok: false,
+          errorCode: 'IMAGE_URL_UNREACHABLE',
+          message: `sourceImageUrl unreachable (${v.reason}). Please re-upload.`,
+          debug: {
+            outputMode: 'PRECISE_I2I',
+            usedKey,
+            model: 'step-1x-medium',
+            elapsedMs: Date.now() - startedAt,
+            promptChars: built?.promptChars,
+            promptHash: built?.promptHash,
+            hkSpace: built?.hkSpace,
+            layoutVariant: built?.layoutVariant,
+            dropped: built?.dropped,
+            anchorDropped: built?.anchorDropped,
+            userSelected,
+            applied,
+            mismatch,
+          }
+        });
+        return;
+      }
+
+      response = await withRetry429(doI2I);
+      if (!response.ok) {
+        // Fallback to FAST_T2I unless it's a key issue
+        const errText = await response.text().catch(() => '');
+        fallbackUsed = true;
+        fallbackErrorCode = `UPSTREAM_I2I_${response.status}`;
+        fallbackErrorMessage = errText || 'i2i failed';
+        actualMode = 'FAST_T2I';
+        response = await withRetry429(doT2I);
+      }
+    } else {
+      response = await withRetry429(doT2I);
     }
 
     if (!response.ok) {
@@ -418,18 +565,26 @@ export default async function handler(req, res) {
         ok: true,
         resultUrl: resultUrl || `data:image/jpeg;base64,${resultB64}`,
         debug: {
+          outputMode: actualMode,
           seed: resultSeed,
           finish_reason: finishReason,
           size: finalSize,
           steps: finalSteps,
           cfg_scale: finalCfgScale,
           model: 'step-1x-medium',
+          usedKey,
           elapsedMs: Date.now() - startedAt,
           promptChars: built?.promptChars,
           promptHash: built?.promptHash,
           hkSpace: built?.hkSpace,
           layoutVariant: built?.layoutVariant,
           dropped: built?.dropped,
+          anchorDropped: built?.anchorDropped,
+          fallbackUsed,
+          ...(fallbackUsed ? { fallbackErrorCode, fallbackErrorMessage } : {}),
+          userSelected,
+          applied: { ...applied, outputMode: actualMode },
+          mismatch,
           ...(debugEnabled ? { usedText: prompt } : {}),
         },
       });
@@ -444,18 +599,26 @@ export default async function handler(req, res) {
       ok: true,
       resultUrl: `data:image/png;base64,${resultB64}`,
       debug: {
+        outputMode: actualMode,
         seed: resultSeed,
         finish_reason: finishReason,
         size: finalSize,
         steps: finalSteps,
         cfg_scale: finalCfgScale,
         model: 'step-1x-medium',
+        usedKey,
         elapsedMs: Date.now() - startedAt,
         promptChars: built?.promptChars,
         promptHash: built?.promptHash,
         hkSpace: built?.hkSpace,
         layoutVariant: built?.layoutVariant,
         dropped: built?.dropped,
+        anchorDropped: built?.anchorDropped,
+        fallbackUsed,
+        ...(fallbackUsed ? { fallbackErrorCode, fallbackErrorMessage } : {}),
+        userSelected,
+        applied: { ...applied, outputMode: actualMode },
+        mismatch,
         ...(debugEnabled ? { usedText: prompt } : {}),
       },
     });
