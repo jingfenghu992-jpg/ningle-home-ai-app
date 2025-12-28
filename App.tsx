@@ -15,6 +15,13 @@ const App: React.FC = () => {
   // --- State ---
   const [appState, setAppState] = useState<'START' | 'WAITING_FOR_SPACE' | 'ANALYZING' | 'ANALYSIS_DONE' | 'RENDER_INTAKE' | 'GENERATING' | 'RENDER_DONE'>('START');
   const [clientId, setClientId] = useState<string>(''); // per-device user id
+  const debugEnabled = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('debug') === '1';
+    } catch {
+      return false;
+    }
+  })();
   
   const [uploads, setUploads] = useState<Record<string, {
     dataUrl: string;
@@ -852,6 +859,7 @@ const App: React.FC = () => {
               steps: 24,
               cfg_scale: 6.6,
               size,
+              debug: debugEnabled,
             });
             stopLoadingToast(genLoadingId);
 
@@ -860,6 +868,18 @@ const App: React.FC = () => {
             }
 
             const resultUrl = res.resultUrl;
+            if (debugEnabled && (res as any)?.debug?.usedText) {
+              const d: any = (res as any).debug || {};
+              const header = `Prompt chars: ${d.promptChars ?? ''} | hash: ${d.promptHash ?? ''} | space: ${d.hkSpace ?? ''} | A/B: ${d.layoutVariant ?? ''}`;
+              const usedText = String(d.usedText || '').trim();
+              if (usedText) {
+                console.log('[DEBUG] inspire usedText', usedText);
+                setMessages(prev => [
+                  ...prev,
+                  { id: `${Date.now()}-debug-prompt`, type: 'text', content: `[[DEBUG_PROMPT]]\n${header}\n\n${usedText}`, sender: 'ai', timestamp: Date.now() }
+                ]);
+              }
+            }
             setLastGeneratedImage(resultUrl);
             if (uploadId) {
               setUploads(prev => prev[uploadId] ? ({
@@ -936,6 +956,7 @@ const App: React.FC = () => {
                   steps: 38,
                   cfg_scale: 7.2,
                   fast_refine: true,
+                  debug: debugEnabled,
               });
 
               stopLoadingToast(genLoadingId);
@@ -954,6 +975,18 @@ const App: React.FC = () => {
               }
 
               const resultUrl = res.resultBlobUrl;
+              if (debugEnabled && (res as any)?.debug?.usedText) {
+                const d: any = (res as any).debug || {};
+                const header = `Prompt chars: ${d.promptChars ?? ''} | hash: ${d.promptHash ?? ''}`;
+                const usedText = String(d.usedText || '').trim();
+                if (usedText) {
+                  console.log('[DEBUG] generate usedText', usedText);
+                  setMessages(prev => [
+                    ...prev,
+                    { id: `${Date.now()}-debug-prompt`, type: 'text', content: `[[DEBUG_PROMPT]]\n${header}\n\n${usedText}`, sender: 'ai', timestamp: Date.now() }
+                  ]);
+                }
+              }
               setLastGeneratedImage(resultUrl);
               if (uploadId) {
                 setUploads(prev => prev[uploadId] ? ({

@@ -65,11 +65,14 @@ export async function generateDesignImage(params: {
   seed?: number;
   response_format?: 'b64_json' | 'url';
   fast_refine?: boolean; // skip slower QA/auto-refine for quicker "细节增强"
+  debug?: boolean; // if true, backend returns usedText in debug
 }): Promise<GenerateResponse> {
   try {
-    return await fetchJSON<GenerateResponse>('/api/design/generate', {
+    const { debug, ...rest } = params as any;
+    const url = debug ? '/api/design/generate?debug=1' : '/api/design/generate';
+    return await fetchJSON<GenerateResponse>(url, {
       method: 'POST',
-      body: JSON.stringify(params),
+      body: JSON.stringify(rest),
     });
   } catch (error: any) {
     console.error('[Generate Design Client] Error:', error);
@@ -106,11 +109,14 @@ export async function generateInspireImage(params: {
   steps?: number;
   cfg_scale?: number;
   seed?: number;
+  debug?: boolean; // if true, backend returns usedText in debug
 }): Promise<InspireResponse> {
   try {
-    return await fetchJSON<InspireResponse>('/api/design/inspire', {
+    const { debug, ...rest } = params as any;
+    const url = debug ? '/api/design/inspire?debug=1' : '/api/design/inspire';
+    return await fetchJSON<InspireResponse>(url, {
       method: 'POST',
-      body: JSON.stringify(params),
+      body: JSON.stringify(rest),
     });
   } catch (error: any) {
     console.error('[Inspire Client] Error:', error);

@@ -10,6 +10,8 @@ interface MessageCardProps {
 export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick }) => {
   const isUser = message.sender === 'user';
   const isUploadImage = isUser && message.type === 'image';
+  const isDebugPrompt = message.type === 'text' && typeof message.content === 'string' && message.content.startsWith('[[DEBUG_PROMPT]]');
+  const debugBody = isDebugPrompt ? message.content.replace('[[DEBUG_PROMPT]]\n', '') : '';
   
   return (
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-6 px-4 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
@@ -26,15 +28,26 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
             <img src={message.content} alt="result" className="w-full h-auto object-cover" />
           </div>
         ) : (
-          <div className="whitespace-pre-wrap">
-              {message.content}
-              {/* Spinner for streaming/loading */}
-              {!isUser && (message.isStreaming || message.meta?.loading) && (
-                <span className="inline-flex items-center ml-1 align-middle">
-                  <Loader2 size={14} className="animate-spin text-[#8A8F79]" />
-                </span>
-              )}
-          </div>
+          isDebugPrompt ? (
+            <details className="whitespace-pre-wrap">
+              <summary className="cursor-pointer select-none font-medium">
+                调试：最终 prompt（点击展开）
+              </summary>
+              <div className="mt-2 whitespace-pre-wrap text-[13px] leading-[1.6] opacity-90">
+                {debugBody}
+              </div>
+            </details>
+          ) : (
+            <div className="whitespace-pre-wrap">
+                {message.content}
+                {/* Spinner for streaming/loading */}
+                {!isUser && (message.isStreaming || message.meta?.loading) && (
+                  <span className="inline-flex items-center ml-1 align-middle">
+                    <Loader2 size={14} className="animate-spin text-[#8A8F79]" />
+                  </span>
+                )}
+            </div>
+          )
         )}
 
         {/* Options / Chips */}
