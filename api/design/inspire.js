@@ -886,136 +886,217 @@ export default async function handler(req, res) {
     const first = data?.data?.[0] || {};
     const finishReason = first?.finish_reason;
     const resultSeed = first?.seed ?? data?.seed;
-    const resultUrl = first?.url || first?.image_url;
-    const resultB64 = first?.b64_json || first?.image || first?.base64 || first?.b64;
+    let resultUrl = first?.url || first?.image_url;
+    let resultB64 = first?.b64_json || first?.image || first?.base64 || first?.b64;
 
-    const checkDistortionGuardrail = async (imgUrlOrDataUrl) => {
-      // Best-effort guardrail. If it says "suspected", we block returning the image.
-      const img = String(imgUrlOrDataUrl || '').trim();
-      if (!img) return { ok: false, error: 'NO_IMAGE' };
+    // One-time lightweight retry (no slow vision): detect dark corners/vignette via pixels.
+    // If suspected, rerun image2image once with more conservative parameters.
+    let retryUsed = false;
+    let retryReason = null;
+    let cornerCheck = null;
+    let appliedStrength = finalI2IStrength;
+    let appliedSourceWeight = finalI2ISourceWeight;
+
+    const decodeDataUrlToBuffer = (dataUrl) => {
       try {
-        // Prefer a data URL so StepFun VLM can always read it
-        let dataUrl = img;
-        if (img.startsWith('http')) {
-          const fetched = await fetchFullImageAsDataUrl(img);
-          if (!fetched.ok || !fetched.dataUrl) return { ok: false, error: 'FETCH_FAIL' };
-          dataUrl = fetched.dataUrl;
-        }
-
-        const anchors = intake?.visionExtraction?.hkAnchors || intake?.extraction?.hkAnchors || intake?.hkAnchors || {};
-        const anchorsStr = JSON.stringify(anchors);
-        const schema = `Return JSON only:
-{
-  "distortionSuspected": true/false,
-  "signals": ["fisheye","wide-angle","ultra-wide","vignette","dark-corners","curved-lines","warped-walls","panoramic","circular-frame","tunnel-view"],
-  "anchorMismatch": true/false,
-  "notes": "short reason"
-}
-Rules:
-- Judge ONLY from the image. If unsure, set distortionSuspected=false and anchorMismatch=false.
-- Flag distortionSuspected=true if you see fisheye/ultra-wide, curved lines, warped windows/door frames, vignette/dark corners, circular frame, or stretched proportions.
-- Flag anchorMismatch=true only if obvious (e.g. window wall/offset/daylight direction clearly contradict anchors).`;
-
-        const controller = new AbortController();
-        const t = setTimeout(() => controller.abort(), 12000);
-        try {
-          const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-            signal: controller.signal,
-            body: JSON.stringify({
-              model: 'step-1v-8k',
-              temperature: 0.1,
-              max_tokens: 180,
-              messages: [
-                { role: 'system', content: `You are a strict distortion inspector for Hong Kong interior renders. ${schema}` },
-                {
-                  role: 'user',
-                  content: [
-                    { type: 'text', text: `Check distortions and anchor mismatch. Anchors (reference): ${anchorsStr}` },
-                    { type: 'image_url', image_url: { url: dataUrl } },
-                  ],
-                },
-              ],
-            }),
-          });
-          if (!resp.ok) return { ok: false, error: `UPSTREAM_${resp.status}` };
-          const data = await resp.json();
-          const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-          const safeJsonParse = (r) => {
-            try {
-              const clean = String(r || '').replace(/```json/g, '').replace(/```/g, '').trim();
-              const s = clean.indexOf('{');
-              const e = clean.lastIndexOf('}');
-              if (s >= 0 && e > s) return JSON.parse(clean.slice(s, e + 1));
-              return JSON.parse(clean);
-            } catch {
-              return null;
-            }
-          };
-          const parsed = safeJsonParse(raw);
-          if (!parsed) return { ok: false, error: 'PARSE_FAIL' };
-          return { ok: true, result: parsed };
-        } finally {
-          clearTimeout(t);
-        }
+        const m = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
+        if (!m) return null;
+        return Buffer.from(m[2], 'base64');
       } catch {
-        return { ok: false, error: 'EXCEPTION' };
+        return null;
       }
     };
 
-    // Guardrail: block obviously distorted outputs for PRECISE_I2I.
+    const fetchImageBytesForCheck = async (url) => {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 8000);
+      try {
+        const r = await fetch(url, { method: 'GET', signal: controller.signal });
+        if (!r.ok) return null;
+        const ab = await r.arrayBuffer();
+        const buf = Buffer.from(ab);
+        return buf.byteLength ? buf : null;
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(t);
+      }
+    };
+
+    const avgLuma = (rgba, w, x0, y0, ww, hh) => {
+      let sum = 0;
+      let n = 0;
+      const x1 = Math.min(w, x0 + ww);
+      const y1 = Math.min(w, y0 + hh);
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = (y * w + x) * 4;
+          const r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+          // Rec.709
+          sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          n++;
+        }
+      }
+      return n ? sum / n : 0;
+    };
+
+    const detectDarkCorners = async (imgUrlOrDataUrl) => {
+      const s = String(imgUrlOrDataUrl || '').trim();
+      if (!s) return { ok: false, reason: 'NO_IMAGE' };
+      const buf = s.startsWith('data:') ? decodeDataUrlToBuffer(s) : (s.startsWith('http') ? await fetchImageBytesForCheck(s) : null);
+      if (!buf) return { ok: false, reason: 'FETCH_FAIL' };
+      try {
+        const W = 64;
+        const raw = await sharp(buf).resize(W, W, { fit: 'fill' }).ensureAlpha().raw().toBuffer();
+        const cornerSize = 10;
+        const centerSize = 18;
+        const tl = avgLuma(raw, W, 0, 0, cornerSize, cornerSize);
+        const tr = avgLuma(raw, W, W - cornerSize, 0, cornerSize, cornerSize);
+        const bl = avgLuma(raw, W, 0, W - cornerSize, cornerSize, cornerSize);
+        const br = avgLuma(raw, W, W - cornerSize, W - cornerSize, cornerSize, cornerSize);
+        const center = avgLuma(raw, W, Math.floor((W - centerSize) / 2), Math.floor((W - centerSize) / 2), centerSize, centerSize);
+        const cornerAvg = (tl + tr + bl + br) / 4;
+        const ratio = center > 0 ? cornerAvg / center : 1;
+        const suspected = (center >= 30) && (cornerAvg <= 28 || ratio < 0.55);
+        return {
+          ok: true,
+          suspected,
+          stats: { tl, tr, bl, br, center, cornerAvg, ratio }
+        };
+      } catch {
+        return { ok: false, reason: 'DECODE_FAIL' };
+      }
+    };
+
     if (actualMode === 'PRECISE_I2I') {
       const imgToCheck = resultUrl || (resultB64 ? `data:image/jpeg;base64,${resultB64}` : '');
-      const guard = await checkDistortionGuardrail(imgToCheck);
-      const g = guard.ok ? guard.result : null;
-      const distortionSuspected = Boolean(g?.distortionSuspected);
-      if (distortionSuspected) {
-        res.status(422).json({
-          ok: false,
-          errorCode: 'DISTORTION_SUSPECTED',
-          message: '检测到可能的广角/鱼眼/黑角/拉伸变形。为避免误导，已阻止出图。',
-          fallbackPlan: {
-            conservative: { outputMode: 'PRECISE_I2I', i2i_source_weight: 0.97, cfg_scale: 4.2, i2i_strength: 0.25, qualityPreset: 'STRUCTURE_LOCK' },
-            concept: { outputMode: 'FAST_T2I' }
-          },
-          debug: {
-            outputMode: actualMode,
-            requestedEndpoint,
-            usedKey,
-            model: 'step-1x-medium',
-            elapsedMs: Date.now() - startedAt,
-            promptChars: built?.promptChars,
-            promptHash: built?.promptHash,
-            hkSpace: built?.hkSpace,
-            layoutVariant: built?.layoutVariant,
-            dropped: built?.dropped,
-            anchorDropped: built?.anchorDropped,
-            antiDistortDropped: built?.antiDistortDropped,
-            userSelected,
-            applied: { ...applied, outputMode: actualMode },
-            mismatch,
-            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
-            baseImage,
-            baseImageBytes,
-            baseImageBytesSent,
-            baseImageContentType: baseImage?.contentType || null,
-            baseImageWidth: baseImage?.w || null,
-            baseImageHeight: baseImage?.h || null,
-            aspectRatio,
-            targetSize: targetSizeUsed,
-            padded,
-            paddingMethod,
-            resizeMode,
-            fallbackUsed,
-            distortionSuspected: true,
-            distortionSignals: g?.signals || [],
-            anchorMismatch: Boolean(g?.anchorMismatch),
-            distortionNotes: g?.notes || '',
-            ...(debugEnabled ? { usedText: prompt } : {}),
+      const r0 = await detectDarkCorners(imgToCheck);
+      cornerCheck = r0.ok ? r0.stats : { ok: false, reason: r0.reason };
+      if (r0.ok && r0.suspected) {
+        retryUsed = true;
+        retryReason = 'dark_corners';
+        appliedStrength = 0.18;
+        appliedSourceWeight = 0.99;
+
+        // Re-run i2i with more conservative params (still no resize stretch).
+        const full2 = await fetchFullImageAsDataUrl(String(sourceImageUrl));
+        const ok2 = Boolean(full2.ok && full2.bytes && full2.bytes > 0);
+        if (!ok2 || !full2.dataUrl) {
+          res.status(400).json({
+            ok: false,
+            errorCode: 'IMAGE_URL_UNREACHABLE',
+            message: '图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。',
+            debug: {
+              outputMode: 'PRECISE_I2I',
+              requestedEndpoint: 'image2image',
+              usedEndpoint: 'image2image',
+              imageFetchOk: ok2,
+              usedKey,
+              model: 'step-1x-medium',
+              elapsedMs: Date.now() - startedAt,
+              promptChars: built?.promptChars,
+              promptHash: built?.promptHash,
+              hkSpace: built?.hkSpace,
+              layoutVariant: built?.layoutVariant,
+              dropped: built?.dropped,
+              userSelected,
+              applied,
+              mismatch,
+              retryUsed,
+              retryReason,
+              cornerCheck,
+              i2iParams: { strength: appliedStrength, source_weight: appliedSourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+              baseImage,
+              baseImageBytes,
+              baseImageBytesSent,
+              aspectRatio,
+              targetSize: targetSizeUsed,
+              padded,
+              paddingMethod,
+              resizeMode,
+              fallbackUsed: false,
+              ...(debugEnabled ? { usedText: prompt } : {}),
+            }
+          });
+          return;
+        }
+
+        // Keep the same target size/padding decision we already made (targetSizeUsed / padded state),
+        // but rebuild the data URL to ensure fresh bytes.
+        let sourceUrlToSend2 = full2.dataUrl;
+        const sz2 = parseSize(targetSizeUsed);
+        if (sz2 && full2.buffer && full2.w && full2.h) {
+          const rA = full2.w / full2.h;
+          const rB = sz2.w / sz2.h;
+          if (Math.abs(rA - rB) > 0.03) {
+            const paddedBuf2 = await letterboxPadBlur(full2.buffer, sz2.w, sz2.h);
+            sourceUrlToSend2 = `data:image/jpeg;base64,${Buffer.from(paddedBuf2).toString('base64')}`;
           }
-        });
-        return;
+        }
+
+        const resp2 = await withRetry429(() => stepfunImage2Image({
+          apiKey,
+          model: 'step-1x-medium',
+          prompt,
+          source_url: String(sourceUrlToSend2),
+          source_weight: appliedSourceWeight,
+          size: String(targetSizeUsed || finalSize),
+          n: 1,
+          response_format: finalResponseFormat,
+          seed: finalSeed,
+          steps: finalSteps,
+          cfg_scale: finalCfgI2I,
+        }));
+
+        if (!resp2.ok) {
+          const t2 = await resp2.text().catch(() => '');
+          res.status(resp2.status).json({
+            ok: false,
+            errorCode: `UPSTREAM_I2I_${resp2.status}`,
+            message: '精準模式重试失败（更保守）。请稍后再试，或手动选择「概念示意」。',
+            debug: {
+              outputMode: 'PRECISE_I2I',
+              requestedEndpoint: 'image2image',
+              usedEndpoint: 'image2image',
+              imageFetchOk: ok2,
+              usedKey,
+              model: 'step-1x-medium',
+              elapsedMs: Date.now() - startedAt,
+              promptChars: built?.promptChars,
+              promptHash: built?.promptHash,
+              hkSpace: built?.hkSpace,
+              layoutVariant: built?.layoutVariant,
+              dropped: built?.dropped,
+              userSelected,
+              applied,
+              mismatch,
+              retryUsed,
+              retryReason,
+              cornerCheck,
+              i2iParams: { strength: appliedStrength, source_weight: appliedSourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+              upstreamStatus: resp2.status,
+              upstreamError: t2 ? t2.slice(0, 600) : null,
+              baseImage,
+              baseImageBytes,
+              baseImageBytesSent,
+              aspectRatio,
+              targetSize: targetSizeUsed,
+              padded,
+              paddingMethod,
+              resizeMode,
+              fallbackUsed: false,
+              ...(debugEnabled ? { usedText: prompt } : {}),
+            }
+          });
+          return;
+        }
+
+        const data2 = await resp2.json();
+        const first2 = data2?.data?.[0] || {};
+        const newUrl = first2?.url || first2?.image_url;
+        const newB64 = first2?.b64_json || first2?.image || first2?.base64 || first2?.b64;
+        if (newUrl) resultUrl = newUrl;
+        if (newB64) resultB64 = newB64;
       }
     }
 
@@ -1052,7 +1133,10 @@ Rules:
           applied: { ...applied, outputMode: actualMode },
           mismatch,
           ...(desiredMode === 'PRECISE_I2I' ? {
-            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+            retryUsed,
+            retryReason,
+            cornerCheck,
+            i2iParams: { strength: appliedStrength ?? finalI2IStrength, source_weight: appliedSourceWeight ?? finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
             imageFetchOk,
             baseImage,
             baseImageBytes,
@@ -1106,7 +1190,10 @@ Rules:
         applied: { ...applied, outputMode: actualMode },
         mismatch,
         ...(desiredMode === 'PRECISE_I2I' ? {
-          i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+          retryUsed,
+          retryReason,
+          cornerCheck,
+          i2iParams: { strength: appliedStrength ?? finalI2IStrength, source_weight: appliedSourceWeight ?? finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
           imageFetchOk,
           baseImage,
           baseImageBytes,
