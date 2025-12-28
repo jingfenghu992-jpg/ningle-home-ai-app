@@ -22,6 +22,8 @@ export interface DesignQaResponse {
 export interface InspireResponse {
   ok: boolean;
   resultUrl?: string;
+  renderId?: string;
+  designNotes?: string;
   debug?: any;
   fallbackPlan?: any;
   message?: string;

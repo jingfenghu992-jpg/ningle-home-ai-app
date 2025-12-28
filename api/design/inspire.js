@@ -1246,13 +1246,46 @@ Rules:
         res.status(502).json({ ok: false, errorCode: 'INVALID_RESPONSE', message: 'No image payload received' });
         return;
       }
+
+      // Bind image + notes with the same renderId (avoid mismatch).
+      const renderId = `r_${Date.now()}_${String(built?.promptHash || 'na')}`;
+      const designNotes = (() => {
+        const a = hkAnchorsLite && typeof hkAnchorsLite === 'object' ? hkAnchorsLite : null;
+        const ww = String(a?.window_wall || '').trim();
+        const wc = a?.window_count;
+        const lens = String(a?.lens_risk || '').trim();
+        const cam = String(a?.camera_view || '').trim();
+        const day = String(a?.daylight_direction || '').trim();
+        const fin = String(a?.finish_level || '').trim();
+        const useWall = String(a?.usable_wall || '').trim();
+        const lay = String(intake?.layoutChoice || built?.layoutVariant || '').trim();
+        const style = String(intake?.style || '').trim();
+        const goal = String(intake?.priority || '').trim();
+        const intensity = String(intake?.intensity || '').trim();
+        const lines = [
+          `- 对位锁定：保持原相镜头与透视（${cam || 'unknown'}），禁止鱼眼/超广角/暗角。`,
+          ww ? `- 门窗结构：窗在${ww}墙，窗数量=${String(wc ?? 'unknown')}（不新增侧窗/阳台门）。` : `- 门窗结构：按原相门窗位置锁定（不新增侧窗/阳台门）。`,
+          useWall ? `- 可用墙面：优先用${useWall}墙做主收纳/主功能墙（不挡窗光）。` : `- 可用墙面：以不挡窗光、不压通道为准。`,
+          lay ? `- 布置方案：${lay}（根据门窗可用墙面落位）。` : '',
+          style ? `- 风格：${style}（只改材质/色温，不改结构）。` : '',
+          goal ? `- 目标：${goal}（按目标加强收纳/显大/氛围，但不改门窗结构）。` : '',
+          intensity ? `- 强度：${intensity}（保守更对位；明显更有设计感但不超阈值）。` : '',
+          day ? `- 光线：${day}（保持原相采光方向）。` : '',
+          fin ? `- 完成度：${fin}（按原相完成度做可落地效果）。` : '',
+        ].map(x => String(x).trim()).filter(Boolean);
+        return lines.join('\n');
+      })();
+
       res.status(200).json({
         ok: true,
         resultUrl: resultUrl || `data:image/jpeg;base64,${resultB64}`,
+        renderId,
+        designNotes,
         debug: {
           outputMode: actualMode,
           requestedEndpoint,
           usedEndpoint: requestedEndpoint,
+          renderId,
           seed: resultSeed,
           finish_reason: finishReason,
           size: finalSize,
@@ -1306,13 +1339,36 @@ Rules:
       res.status(502).json({ ok: false, errorCode: 'INVALID_RESPONSE', message: 'No base64 image received' });
       return;
     }
+    const renderId = `r_${Date.now()}_${String(built?.promptHash || 'na')}`;
+    const designNotes = (() => {
+      const a = hkAnchorsLite && typeof hkAnchorsLite === 'object' ? hkAnchorsLite : null;
+      const ww = String(a?.window_wall || '').trim();
+      const wc = a?.window_count;
+      const cam = String(a?.camera_view || '').trim();
+      const lay = String(intake?.layoutChoice || built?.layoutVariant || '').trim();
+      const style = String(intake?.style || '').trim();
+      const goal = String(intake?.priority || '').trim();
+      const intensity = String(intake?.intensity || '').trim();
+      const lines = [
+        `- 对位锁定：保持原相镜头与透视（${cam || 'unknown'}），禁止鱼眼/超广角/暗角。`,
+        ww ? `- 门窗结构：窗在${ww}墙，窗数量=${String(wc ?? 'unknown')}（不新增侧窗/阳台门）。` : `- 门窗结构：按原相门窗位置锁定（不新增侧窗/阳台门）。`,
+        lay ? `- 布置方案：${lay}（根据门窗可用墙面落位）。` : '',
+        style ? `- 风格：${style}（只改材质/色温，不改结构）。` : '',
+        goal ? `- 目标：${goal}（按目标加强收纳/显大/氛围）。` : '',
+        intensity ? `- 强度：${intensity}。` : '',
+      ].map(x => String(x).trim()).filter(Boolean);
+      return lines.join('\n');
+    })();
     res.status(200).json({
       ok: true,
       resultUrl: `data:image/png;base64,${resultB64}`,
+      renderId,
+      designNotes,
       debug: {
         outputMode: actualMode,
         requestedEndpoint,
         usedEndpoint: requestedEndpoint,
+        renderId,
         seed: resultSeed,
         finish_reason: finishReason,
         size: finalSize,

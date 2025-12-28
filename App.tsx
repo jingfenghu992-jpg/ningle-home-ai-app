@@ -7,7 +7,7 @@ import { Composer } from './components/Composer';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateDesignImage, generateInspireImage, qaDesignImage, uploadImage } from './services/generateClient';
+import { generateDesignImage, generateInspireImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
@@ -1032,28 +1032,20 @@ const App: React.FC = () => {
               { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
             ]);
 
+            // Notes must be consistent with the generated image (same renderId).
+            const renderId = (res as any)?.renderId;
+            const notes = String((res as any)?.designNotes || '').trim();
             const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
-            const bgId = addLoadingToast("效果图已出，我再帮你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
-            try {
-              const qaRes = await qaDesignImage({ imageUrl: resultUrl, renderIntake });
-              stopLoadingToast(bgId);
-              if (qaRes.ok && qaRes.designExplanation) {
-                await typeOutAI(
-                  `【设计说明（按最终效果图）】\n${qaRes.designExplanation}\n\n想再精修？点下面一个：`,
-                  { options: refineOptions, meta: { kind: 'generated', uploadId } }
-                );
-              } else {
-                await typeOutAI(`【設計說明】\n- 说明生成暂时失败，但效果图已生成；你可直接点下面再生成优化。`, {
-                  options: refineOptions,
-                  meta: { kind: 'generated', uploadId }
-                });
-              }
-            } catch {
-              stopLoadingToast(bgId);
-              await typeOutAI(`【設計說明】\n- 复核暂时失败，但效果图已生成；你可直接点下面再生成优化。`, {
-                options: refineOptions,
-                meta: { kind: 'generated', uploadId }
-              });
+            if (notes) {
+              await typeOutAI(
+                `【设计说明（与本次效果图一致）】${renderId ? `\nrenderId: ${renderId}` : ''}\n${notes}\n\n想再改一张？点下面一个：`,
+                { options: refineOptions, meta: { kind: 'generated', uploadId } }
+              );
+            } else {
+              await typeOutAI(
+                `效果图已出。${renderId ? `\nrenderId: ${renderId}` : ''}\n想再改一张？点下面一个：`,
+                { options: refineOptions, meta: { kind: 'generated', uploadId } }
+              );
             }
           } finally {
             stopLoadingToast(genLoadingId);
@@ -1140,28 +1132,10 @@ const App: React.FC = () => {
               ]);
 
               const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
-                const bgId = addLoadingToast("细节已增强，我再帮你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
-              try {
-                const qaRes = await qaDesignImage({ imageUrl: resultUrl, renderIntake });
-                stopLoadingToast(bgId);
-                if (qaRes.ok && qaRes.designExplanation) {
-                  await typeOutAI(
-                    `【设计说明（按最终效果图）】\n${qaRes.designExplanation}\n\n想再精修？点下面一个：`,
-                    { options: refineOptions, meta: { kind: 'generated', uploadId } }
-                  );
-                } else {
-                  await typeOutAI(`【設計說明】\n- 说明生成暂时失败，但效果图已生成；你可直接点下面再生成优化。`, {
-                    options: refineOptions,
-                    meta: { kind: 'generated', uploadId }
-                  });
-                }
-              } catch {
-                stopLoadingToast(bgId);
-                await typeOutAI(`【設計說明】\n- 复核暂时失败，但效果图已生成；你可直接点下面再生成优化。`, {
-                  options: refineOptions,
-                  meta: { kind: 'generated', uploadId }
-                });
-              }
+              await typeOutAI("细节已增强，想再改一张？点下面一个：", {
+                options: refineOptions,
+                meta: { kind: 'generated', uploadId }
+              });
           } finally {
               stopLoadingToast(genLoadingId);
           }
