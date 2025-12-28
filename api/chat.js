@@ -19,83 +19,29 @@ export default async function handler(req, res) {
 
   try {
     const { messages, visionSummary, spaceType } = req.body;
-    const lastUserText = (() => {
-      try {
-        const arr = Array.isArray(messages) ? messages : [];
-        for (let i = arr.length - 1; i >= 0; i--) {
-          const m = arr[i];
-          if (m && m.role === 'user' && typeof m.content === 'string') return m.content;
-        }
-      } catch {}
-      return '';
-    })();
     
-    // Core Persona (Mainland factory + HK customization)
+    // Core Persona (HK "effect render" assistant only; no KB)
     const WHATSAPP_NUMBER = "85256273817";
-    const CORE_PERSONA = `你是「寧樂家居」的资深全屋订造设计顾问（香港订造服务），从业 10+ 年，擅长把香港户型痛点转成可落地的柜体方案。
-定位：大陆源头工厂直供（性价比高），香港落地订造与安装；主推 ENF 级多层实木板材（更环保）。
+    const CORE_PERSONA = `你是「寧樂家居」的香港室内效果图顾问，专注做一件事：把用户上传的现场照片快速生成“对位、不变形”的效果图，并收集“可转成渲染参数”的改图信息。
 语气：简体中文为主，少量粤语语气词（如：唔、系、嘅），亲切专业，不硬推销。
 
 【硬性规则（必须遵守）】
 1) 禁止自称 AI/模型/系统；只用“我/顾问/团队”。
-2) 回复要像“老练设计师”：先抓住关键约束（门窗/梁柱/窗台/冷气位/动线），再给柜体方案；不要泛泛而谈。
-3) 每次回复 3–6 点要点，每点 1–2 句；若信息不足，只追问 1–2 个关键问题（例如：单位面积/住几人/预算取向/是否要留餐桌或书桌位）。
-4) 输出优先级：柜体布局与收纳分区（位置+高度范围+开门方式）> 动线与尺寸要点 > 灯光/材料方向。
-5) 涉及“业务敏感”内容：价钱/报价/套餐/优惠、工厂地址、门店/展厅地址、交期、付款、保养细则等——不要编造；统一礼貌引导点右上角「免费跟进」WhatsApp（wa.me/${WHATSAPP_NUMBER}）。
-6) 香港语境：熟悉钻石厅、眼镜房、窗台深、冷气机位尴尬、楼底矮、走廊浪费位等常见问题，并给对应柜体解法（例如：到顶高柜、餐边高柜、电器高柜、窗台书枱柜、玄关一体柜）。`;
-
-    // Knowledge Base (Vercel Blob .docx) — optional and guarded
-    const kbContext = await (async () => {
-      // Only try KB when blob token exists; otherwise skip silently.
-      if (!process.env.BLOB_READ_WRITE_TOKEN) return '';
-      if (!lastUserText) return '';
-
-      // Enforce a small time budget so chat streaming isn't blocked too long on cold start.
-      const withTimeout = async (promise, ms) => {
-        let to;
-        try {
-          return await Promise.race([
-            promise,
-            new Promise((_, reject) => {
-              to = setTimeout(() => reject(new Error('KB_TIMEOUT')), ms);
-            }),
-          ]);
-        } finally {
-          if (to) clearTimeout(to);
-        }
-      };
-
-      try {
-        const kb = await import('../services/kbFromBlob.js');
-        const should = typeof kb.shouldUseKnowledge === 'function' ? kb.shouldUseKnowledge(lastUserText) : false;
-        if (!should) return '';
-
-        const result = await withTimeout(
-          Promise.resolve(kb.searchKnowledge(lastUserText)),
-          1800
-        );
-
-        const excerpt = String(result?.excerpt || '').trim();
-        const sources = Array.isArray(result?.sources) ? result.sources : [];
-        if (!excerpt) return '';
-        const sourceLine = sources.length ? `（来源：${sources.slice(0, 3).join('、')}）` : '';
-        return `\n\n【公司知识库参考资料】\n${sourceLine}\n${excerpt}\n\n【使用规则】\n- 仅在与用户问题相关时引用；不要生搬硬套。\n- 涉及价格/套餐/地址/交期等敏感内容：若资料不足，仍需引导 WhatsApp 跟进，不可编造。`;
-      } catch (e) {
-        // KB is best-effort; never fail chat because of KB issues.
-        return '';
-      }
-    })();
+2) 只讨论：效果图、改图需求（布置A/B、收纳、床/衣柜/书桌、灯光层次/色温、软装、风格色调、对位：窗位/门位/透视/镜头）。
+3) 严禁回答：板材/五金/品牌/价钱/报价/工厂/门店/施工细节/交期/付款等。用户问到一律礼貌引导 WhatsApp：+852 56273817（wa.me/${WHATSAPP_NUMBER}）。
+4) 每次回复尽量短：先总结用户要改的 1 句，然后最多追问 1–2 个关键问题（问题必须可直接转成：spaceType/layoutChoice/style/goal/intensity/revisionText）。
+5) 不使用知识库；不引用任何“公司资料”。`;
 
     // Vision Context
     let visionContext = "";
     if (visionSummary) {
         visionContext = `\n\n【用户上传现场照片智能分析】\n`;
         if (spaceType) visionContext += `空间类型：${spaceType}\n`;
-        visionContext += `以下是视觉分析报告，请必须引用此内容回答用户问题：\n${visionSummary}\n\n请只围绕「柜体/收纳」给 3–5 点可落地建议（位置+高度范围+开门方式/分区），其余装修话题点到即止。\n`;
+        visionContext += `以下是结构/门窗/光线摘要（仅用于“对位改图”）：\n${visionSummary}\n`;
     }
 
     // Final System Prompt
-    const systemPrompt = `${CORE_PERSONA}${visionContext}${kbContext}`;
+    const systemPrompt = `${CORE_PERSONA}${visionContext}`;
 
     const apiMessages = [
         { role: "system", content: systemPrompt },
