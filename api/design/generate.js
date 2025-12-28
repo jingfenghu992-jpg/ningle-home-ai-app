@@ -1,6 +1,8 @@
 // NOTE: We intentionally do NOT persist user images/results.
 // This endpoint returns StepFun temporary URLs (or base64 data URLs) only.
 
+import { hashTextShort } from '../../lib/hkPrompt.js';
+
 export const config = {
     api: {
         bodyParser: {
@@ -21,6 +23,15 @@ export default async function handler(req, res) {
   const startedAt = Date.now();
   const hardBudgetMs = 180000; // 3 minutes minus headroom
   const timeLeftMs = () => Math.max(0, hardBudgetMs - (Date.now() - startedAt));
+  const debugEnabled = (() => {
+    try {
+      const u = new URL(req.url || '', 'http://localhost');
+      return u.searchParams.get('debug') === '1';
+    } catch {
+      // eslint-disable-next-line no-undef
+      return String(req?.query?.debug || '') === '1';
+    }
+  })();
 
   const {
     prompt,
@@ -774,6 +785,8 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
     if (finalPrompt.length > 1024) {
         finalPrompt = finalPrompt.slice(0, 1021) + '...';
     }
+    const promptChars = finalPrompt.length;
+    const promptHash = hashTextShort(finalPrompt);
 
     // Explanation strategy:
     // - Prefer generating explanation from the FINAL image (most consistent with what user sees)
@@ -1263,6 +1276,10 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
       designSpec: designSpec || undefined,
       debug: {
         usedFallback,
+        ...(debugEnabled ? { usedText: finalPrompt } : {}),
+        promptChars,
+        promptHash,
+        model: 'step-1x-medium',
         size: finalSize,
         source_weight: finalSourceWeight,
         steps: finalSteps,
