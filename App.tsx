@@ -5,9 +5,9 @@ import { StartScreen } from './components/StartScreen';
 import { MessageCard } from './components/MessageCard';
 import { Composer } from './components/Composer';
 import { Message } from './types';
-import { analyzeImage } from './services/visionClient';
+import { analyzeImage, analyzeImageFast } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateDesignImage, generateInspireImage, uploadImage } from './services/generateClient';
+import { generateDesignImage, generateInspireImage, generateRenderImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 

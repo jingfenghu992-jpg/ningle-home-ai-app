@@ -145,6 +145,30 @@ export async function generateInspireImage(params: {
   }
 }
 
+// Unified render endpoint (rewrite => /api/design/inspire). Keeps UX aligned with HK flow.
+export async function generateRenderImage(params: Parameters<typeof generateInspireImage>[0]): Promise<InspireResponse> {
+  try {
+    const { debug, ...rest } = params as any;
+    const url = debug ? '/api/design/render?debug=1' : '/api/design/render';
+    return await fetchJSON<InspireResponse>(url, {
+      method: 'POST',
+      body: JSON.stringify(rest),
+    });
+  } catch (error: any) {
+    console.error('[Render Client] Error:', error);
+    const details = error?.details;
+    return {
+      ok: false,
+      message: (details?.message || error.message || 'Render failed'),
+      errorCode: (details?.errorCode || error.code || 'NETWORK_ERROR'),
+      debug: details?.debug,
+      fallbackPlan: details?.fallbackPlan,
+      renderId: details?.renderId,
+      designNotes: details?.designNotes,
+    };
+  }
+}
+
 export async function generateImage(params: { prompt: string; size: string; response_format: string }): Promise<GenerateResponse> {
   try {
     return await fetchJSON<GenerateResponse>('/api/generate', {
