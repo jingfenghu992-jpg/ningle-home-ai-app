@@ -26,6 +26,7 @@ export default function handler(req, res) {
     hasStepfunApiKey,
     hasStepfunImageApiKey,
     hasAnyStepfunKey,
+    stepfunKeyOk: hasAnyStepfunKey,
   };
 
   res.status(200).json(keys);
