@@ -866,10 +866,14 @@ const App: React.FC = () => {
             const sourceImageUrl = u?.imageUrl;
             const preferPrecise = (u?.render as any)?.preferPrecise;
             const outputMode = sourceImageUrl && preferPrecise !== false ? 'PRECISE_I2I' : 'FAST_T2I';
+            const keep_structure = outputMode === 'PRECISE_I2I';
+            const qualityPreset = outputMode === 'PRECISE_I2I' ? 'STRUCTURE_LOCK' : undefined;
             const res = await generateInspireImage({
               renderIntake,
               sourceImageUrl,
               outputMode,
+              keep_structure,
+              qualityPreset,
               layoutVariant: (u?.render as any)?.layoutVariant,
               sizeChoice: (u?.render as any)?.sizeChoice,
               styleChoice: (u?.render as any)?.styleChoice,
@@ -889,7 +893,8 @@ const App: React.FC = () => {
             const resultUrl = res.resultUrl;
             if (debugEnabled && (res as any)?.debug?.usedText) {
               const d: any = (res as any).debug || {};
-              const header = `mode: ${d.outputMode ?? ''} | mismatch: ${d.mismatch ?? ''} | chars: ${d.promptChars ?? ''} | hash: ${d.promptHash ?? ''} | hkSpace: ${d.hkSpace ?? ''} | A/B: ${d.layoutVariant ?? ''} | dropped: ${(d.dropped || []).join(',')}`;
+              const p = d.i2iParams ? ` | i2i(str=${d.i2iParams.strength}, sw=${d.i2iParams.source_weight}, cfg=${d.i2iParams.cfg_scale}, st=${d.i2iParams.steps})` : '';
+              const header = `mode: ${d.outputMode ?? ''} | mismatch: ${d.mismatch ?? ''} | chars: ${d.promptChars ?? ''} | hash: ${d.promptHash ?? ''} | hkSpace: ${d.hkSpace ?? ''} | A/B: ${d.layoutVariant ?? ''} | dropped: ${(d.dropped || []).join(',')}${p}`;
               const usedText = String(d.usedText || '').trim();
               if (usedText) {
                 console.log('[DEBUG] inspire usedText', usedText);
@@ -1262,7 +1267,7 @@ const App: React.FC = () => {
               const toggleOpt = preferPrecise ? '☑ 更贴原相（推荐）' : '☐ 更贴原相（更快）';
               const opts = hasSource ? [toggleOpt, "直接生成（推荐）"] : ["直接生成（推荐）"];
               await typeOutAI(
-                `收到～我建议先用「香港推荐预设」直接出图（更快、更像提案效果图）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n${hasSource ? '（默认：更贴原相；取消勾选会更快，但可能不对位）\n' : ''}要不要直接生成？`,
+                `收到～我建议先用「香港推荐预设」直接出图：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n${hasSource ? '（默认：更贴原相＝保留窗位/透视/光向，更少变形；取消勾选会更快）\n' : ''}要不要直接生成？`,
                 { options: opts, meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
               );
               return;

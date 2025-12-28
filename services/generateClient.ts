@@ -110,6 +110,7 @@ export async function generateInspireImage(params: {
   i2i_strength?: number;
   i2i_source_weight?: number;
   keep_structure?: boolean;
+  qualityPreset?: 'STRUCTURE_LOCK' | string;
   layoutVariant?: 'A' | 'B';
   sizeChoice?: string;
   styleChoice?: string;
