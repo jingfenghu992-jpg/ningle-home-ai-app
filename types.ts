@@ -12,8 +12,8 @@ export interface Message {
   options?: string[]; // For clickable options
   meta?: {
     uploadId?: string; // Bind actions to a specific uploaded image
-    kind?: 'upload' | 'analysis' | 'generated' | 'render_flow' | 'space_pick';
-    stage?: 'hall' | 'layout' | 'dimensions' | 'target_use' | 'style_tone' | 'fast_confirm' | 'style' | 'color' | 'focus' | 'bed' | 'storage' | 'vibe' | 'decor' | 'priority' | 'intensity' | 'confirm';
+    kind?: 'upload' | 'analysis' | 'generated' | 'render_flow' | 'space_pick' | 'guardrail';
+    stage?: 'hall' | 'layout' | 'dimensions' | 'target_use' | 'style_tone' | 'fast_confirm' | 'style' | 'color' | 'focus' | 'bed' | 'storage' | 'vibe' | 'decor' | 'priority' | 'intensity' | 'confirm' | 'distortion';
     loading?: boolean; // show spinner while executing
     loadingType?: 'analyzing' | 'generating' | 'classifying';
   };

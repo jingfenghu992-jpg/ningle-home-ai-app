@@ -55,6 +55,7 @@ const App: React.FC = () => {
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
   // Keep the last used render intake so "再精修" can reuse the same selections.
   const lastRenderIntakeRef = useRef<any>(null);
+  const lastGuardrailRef = useRef<any>(null);
   
   // Chat history for context, but we display sparingly
   const [messages, setMessages] = useState<Message[]>([]);
@@ -836,7 +837,7 @@ const App: React.FC = () => {
       ].filter(Boolean).join(' ');
   };
 
-  const triggerGeneration = async (intakeData: any, revisionText?: string) => {
+  const triggerGeneration = async (intakeData: any, revisionText?: string, overrides?: any) => {
       try {
           if (intakeData && typeof intakeData === 'object') {
             lastRenderIntakeRef.current = intakeData;
@@ -868,7 +869,7 @@ const App: React.FC = () => {
             const outputMode = sourceImageUrl && preferPrecise !== false ? 'PRECISE_I2I' : 'FAST_T2I';
             const keep_structure = outputMode === 'PRECISE_I2I';
             const qualityPreset = outputMode === 'PRECISE_I2I' ? 'STRUCTURE_LOCK' : undefined;
-            const res = await generateInspireImage({
+            const payload: any = {
               renderIntake,
               sourceImageUrl,
               outputMode,
@@ -883,7 +884,9 @@ const App: React.FC = () => {
               cfg_scale: 6.6,
               size,
               debug: debugEnabled,
-            });
+              ...(overrides || {}),
+            };
+            const res = await generateInspireImage(payload);
             stopLoadingToast(genLoadingId);
 
             if (!res.ok || !res.resultUrl) {
@@ -891,6 +894,19 @@ const App: React.FC = () => {
               const msg = (res as any)?.message || '生成失败';
               if (code === 'BASE_IMAGE_REQUIRED') {
                 await typeOutAI("相片链接无法读取（更贴原相需要相片可访问）。请重新上传同一张图片再试一次。");
+                setAppState('ANALYSIS_DONE');
+                return;
+              }
+              if (code === 'DISTORTION_SUSPECTED') {
+                const plan = (res as any)?.fallbackPlan;
+                lastGuardrailRef.current = { uploadId, renderIntake, sourceImageUrl, plan };
+                await typeOutAI(
+                  "我检测到这次出图可能有广角/鱼眼/黑角/拉伸变形，为避免误导我先不出图。\n你要点哪个方案继续？",
+                  {
+                    options: ["再试：更保守（推荐）", "改用概念图（较快）"],
+                    meta: { kind: 'guardrail', stage: 'distortion', uploadId }
+                  }
+                );
                 setAppState('ANALYSIS_DONE');
                 return;
               }
@@ -1077,6 +1093,32 @@ const App: React.FC = () => {
   const handleOptionClick = async (message: Message, opt: string) => {
       const uploadId = message.meta?.uploadId;
       const u = uploadId ? uploads[uploadId] : undefined;
+
+      if (message.meta?.kind === 'guardrail' && message.meta?.stage === 'distortion') {
+          const ctx = lastGuardrailRef.current || {};
+          const ru = ctx?.renderIntake || lastRenderIntakeRef.current || {};
+          const upId = ctx?.uploadId || uploadId || ru?.uploadId;
+          const sourceUrl = ctx?.sourceImageUrl || (upId ? uploads[upId]?.imageUrl : undefined);
+          setAppState('GENERATING');
+          if (opt.startsWith('再试')) {
+              await triggerGeneration(ru, undefined, {
+                  sourceImageUrl: sourceUrl,
+                  outputMode: 'PRECISE_I2I',
+                  keep_structure: true,
+                  qualityPreset: 'STRUCTURE_LOCK',
+                  i2i_source_weight: 0.97,
+                  i2i_strength: 0.25,
+                  cfg_scale: 4.2,
+              });
+              return;
+          }
+          if (opt.startsWith('改用概念图')) {
+              await triggerGeneration(ru, undefined, {
+                  outputMode: 'FAST_T2I',
+              });
+              return;
+          }
+      }
 
       // One-tap refinement actions (mobile friendly)
       if (opt.startsWith('再精修：')) {
