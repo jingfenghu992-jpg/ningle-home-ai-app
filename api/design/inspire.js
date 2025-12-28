@@ -838,6 +838,136 @@ export default async function handler(req, res) {
     const resultUrl = first?.url || first?.image_url;
     const resultB64 = first?.b64_json || first?.image || first?.base64 || first?.b64;
 
+    const checkDistortionGuardrail = async (imgUrlOrDataUrl) => {
+      // Best-effort guardrail. If it says "suspected", we block returning the image.
+      const img = String(imgUrlOrDataUrl || '').trim();
+      if (!img) return { ok: false, error: 'NO_IMAGE' };
+      try {
+        // Prefer a data URL so StepFun VLM can always read it
+        let dataUrl = img;
+        if (img.startsWith('http')) {
+          const fetched = await fetchFullImageAsDataUrl(img);
+          if (!fetched.ok || !fetched.dataUrl) return { ok: false, error: 'FETCH_FAIL' };
+          dataUrl = fetched.dataUrl;
+        }
+
+        const anchors = intake?.visionExtraction?.hkAnchors || intake?.extraction?.hkAnchors || intake?.hkAnchors || {};
+        const anchorsStr = JSON.stringify(anchors);
+        const schema = `Return JSON only:
+{
+  "distortionSuspected": true/false,
+  "signals": ["fisheye","wide-angle","ultra-wide","vignette","dark-corners","curved-lines","warped-walls","panoramic","circular-frame","tunnel-view"],
+  "anchorMismatch": true/false,
+  "notes": "short reason"
+}
+Rules:
+- Judge ONLY from the image. If unsure, set distortionSuspected=false and anchorMismatch=false.
+- Flag distortionSuspected=true if you see fisheye/ultra-wide, curved lines, warped windows/door frames, vignette/dark corners, circular frame, or stretched proportions.
+- Flag anchorMismatch=true only if obvious (e.g. window wall/offset/daylight direction clearly contradict anchors).`;
+
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 12000);
+        try {
+          const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            signal: controller.signal,
+            body: JSON.stringify({
+              model: 'step-1v-8k',
+              temperature: 0.1,
+              max_tokens: 180,
+              messages: [
+                { role: 'system', content: `You are a strict distortion inspector for Hong Kong interior renders. ${schema}` },
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: `Check distortions and anchor mismatch. Anchors (reference): ${anchorsStr}` },
+                    { type: 'image_url', image_url: { url: dataUrl } },
+                  ],
+                },
+              ],
+            }),
+          });
+          if (!resp.ok) return { ok: false, error: `UPSTREAM_${resp.status}` };
+          const data = await resp.json();
+          const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+          const safeJsonParse = (r) => {
+            try {
+              const clean = String(r || '').replace(/```json/g, '').replace(/```/g, '').trim();
+              const s = clean.indexOf('{');
+              const e = clean.lastIndexOf('}');
+              if (s >= 0 && e > s) return JSON.parse(clean.slice(s, e + 1));
+              return JSON.parse(clean);
+            } catch {
+              return null;
+            }
+          };
+          const parsed = safeJsonParse(raw);
+          if (!parsed) return { ok: false, error: 'PARSE_FAIL' };
+          return { ok: true, result: parsed };
+        } finally {
+          clearTimeout(t);
+        }
+      } catch {
+        return { ok: false, error: 'EXCEPTION' };
+      }
+    };
+
+    // Guardrail: block obviously distorted outputs for PRECISE_I2I.
+    if (actualMode === 'PRECISE_I2I') {
+      const imgToCheck = resultUrl || (resultB64 ? `data:image/jpeg;base64,${resultB64}` : '');
+      const guard = await checkDistortionGuardrail(imgToCheck);
+      const g = guard.ok ? guard.result : null;
+      const distortionSuspected = Boolean(g?.distortionSuspected);
+      if (distortionSuspected) {
+        res.status(422).json({
+          ok: false,
+          errorCode: 'DISTORTION_SUSPECTED',
+          message: '检测到可能的广角/鱼眼/黑角/拉伸变形。为避免误导，已阻止出图。',
+          fallbackPlan: {
+            conservative: { outputMode: 'PRECISE_I2I', i2i_source_weight: 0.97, cfg_scale: 4.2, i2i_strength: 0.25, qualityPreset: 'STRUCTURE_LOCK' },
+            concept: { outputMode: 'FAST_T2I' }
+          },
+          debug: {
+            outputMode: actualMode,
+            requestedEndpoint,
+            usedKey,
+            model: 'step-1x-medium',
+            elapsedMs: Date.now() - startedAt,
+            promptChars: built?.promptChars,
+            promptHash: built?.promptHash,
+            hkSpace: built?.hkSpace,
+            layoutVariant: built?.layoutVariant,
+            dropped: built?.dropped,
+            anchorDropped: built?.anchorDropped,
+            antiDistortDropped: built?.antiDistortDropped,
+            userSelected,
+            applied: { ...applied, outputMode: actualMode },
+            mismatch,
+            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+            baseImage,
+            baseImageBytes,
+            baseImageBytesSent,
+            baseImageContentType: baseImage?.contentType || null,
+            baseImageWidth: baseImage?.w || null,
+            baseImageHeight: baseImage?.h || null,
+            aspectRatio,
+            targetSize: targetSizeUsed,
+            padded,
+            paddingMethod,
+            resizeMode,
+            fallbackUsed,
+            distortionSuspected: true,
+            distortionSignals: g?.signals || [],
+            anchorMismatch: Boolean(g?.anchorMismatch),
+            distortionNotes: g?.notes || '',
+            ...(debugEnabled ? { usedText: prompt } : {}),
+          }
+        });
+        return;
+      }
+    }
+
     if (finalResponseFormat === 'url') {
       if (!resultUrl && !resultB64) {
         res.status(502).json({ ok: false, errorCode: 'INVALID_RESPONSE', message: 'No image payload received' });
