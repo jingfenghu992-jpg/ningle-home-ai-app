@@ -1,7 +1,6 @@
 {
   "functions": {
     "api/vision.js": { "maxDuration": 120 },
-    "api/design/render.js": { "maxDuration": 180 },
     "api/design/inspire.js": { "maxDuration": 180 },
     "api/design/generate.js": { "maxDuration": 300 },
     "api/design/qa.js": { "maxDuration": 120 },
