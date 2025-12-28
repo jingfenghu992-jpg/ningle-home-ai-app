@@ -1128,6 +1128,56 @@ const App: React.FC = () => {
       ].filter(Boolean).join(' ');
   };
 
+  const buildHKDesignKeyPoints = (renderIntake: any) => {
+    const space = String(renderIntake?.space || '').trim();
+    const focus = String(renderIntake?.focus || '').trim();
+    const layoutChoice = String(renderIntake?.layoutChoice || '').trim(); // e.g. "方案A"
+
+    const isSmallBed = space.includes('小睡房') || focus.includes('小睡房') || focus.includes('地台') || focus.includes('活動床') || focus.includes('活动床');
+    const isA = layoutChoice.includes('A') || focus.includes('方案A') || focus.includes('方案 A') || focus.includes('地台');
+    const isB = layoutChoice.includes('B') || focus.includes('方案B') || focus.includes('方案 B') || focus.includes('活動床') || focus.includes('活动床');
+
+    // Keep each point short (<=18 chars after "- ").
+    const pts: string[] = [];
+    if (isSmallBed) {
+      if (isB) {
+        pts.push('收納：右牆到頂收納牆');
+        pts.push('睡眠：活動床更省位');
+        pts.push('書枱：窗邊細書枱');
+        pts.push('燈光：暖白主燈＋燈帶');
+        pts.push('色調：暖白＋原木');
+      } else {
+        // Default A
+        pts.push('收納：右牆到頂趟門櫃');
+        pts.push('睡眠：地台床連床下收納');
+        pts.push('動線：窗邊留通道');
+        pts.push('燈光：暖白主燈＋燈帶');
+        pts.push('色調：白＋淺木更明亮');
+      }
+    } else {
+      // Generic fallback for other spaces
+      pts.push('收納：到頂櫃分區收納');
+      pts.push('動線：保留淨通道');
+      pts.push('燈光：暖白分層照明');
+      pts.push('色調：淺木配暖白');
+    }
+
+    const uniq: string[] = [];
+    for (const p of pts) {
+      const t = String(p).trim();
+      if (!t) continue;
+      if (!uniq.includes(t)) uniq.push(t);
+      if (uniq.length >= 6) break;
+    }
+    return uniq.slice(0, 6);
+  };
+
+  const buildHKDesignKeyPointsCard = (renderIntake: any) => {
+    const pts = buildHKDesignKeyPoints(renderIntake);
+    const lines = pts.map(x => `- ${x}`).join('\n');
+    return `【設計重點】\n${lines}`;
+  };
+
   const triggerGeneration = async (intakeData: any, revisionText?: string, overrides?: any) => {
       try {
           if (intakeData && typeof intakeData === 'object') {
@@ -1262,21 +1312,11 @@ const App: React.FC = () => {
               { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
             ]);
 
-            // Notes must be consistent with the generated image (same renderId).
-            const renderId = (res as any)?.renderId;
-            const notes = String((res as any)?.designNotes || '').trim();
-            const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
-            if (notes) {
-              await typeOutAI(
-                `【设计说明（与本次效果图一致）】${renderId ? `\nrenderId: ${renderId}` : ''}\n${notes}\n\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
-                { options: refineOptions, meta: { kind: 'generated', uploadId } }
-              );
-            } else {
-              await typeOutAI(
-                `效果圖已出。${renderId ? `\nrenderId: ${renderId}` : ''}\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
-                { options: refineOptions, meta: { kind: 'generated', uploadId } }
-              );
-            }
+            // Post-render: show short HK key points (no refine buttons; adjustments via chat text only).
+            await typeOutAI(
+              `${buildHKDesignKeyPointsCard(renderIntake)}\n\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
+              { meta: { kind: 'generated', uploadId } }
+            );
           } finally {
             stopLoadingToast(genLoadingId);
           }
@@ -1328,7 +1368,7 @@ const App: React.FC = () => {
                       return;
                   }
                   if (res.errorCode === 'TIMEOUT') {
-                      await typeOutAI("精修超时了（服务器繁忙时会出现）。你可以稍后再点一次「再精修：柜体更清晰」。");
+                      await typeOutAI("暫時等耐咗少少，你可以稍後再試一次。");
                       setAppState('ANALYSIS_DONE');
                       return;
                   }
@@ -1361,11 +1401,10 @@ const App: React.FC = () => {
                 { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
               ]);
 
-              const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
-              await typeOutAI("细节已增强，想再改一张？点下面一个：", {
-                options: refineOptions,
-                meta: { kind: 'generated', uploadId }
-              });
+              await typeOutAI(
+                `${buildHKDesignKeyPointsCard(renderIntake)}\n\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
+                { meta: { kind: 'generated', uploadId } }
+              );
           } finally {
               stopLoadingToast(genLoadingId);
           }
@@ -1406,91 +1445,7 @@ const App: React.FC = () => {
       }
 
       // One-tap refinement actions (mobile friendly)
-      if (opt.startsWith('再精修：')) {
-          // Prevent spamming (StepFun often enforces very low concurrency)
-          if (message.isLocked || appState === 'GENERATING') {
-              await typeOutAI("收到～我现在精修中，通常要 1–3 分钟；完成后我会出新效果图。");
-              return;
-          }
-          // Lock this message so the user won't accidentally queue multiple jobs
-          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
-
-          const tweak = opt.replace('再精修：', '').trim();
-          setAppState('GENERATING');
-          // Prefer detail enhancement using the current generated image as reference.
-          const baseImg = (uploadId && uploads[uploadId]?.generatedImageUrl) ? uploads[uploadId]!.generatedImageUrl! : (lastGeneratedImage || '');
-          if (baseImg) {
-            triggerEnhanceFromCurrent(baseImg, tweak, uploadId);
-          } else {
-            // Fallback: regenerate from text only
-            triggerGeneration(null, tweak);
-          }
-          return;
-      }
-
-      // HK V2 post-render refine buttons (rerun i2i from the original upload)
-      if (opt === '更似我间屋（保留窗位/透视）' || opt === '收纳更强（加到顶柜/地台）' || opt === '氛围更靓（灯光+软装）') {
-          if (message.isLocked || appState === 'GENERATING') {
-              await typeOutAI("收到～我而家生成緊，你等我出完先再点下一张～");
-              return;
-          }
-          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
-
-          const u0 = uploadId ? uploads[uploadId] : undefined;
-          if (u0 && Number.isInteger(u0.revisionIndex) && (u0.revisionIndex as number) >= 3) {
-            await typeOutAI("我可以一對一免費幫你再調到更貼合你屋企，方便 WhatsApp 我哋：+852 56273817");
-            return;
-          }
-          const base0 = (lastRenderIntakeRef.current && typeof lastRenderIntakeRef.current === 'object')
-            ? { ...lastRenderIntakeRef.current }
-            : {};
-          const intensity =
-            opt.includes('更似') ? '保守（更对位）'
-              : (base0?.intensity || (u0?.render as any)?.intensity || '保守（更对位）');
-          const goal =
-            opt.includes('收纳') ? '收纳优先'
-              : opt.includes('氛围') ? '氛围舒适'
-                : (base0?.priority || (u0?.render as any)?.priority || '收纳优先');
-
-          const nextBase = {
-            ...(base0 || {}),
-            uploadId,
-            baseWidth: u0?.width || base0?.baseWidth,
-            baseHeight: u0?.height || base0?.baseHeight,
-            space: u0?.spaceType || base0?.space || '',
-            priority: goal,
-            intensity,
-            // add a tiny note (keeps prompts short; structure is locked in hkPrompt)
-            requirements: opt.includes('更似')
-              ? `${String(base0?.requirements || '').trim()}\nKeep materials/lighting closer to the photo; keep openings unchanged.`.trim()
-              : String(base0?.requirements || '').trim()
-          };
-
-          // Persist pick in upload state
-          if (uploadId) {
-            setUploads(prev => prev[uploadId] ? ({
-              ...prev,
-              [uploadId]: {
-                ...prev[uploadId],
-                render: {
-                  ...(prev[uploadId].render || {}),
-                  priority: goal,
-                  intensity,
-                  ...(prev[uploadId].imageUrl ? { preferPrecise: true } : {})
-                }
-              }
-            }) : prev);
-          }
-
-          await triggerGeneration(nextBase, undefined, {
-            outputMode: 'PRECISE_I2I',
-            keep_structure: true,
-            qualityPreset: 'STRUCTURE_LOCK',
-            fastAnchors: true,
-            ...quickI2IOverridesByIntensity(intensity),
-          });
-          return;
-      }
+      // Step 6: refine buttons removed. All adjustments are collected via chat text.
 
       if (message.meta?.kind === 'space_pick' && uploadId) {
           // Lock this message to prevent double-trigger
@@ -1615,8 +1570,8 @@ const App: React.FC = () => {
             setMessages(prev => [...prev, { id: `${Date.now()}-img`, type: 'image', content: res.resultUrl!, sender: 'ai', timestamp: Date.now() }]);
             const note = String(res.designNotes || '').trim();
             await typeOutAI(
-              `【设计说明（與本次效果圖一致）】${res.renderId ? `\nrenderId: ${res.renderId}` : ''}\n${note || ''}\n\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
-              { options: ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"], meta: { kind: 'generated', uploadId } }
+              `${buildHKDesignKeyPointsCard(renderIntake)}\n\n想再調整邊度？你打幾句（例如：衣櫃改趟門／加書枱／燈光暖啲），我幫你再出一張。`,
+              { meta: { kind: 'generated', uploadId } }
             );
             return;
           }
