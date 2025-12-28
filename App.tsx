@@ -282,12 +282,13 @@ const App: React.FC = () => {
     const styles = ['现代简约', '奶油风', '日式木系', '轻奢'];
     const goals = ['收纳优先', '氛围舒适', '显大清爽'];
     const intensities = ['保守（更对位）', '明显（更有设计感）'];
-    const withCheck = (label: string, picked: string) => (picked === label ? `☑ ${label}` : `☐ ${label}`);
+    const withRadio = (group: string, label: string, picked: string) =>
+      (picked === label ? `${group}：◉ ${label}` : `${group}：○ ${label}`);
 
     const opts = [
-      ...styles.map(s => withCheck(s, picks.style)),
-      ...goals.map(g => withCheck(g, picks.goal)),
-      ...intensities.map(i => withCheck(i, picks.intensity)),
+      ...styles.map(s => withRadio('风格', s, picks.style)),
+      ...goals.map(g => withRadio('目标', g, picks.goal)),
+      ...intensities.map(i => withRadio('强度', i, picks.intensity)),
       '一键出图（推荐）',
       '概念示意（较快，不保证对位）',
       ...(includeVision ? ['更似我间屋（精准校准，需要分析）'] : []),
@@ -998,9 +999,12 @@ const App: React.FC = () => {
               const sizeInfo = d.targetSize ? ` target=${d.targetSize}` : (d.sentSize ? ` target=${d.sentSize}` : '');
               const pad = (typeof d.padded === 'boolean') ? ` padded=${d.padded}` : '';
               const fetchOk = (typeof d.imageFetchOk === 'boolean') ? ` fetchOk=${d.imageFetchOk}` : '';
+              const lite = d.hkAnchorsLite
+                ? ` lite(win=${d.hkAnchorsLite.window_wall ?? ''}/${d.hkAnchorsLite.window_count ?? ''}, lens=${d.hkAnchorsLite.lens_risk ?? ''})`
+                : '';
               const header =
                 `endpoint=${d.usedEndpoint ?? d.requestedEndpoint ?? ''} | mode=${d.outputMode ?? ''} | fallback=${d.fallbackUsed ?? ''} | mismatch=${d.mismatch ?? ''} | chars=${d.promptChars ?? ''} | hash=${d.promptHash ?? ''} | hkSpace=${d.hkSpace ?? ''} | A/B=${d.layoutVariant ?? ''} | dropped=${(d.dropped || []).join(',')}` +
-                `${fetchOk}${i2i}${base}${ar}${sizeInfo}${pad}`;
+                `${fetchOk}${i2i}${base}${ar}${sizeInfo}${pad}${lite}`;
               const usedText = String(d.usedText || '').trim();
               if (usedText) {
                 console.log('[DEBUG] inspire usedText', usedText);
@@ -1313,7 +1317,10 @@ const App: React.FC = () => {
         const u0 = uploads[uploadId];
         if (!u0) return;
 
-        const cleaned = opt.replace(/^☑\s+|^☐\s+/, '').trim();
+        const cleaned = String(opt || '')
+          .replace(/^(风格|目标|强度)：\s*[◉○]\s*/g, '')
+          .replace(/^[☑☐◉○]\s+/g, '')
+          .trim();
         const isStyle = ['现代简约', '奶油风', '日式木系', '轻奢'].includes(cleaned);
         const isGoal = ['收纳优先', '氛围舒适', '显大清爽'].includes(cleaned);
         const isIntensity = ['保守（更对位）', '明显（更有设计感）'].includes(cleaned);
