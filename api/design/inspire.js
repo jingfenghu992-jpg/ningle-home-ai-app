@@ -1,3 +1,5 @@
+import { buildHKPrompt } from '../../lib/hkPrompt.js';
+
 export const config = {
   api: {
     bodyParser: {
@@ -13,6 +15,18 @@ export default async function handler(req, res) {
     res.status(405).json({ ok: false, message: 'Method Not Allowed' });
     return;
   }
+
+  const startedAt = Date.now();
+  const debugEnabled = (() => {
+    try {
+      const u = new URL(req.url || '', 'http://localhost');
+      return u.searchParams.get('debug') === '1';
+    } catch {
+      // Vercel usually provides req.query, but keep it defensive
+      // eslint-disable-next-line no-undef
+      return String(req?.query?.debug || '') === '1';
+    }
+  })();
 
   const {
     renderIntake,
@@ -334,44 +348,12 @@ export default async function handler(req, res) {
     return '';
   })();
 
-  let prompt = [
-    // 前置：结构锁定越靠前越有效（避免被 1024 截断）
-    structureCues,
-    roomTypeLock,
-    mustHave,
-    `${spaceEn}.`,
-    'Photorealistic high-end interior design rendering, V-Ray/Corona render style, magazine quality.',
-    `Style: ${styleEn}.`,
-    `Color palette: ${colorEn}.`,
-    housingType ? `Hong Kong home type: ${housingType}.` : '',
-    needsWorkstation ? `Workstation needed: ${needsWorkstation}.` : '',
-    hallType ? `Hall type: ${hallType}.` : '',
-    dimsLine,
-    layoutLine,
-    bedLine,
-    builtInsFromFocus,
-    storageLine,
-    decorLine,
-    intensityLine,
-    lightingByVibe(vibe),
-    'Hong Kong apartment practicality, compact space planning, clear circulation.',
-    // Push millwork details (cabinet panels/edges/handles) for sharper results
-    'Millwork detail: crisp cabinetry panel lines, accurate proportions, toe-kick + shadow gaps, clean edges, realistic hardware, no blurry surfaces.',
-    'Ceiling design: slim gypsum board ceiling with recessed cove lighting + downlights (no office grid ceiling).',
-    'Materials: coherent warm textures, clean realistic details; built-in cabinetry with toe-kick and shadow gaps.',
-    avoidBySpace,
-    // 关键反例：强行排除“日式榻榻米/障子窗/茶室”等最常见跑偏方向
-    'Avoid: traditional Japanese tatami room, shoji paper screens, tea room, zen dojo, floor-to-ceiling shoji windows, extra windows/doors, cartoon, CGI toy look, low-poly, distorted straight lines, fisheye, clutter, unfinished concrete.',
-  ].filter(Boolean).join(' ');
-
-  // StepFun t2i prompt must be 1..1024 chars
-  prompt = String(prompt || '').replace(/\s+/g, ' ').trim();
-  if (prompt.length === 0) {
+  // P1: Hong Kong 6-space prompt builder (short, hard, <= 1024 chars)
+  const built = buildHKPrompt({ renderIntake: intake });
+  const prompt = String(built?.prompt || '').replace(/\s+/g, ' ').trim();
+  if (!prompt) {
     res.status(400).json({ ok: false, errorCode: 'INVALID_PROMPT', message: 'Empty prompt' });
     return;
-  }
-  if (prompt.length > 1024) {
-    prompt = prompt.slice(0, 1021) + '...';
   }
 
   try {
@@ -435,7 +417,21 @@ export default async function handler(req, res) {
       res.status(200).json({
         ok: true,
         resultUrl: resultUrl || `data:image/jpeg;base64,${resultB64}`,
-        debug: { seed: resultSeed, finish_reason: finishReason, size: finalSize, steps: finalSteps, cfg_scale: finalCfgScale },
+        debug: {
+          seed: resultSeed,
+          finish_reason: finishReason,
+          size: finalSize,
+          steps: finalSteps,
+          cfg_scale: finalCfgScale,
+          model: 'step-1x-medium',
+          elapsedMs: Date.now() - startedAt,
+          promptChars: built?.promptChars,
+          promptHash: built?.promptHash,
+          hkSpace: built?.hkSpace,
+          layoutVariant: built?.layoutVariant,
+          dropped: built?.dropped,
+          ...(debugEnabled ? { usedText: prompt } : {}),
+        },
       });
       return;
     }
@@ -447,7 +443,21 @@ export default async function handler(req, res) {
     res.status(200).json({
       ok: true,
       resultUrl: `data:image/png;base64,${resultB64}`,
-      debug: { seed: resultSeed, finish_reason: finishReason, size: finalSize, steps: finalSteps, cfg_scale: finalCfgScale },
+      debug: {
+        seed: resultSeed,
+        finish_reason: finishReason,
+        size: finalSize,
+        steps: finalSteps,
+        cfg_scale: finalCfgScale,
+        model: 'step-1x-medium',
+        elapsedMs: Date.now() - startedAt,
+        promptChars: built?.promptChars,
+        promptHash: built?.promptHash,
+        hkSpace: built?.hkSpace,
+        layoutVariant: built?.layoutVariant,
+        dropped: built?.dropped,
+        ...(debugEnabled ? { usedText: prompt } : {}),
+      },
     });
   } catch (e) {
     res.status(500).json({ ok: false, errorCode: 'INTERNAL_ERROR', message: e?.message || 'Internal error' });
