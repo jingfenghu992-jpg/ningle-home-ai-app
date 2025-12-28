@@ -12,6 +12,17 @@ export default async function handler(req, res) {
         return;
     }
 
+    const startedAt = Date.now();
+    const debugEnabled = (() => {
+        try {
+            const u = new URL(req.url || '', 'http://localhost');
+            return u.searchParams.get('debug') === '1';
+        } catch {
+            // eslint-disable-next-line no-undef
+            return String(req?.query?.debug || '') === '1';
+        }
+    })();
+
     const imageUrl = req.body.imageUrl || req.body.imageDataUrl || req.body.image;
     const spaceType = req.body.spaceType; // New: Accept space type hint
 
@@ -33,6 +44,24 @@ export default async function handler(req, res) {
 
     try {
         console.log('[Vision API] Analyzing image...');
+
+        const debug = {
+            inputImageUrl: (() => {
+                const raw = String(imageUrl || '');
+                const head = raw.slice(0, 60);
+                let host = '';
+                try {
+                    host = raw.startsWith('http') ? (new URL(raw).host || '') : '';
+                } catch {}
+                return host ? `${head} (host=${host})` : head;
+            })(),
+            imageFetchOk: undefined,
+            imageContentType: undefined,
+            imageContentLength: undefined,
+            model: 'step-1v-8k',
+            elapsedMs: undefined,
+            retryUsed: false,
+        };
 
         const normalizeSpaceType = (t) => {
             const v = String(t || '').trim();
@@ -226,17 +255,45 @@ export default async function handler(req, res) {
         };
         
         let finalImageUrl = imageUrl;
-        if (imageUrl.startsWith('http')) {
+        const rawImageStr = String(imageUrl || '').trim();
+        if (rawImageStr.startsWith('blob:')) {
+            res.status(400).json({
+                ok: false,
+                errorCode: 'IMAGE_URL_UNREACHABLE',
+                message: 'Invalid image URL (blob:). Please re-upload to obtain a public URL.',
+                ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
+            });
+            return;
+        }
+        if (rawImageStr.startsWith('http')) {
             try {
-                const imgRes = await fetch(imageUrl);
-                if (imgRes.ok) {
-                    const arrayBuffer = await imgRes.arrayBuffer();
-                    const base64 = Buffer.from(arrayBuffer).toString('base64');
-                    const mime = imgRes.headers.get('content-type') || 'image/jpeg';
-                    finalImageUrl = `data:${mime};base64,${base64}`;
+                const imgRes = await fetch(rawImageStr);
+                debug.imageFetchOk = !!imgRes.ok;
+                debug.imageContentType = imgRes.headers.get('content-type') || null;
+                debug.imageContentLength = imgRes.headers.get('content-length') || null;
+
+                if (!imgRes.ok) {
+                    res.status(400).json({
+                        ok: false,
+                        errorCode: 'IMAGE_URL_UNREACHABLE',
+                        message: `Image URL fetch failed (HTTP ${imgRes.status}). Please re-upload to refresh the image URL.`,
+                        ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
+                    });
+                    return;
                 }
+                const arrayBuffer = await imgRes.arrayBuffer();
+                const base64 = Buffer.from(arrayBuffer).toString('base64');
+                const mime = imgRes.headers.get('content-type') || 'image/jpeg';
+                finalImageUrl = `data:${mime};base64,${base64}`;
             } catch (e) {
-                console.warn('[Vision API] Failed to convert URL to base64, using original URL');
+                debug.imageFetchOk = false;
+                res.status(400).json({
+                    ok: false,
+                    errorCode: 'IMAGE_URL_UNREACHABLE',
+                    message: `Image URL fetch failed. Please re-upload to refresh the image URL.`,
+                    ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
+                });
+                return;
             }
         }
 
@@ -291,21 +348,24 @@ Rules:
   - Ensure circulation is realistic for HK units; avoid placing bed blocking window access.
 - Focus on layout/placement/cabinet feasibility for Hong Kong flats.`;
 
-        const response = await fetch('https://api.stepfun.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: 'step-1v-8k',
-                temperature: 0.15,
-                // Slightly larger to allow 2-3 layout options while keeping latency OK
-                max_tokens: 520,
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are a senior Hong Kong interior designer specialized in cabinetry, storage zoning and buildable circulation.
+        const callVision = async (opts) => {
+            const temperature = typeof opts?.temperature === 'number' ? opts.temperature : 0.15;
+            const userText = opts?.userText || "Analyze this interior photo for structure, constraints, and 2-3 buildable layout options.";
+            return await fetch('https://api.stepfun.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'step-1v-8k',
+                    temperature,
+                    // Slightly larger to allow 2-3 layout options while keeping latency OK
+                    max_tokens: 520,
+                    messages: [
+                        {
+                            role: "system",
+                            content: `You are a senior Hong Kong interior designer specialized in cabinetry, storage zoning and buildable circulation.
 ${spacePrompt}
 You MUST output JSON only. No markdown, no extra text.
 Key checks you MUST explicitly answer:
@@ -317,17 +377,20 @@ Forbidden:
 Directions:
 - Use relative directions only: 左墙/右墙/远端墙/入口侧, and beam direction: 左右向/前后向. Do NOT use 东西南北.
 ${schema}`
-                    },
-                    {
-                        role: "user",
-                        content: [
-                            { type: "text", text: "Analyze this interior photo for structure, constraints, and 2-3 buildable layout options." },
-                            { type: "image_url", image_url: { url: finalImageUrl } }
-                        ]
-                    }
-                ]
-            })
-        });
+                        },
+                        {
+                            role: "user",
+                            content: [
+                                { type: "text", text: userText },
+                                { type: "image_url", image_url: { url: finalImageUrl } }
+                            ]
+                        }
+                    ]
+                })
+            });
+        };
+
+        let response = await callVision({ temperature: 0.15 });
 
         if (!response.ok) {
             throw new Error(`Upstream Error: ${response.status} ${await response.text()}`);
@@ -349,6 +412,33 @@ ${schema}`
         };
 
         const parsed = safeJsonParse(content);
+        const looksDegraded = (p) => {
+            if (!p || typeof p !== 'object') return true;
+            // If key fields are missing entirely, consider it degraded.
+            const mustKeys = ['doors_windows', 'beams_ceiling', 'light', 'finish_level', 'hkAnchors'];
+            for (const k of mustKeys) {
+                if (!(k in p)) return true;
+            }
+            // If hkAnchors is missing or not object, degraded.
+            if (!p.hkAnchors || typeof p.hkAnchors !== 'object') return true;
+            return false;
+        };
+
+        // If model output misses important fields, retry once with a stricter instruction.
+        let parsed2 = parsed;
+        if (looksDegraded(parsed2)) {
+            debug.retryUsed = true;
+            const response2 = await callVision({
+                temperature: 0.05,
+                userText: "Return STRICT JSON only following the schema. Do NOT omit any keys. If unknown, set UNKNOWN/未见 accordingly."
+            });
+            if (response2.ok) {
+                const data2 = await response2.json();
+                const content2 = data2.choices?.[0]?.message?.content || "";
+                const parsedRetry = safeJsonParse(content2);
+                if (parsedRetry) parsed2 = parsedRetry;
+            }
+        }
 
         const normalizeAnchors = (raw) => {
             const pick = (v, allowed) => {
@@ -402,8 +492,8 @@ ${schema}`
         };
 
         // Enforce consistent spaceType if provided by user
-        const enforcedSpace = normalizeSpaceType(spaceType || parsed?.space_type);
-        const baseParsed = parsed || {};
+        const enforcedSpace = normalizeSpaceType(spaceType || parsed2?.space_type);
+        const baseParsed = parsed2 || {};
         const hkAnchors = normalizeAnchors(baseParsed.hkAnchors);
         const extraction = {
             ...baseParsed,
@@ -416,10 +506,12 @@ ${schema}`
 
         const summary = to4LineSummary(extraction);
 
+        debug.elapsedMs = Date.now() - startedAt;
         res.status(200).json({
             ok: true,
             vision_summary: summary,
-            extraction
+            extraction,
+            ...(debugEnabled ? { debug } : {})
         });
 
     } catch (error) {

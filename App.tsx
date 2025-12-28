@@ -223,14 +223,24 @@ const App: React.FC = () => {
       } else {
         stopLoadingToast(analysisLoadingId);
         setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], analysisStatus: 'idle' } }) : prev);
-        await typeOutAI("分析失败，请重试。");
+        if (visionRes?.errorCode === 'IMAGE_URL_UNREACHABLE') {
+          await typeOutAI("图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。");
+        } else {
+          await typeOutAI("分析失败，请重试。");
+        }
         setAppState('WAITING_FOR_SPACE');
       }
     } catch (e) {
       console.error(e);
       stopLoadingToast(analysisLoadingId);
       setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], analysisStatus: 'idle' } }) : prev);
-      await typeOutAI("系统错误，请重试。");
+      // If backend reports image URL unreachable, user must re-upload to refresh the URL.
+      const msg = String((e as any)?.message || '');
+      if (msg.includes('IMAGE_URL_UNREACHABLE')) {
+        await typeOutAI("图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。");
+      } else {
+        await typeOutAI("系统错误，请重试。");
+      }
       setAppState('WAITING_FOR_SPACE');
     }
   };
