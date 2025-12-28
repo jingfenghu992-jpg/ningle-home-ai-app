@@ -284,9 +284,9 @@ const App: React.FC = () => {
   const quickI2IOverridesByIntensity = (label: string) => {
     const t = String(label || '');
     if (t.includes('明显') || t.includes('明顯')) {
-      return { i2i_strength: 0.40, i2i_source_weight: 0.92, cfg_scale: 5.0, steps: 24 };
+      return { i2i_strength: 0.32, i2i_source_weight: 0.95, cfg_scale: 5.0, steps: 24 };
     }
-    return { i2i_strength: 0.30, i2i_source_weight: 0.95, cfg_scale: 5.0, steps: 22 };
+    return { i2i_strength: 0.22, i2i_source_weight: 0.98, cfg_scale: 5.0, steps: 22 };
   };
 
   const handleUpload = (file: File) => {
@@ -937,6 +937,11 @@ const App: React.FC = () => {
               const msg = (res as any)?.message || '生成失败';
               if (code === 'BASE_IMAGE_REQUIRED') {
                 await typeOutAI("相片链接无法读取（更贴原相需要相片可访问）。请重新上传同一张图片再试一次。");
+                setAppState('ANALYSIS_DONE');
+                return;
+              }
+              if (code === 'IMAGE_URL_UNREACHABLE') {
+                await typeOutAI("图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。");
                 setAppState('ANALYSIS_DONE');
                 return;
               }

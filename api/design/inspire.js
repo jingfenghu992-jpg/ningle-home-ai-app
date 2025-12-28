@@ -573,16 +573,17 @@ export default async function handler(req, res) {
     // C7: STRUCTURE_LOCK preset (reduce distortions by preserving geometry/perspective)
     const preset = String(qualityPreset || '').trim();
     const finalKeepStructure = typeof keep_structure === 'boolean' ? keep_structure : true;
-    const defaultSW = preset === 'STRUCTURE_LOCK' ? 0.90 : 0.85;
+    const defaultSW = preset === 'STRUCTURE_LOCK' ? 0.95 : 0.85;
     // Product-level "strength" is tracked in debug and used to pick conservative params.
     // Upstream StepFun image2image uses source_weight as the main structure control.
-    const defaultStrength = preset === 'STRUCTURE_LOCK' ? 0.35 : 0.80;
-    const defaultCfg = preset === 'STRUCTURE_LOCK' ? 4.5 : finalCfgScale;
-    const defaultSW2 = preset === 'STRUCTURE_LOCK' ? 0.95 : defaultSW;
+    // HK: structure-first defaults (首张更对位)
+    const defaultStrength = preset === 'STRUCTURE_LOCK' ? 0.22 : 0.80;
+    const defaultCfg = preset === 'STRUCTURE_LOCK' ? 5.0 : finalCfgScale;
+    const defaultSW2 = preset === 'STRUCTURE_LOCK' ? 0.98 : defaultSW;
     const finalI2ISourceWeight = (typeof i2i_source_weight === 'number' && i2i_source_weight > 0 && i2i_source_weight <= 1)
       ? i2i_source_weight
       : defaultSW2;
-    const finalI2IStrength = (typeof i2i_strength === 'number' && i2i_strength > 0 && i2i_strength <= 1)
+    const finalI2IStrength = (typeof i2i_strength === 'number' && i2i_strength > 0 && i2i_strength <= 0.35)
       ? i2i_strength
       : defaultStrength;
     const finalCfgI2I = (typeof cfg_scale === 'number') ? Math.min(Math.max(cfg_scale, 1), 7.0) : defaultCfg;
@@ -633,8 +634,8 @@ export default async function handler(req, res) {
       if (!v.ok) {
         res.status(400).json({
           ok: false,
-          errorCode: 'BASE_IMAGE_REQUIRED',
-          message: '请重新上传相片再试（更贴原相需要相片可访问）',
+          errorCode: 'IMAGE_URL_UNREACHABLE',
+          message: '图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。',
           debug: {
             outputMode: 'PRECISE_I2I',
             requestedEndpoint: 'image2image',
@@ -672,8 +673,8 @@ export default async function handler(req, res) {
       if (!baseImageBytes || baseImageBytes <= 0) {
         res.status(400).json({
           ok: false,
-          errorCode: 'BASE_IMAGE_REQUIRED',
-          message: '请重新上传相片再试（更贴原相需要相片可访问）',
+          errorCode: 'IMAGE_URL_UNREACHABLE',
+          message: '图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。',
           debug: {
             outputMode: 'PRECISE_I2I',
             requestedEndpoint: 'image2image',
@@ -712,8 +713,8 @@ export default async function handler(req, res) {
       if (!full.ok || !full.dataUrl || !full.bytes) {
         res.status(400).json({
           ok: false,
-          errorCode: 'BASE_IMAGE_REQUIRED',
-          message: '请重新上传相片再试（更贴原相需要相片可访问）',
+          errorCode: 'IMAGE_URL_UNREACHABLE',
+          message: '图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。',
           debug: {
             outputMode: 'PRECISE_I2I',
             requestedEndpoint: 'image2image',
@@ -816,12 +817,48 @@ export default async function handler(req, res) {
           });
           return;
         }
-        fallbackUsed = true;
-        fallbackErrorCode = `UPSTREAM_I2I_${status}`;
-        fallbackErrorMessage = errText || 'i2i failed';
-        actualMode = 'FAST_T2I';
-        requestedEndpoint = 'generations';
-        response = await withRetry429(doT2I);
+        // HK precise mode: do NOT silently fallback to FAST_T2I (would mislead users).
+        res.status(status).json({
+          ok: false,
+          errorCode: `UPSTREAM_I2I_${status}`,
+          message: '精準模式暫時失敗，未有改用概念圖（避免不对位）。请稍后再试，或手动选择「概念示意」。',
+          debug: {
+            outputMode: 'PRECISE_I2I',
+            requestedEndpoint: 'image2image',
+            usedEndpoint: 'image2image',
+            imageFetchOk,
+            usedKey,
+            model: 'step-1x-medium',
+            elapsedMs: Date.now() - startedAt,
+            promptChars: built?.promptChars,
+            promptHash: built?.promptHash,
+            hkSpace: built?.hkSpace,
+            layoutVariant: built?.layoutVariant,
+            dropped: built?.dropped,
+            anchorDropped: built?.anchorDropped,
+            antiDistortDropped: built?.antiDistortDropped,
+            userSelected,
+            applied,
+            mismatch,
+            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+            baseImage,
+            baseImageBytes,
+            baseImageBytesSent,
+            baseImageContentType: baseImage?.contentType || null,
+            baseImageWidth: baseImage?.w || null,
+            baseImageHeight: baseImage?.h || null,
+            aspectRatio,
+            targetSize: targetSizeUsed,
+            padded,
+            paddingMethod,
+            resizeMode,
+            fallbackUsed: false,
+            upstreamStatus: status,
+            upstreamError: errText ? errText.slice(0, 600) : null,
+            ...(debugEnabled ? { usedText: prompt } : {}),
+          }
+        });
+        return;
       }
     } else {
       response = await withRetry429(doT2I);
