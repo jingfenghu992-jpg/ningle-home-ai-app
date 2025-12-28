@@ -193,16 +193,20 @@ const App: React.FC = () => {
 
   const getHKPreferenceOptions = (u: any) => {
     const picks = getQuickRenderPicks(u);
-    const styles = ['现代简约', '奶油风', '日式木系', '轻奢'];
-    const goals = ['收纳优先', '显大清爽', '氛围舒适'];
-    const intensities = ['保守（更对位）', '明显（更有设计感）'];
+    const styles = [
+      '現代簡約（白＋淺木）',
+      '奶油暖白（米白＋淺木）',
+      '日式木系（原木＋暖白）',
+    ];
+    const goals = ['收納優先', '顯大清爽'];
+    const intensities = ['更貼近原相', '設計感多啲'];
     const withRadio = (group: string, label: string, picked: string) =>
       (picked === label ? `${group}：◉ ${label}` : `${group}：○ ${label}`);
     return [
-      ...styles.map(s => withRadio('风格', s, picks.style)),
-      ...goals.map(g => withRadio('目标', g, picks.goal)),
-      ...intensities.map(i => withRadio('强度', i, picks.intensity)),
-      '一键出图（推荐）',
+      ...styles.map(s => withRadio('風格', s, picks.style)),
+      ...goals.map(g => withRadio('目標', g, picks.goal)),
+      ...intensities.map(i => withRadio('強度', i, picks.intensity)),
+      '一鍵出圖',
     ];
   };
 
@@ -487,26 +491,30 @@ const App: React.FC = () => {
   const getQuickRenderPicks = (u: any) => {
     const r = (u?.render || {}) as any;
     return {
-      style: String(r.style || '现代简约'),
-      goal: String(r.priority || '收纳优先'),
-      intensity: String(r.intensity || '保守（更对位）'),
+      style: String(r.style || '現代簡約（白＋淺木）'),
+      goal: String(r.priority || '收納優先'),
+      intensity: String(r.intensity || '更貼近原相'),
     };
   };
 
   const getQuickRenderOptions = (u: any, includeVision: boolean) => {
     const picks = getQuickRenderPicks(u);
-    const styles = ['现代简约', '奶油风', '日式木系', '轻奢'];
-    const goals = ['收纳优先', '氛围舒适', '显大清爽'];
-    const intensities = ['保守（更对位）', '明显（更有设计感）'];
+    const styles = [
+      '現代簡約（白＋淺木）',
+      '奶油暖白（米白＋淺木）',
+      '日式木系（原木＋暖白）',
+    ];
+    const goals = ['收納優先', '顯大清爽'];
+    const intensities = ['更貼近原相', '設計感多啲'];
     const withRadio = (group: string, label: string, picked: string) =>
       (picked === label ? `${group}：◉ ${label}` : `${group}：○ ${label}`);
 
     const opts = [
-      ...styles.map(s => withRadio('风格', s, picks.style)),
-      ...goals.map(g => withRadio('目标', g, picks.goal)),
-      ...intensities.map(i => withRadio('强度', i, picks.intensity)),
-      '一键出图（推荐）',
-      '概念示意（较快，不保证对位）',
+      ...styles.map(s => withRadio('風格', s, picks.style)),
+      ...goals.map(g => withRadio('目標', g, picks.goal)),
+      ...intensities.map(i => withRadio('強度', i, picks.intensity)),
+      '一鍵出圖',
+      '概念示意（較快，不保證對位）',
       ...(includeVision ? ['更似我间屋（精准校准，需要分析）'] : []),
     ];
     const uniq: string[] = [];
@@ -521,7 +529,7 @@ const App: React.FC = () => {
 
   const quickI2IOverridesByIntensity = (label: string) => {
     const t = String(label || '');
-    if (t.includes('明显') || t.includes('明顯')) {
+    if (t.includes('設計感') || t.includes('设计感') || t.includes('明显') || t.includes('明顯')) {
       return { i2i_strength: 0.32, i2i_source_weight: 0.95, cfg_scale: 5.0, steps: 24 };
     }
     return { i2i_strength: 0.22, i2i_source_weight: 0.98, cfg_scale: 5.0, steps: 22 };
@@ -1533,7 +1541,7 @@ const App: React.FC = () => {
           const prefU = uploads[uploadId] || u;
           upsertOptionsCard(
             prefsCardId,
-            `【风格/目标/强度】\n（单选）选好后点「一键出图（推荐）」：`,
+            `【風格選擇】\n揀一款就得，我先幫你出第一張。`,
             getHKPreferenceOptions(prefU),
             { kind: 'hk_flow', stage: 'prefs', uploadId }
           );
@@ -1542,13 +1550,13 @@ const App: React.FC = () => {
 
         if (message.meta.stage === 'prefs') {
           const cleaned = String(opt || '')
-            .replace(/^(风格|目标|强度)：\s*[◉○]\s*/g, '')
+            .replace(/^(风格|目标|强度|風格|目標|強度)：\s*[◉○]\s*/g, '')
             .trim();
-          const isStyle = ['现代简约', '奶油风', '日式木系', '轻奢'].includes(cleaned);
-          const isGoal = ['收纳优先', '显大清爽', '氛围舒适'].includes(cleaned);
-          const isIntensity = ['保守（更对位）', '明显（更有设计感）'].includes(cleaned);
+          const isStyle = ['現代簡約（白＋淺木）', '奶油暖白（米白＋淺木）', '日式木系（原木＋暖白）'].includes(cleaned);
+          const isGoal = ['收納優先', '顯大清爽'].includes(cleaned);
+          const isIntensity = ['更貼近原相', '設計感多啲'].includes(cleaned);
 
-          if (cleaned === '一键出图（推荐）') {
+          if (cleaned === '一鍵出圖' || cleaned === '一键出图（推荐）' || cleaned === '一键出图') {
             const rev = Number.isInteger(u.revisionIndex) ? (u.revisionIndex as number) : 0;
             if (rev >= 3) {
               await typeOutAI("我已帮你改到第 3 次啦～为保证对位和落地质量，建议你直接 WhatsApp 我哋 1对1继续：+852 56273817");
@@ -1637,7 +1645,7 @@ const App: React.FC = () => {
             };
             upsertOptionsCard(
               `${uploadId}-prefs`,
-              `【风格/目标/强度】\n（单选）选好后点「一键出图（推荐）」：`,
+              `【風格選擇】\n揀一款就得，我先幫你出第一張。`,
               getHKPreferenceOptions(previewU),
               { kind: 'hk_flow', stage: 'prefs', uploadId }
             );
@@ -1651,12 +1659,12 @@ const App: React.FC = () => {
         if (!u0) return;
 
         const cleaned = String(opt || '')
-          .replace(/^(风格|目标|强度)：\s*[◉○]\s*/g, '')
+          .replace(/^(风格|目标|强度|風格|目標|強度)：\s*[◉○]\s*/g, '')
           .replace(/^[☑☐◉○]\s+/g, '')
           .trim();
-        const isStyle = ['现代简约', '奶油风', '日式木系', '轻奢'].includes(cleaned);
-        const isGoal = ['收纳优先', '氛围舒适', '显大清爽'].includes(cleaned);
-        const isIntensity = ['保守（更对位）', '明显（更有设计感）'].includes(cleaned);
+        const isStyle = ['現代簡約（白＋淺木）', '奶油暖白（米白＋淺木）', '日式木系（原木＋暖白）'].includes(cleaned);
+        const isGoal = ['收納優先', '顯大清爽'].includes(cleaned);
+        const isIntensity = ['更貼近原相', '設計感多啲'].includes(cleaned);
 
         if (cleaned === '更似我间屋（精准校准，需要分析）') {
           await runAnalysisForUpload(uploadId, u0.spaceType || '其他');
@@ -1683,7 +1691,7 @@ const App: React.FC = () => {
           return;
         }
 
-        if (cleaned === '一键出图（推荐）') {
+        if (cleaned === '一鍵出圖' || cleaned === '一键出图（推荐）' || cleaned === '一键出图') {
           const picks = getQuickRenderPicks(u0);
           const base = {
             uploadId,
@@ -1731,7 +1739,7 @@ const App: React.FC = () => {
           const cardId = `${uploadId}-quick_render-picks`;
           upsertOptionsCard(
             cardId,
-            `已选：风格=${picks.style}｜目标=${picks.goal}｜强度=${picks.intensity}\n点「一键出图（推荐）」就会开始生成。`,
+            `已選：風格=${picks.style}｜目標=${picks.goal}｜強度=${picks.intensity}\n撳「一鍵出圖」就會開始生成。`,
             getQuickRenderOptions(previewU, debugEnabled),
             { kind: 'quick_render', stage: 'picks', uploadId }
           );
