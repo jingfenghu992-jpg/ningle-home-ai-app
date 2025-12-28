@@ -364,10 +364,10 @@ ${schema}`
               .slice(0, 2)
               .join('；') || '门窗/梁柱不可动';
             return [
-                `結構：${structure}。`,
-                `光線：${light}。`,
+                `结构：${structure}。`,
+                `光线：${light}。`,
                 `完成度：${finish}。`,
-                `約束：${constraints}。`
+                `约束：${constraints}。`
             ].join('\n');
         };
 

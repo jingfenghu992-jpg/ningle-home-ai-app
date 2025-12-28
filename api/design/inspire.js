@@ -30,8 +30,8 @@ export default async function handler(req, res) {
 
   const finalResponseFormat = (response_format === 'b64_json' || response_format === 'url') ? response_format : 'url';
 
-  // Keep it fast and stable
-  const finalSteps = Number.isInteger(steps) ? Math.min(Math.max(steps, 1), 40) : 30;
+  // Keep it fast and stable (速度优先：默认更低 steps)
+  const finalSteps = Number.isInteger(steps) ? Math.min(Math.max(steps, 1), 40) : 24;
   const finalCfgScale = (typeof cfg_scale === 'number') ? Math.min(Math.max(cfg_scale, 1), 7.0) : 6.6;
   const finalSeed = Number.isInteger(seed) && seed > 0 ? seed : undefined;
 
@@ -165,20 +165,80 @@ export default async function handler(req, res) {
     return `Built-ins must match the selected plan: ${uniq}.`;
   })();
 
-  // Optional: add loose structure cues from vision summary to make the inspiration image closer
-  // to the user's photo "at a glance" (still NOT exact structure; t2i cannot replicate).
+  // 结构约束（用于“文生图尽量像原图”）
+  // 原理：把 /api/vision 的 extraction（门窗/梁柱/完成度/约束）+ 用户选择的动线/尺寸，转成可执行的英文结构锁定指令。
+  // 注：t2i 不可能 100% 复刻，但我们把“房间形状、窗位置、视角、长宽比例、不可动约束”写成硬约束，目标接近 80%+。
   const structureCues = (() => {
+    const ex = intake?.visionExtraction || intake?.extraction || null;
     const vs = String(intake?.visionSummary || '').trim();
-    if (!vs) return '';
-    const lines = vs.split('\n').map(l => l.trim()).filter(Boolean);
-    const structureLine = lines.find(l => l.startsWith('結構：')) || '';
-    const constraintsLine = lines.find(l => l.startsWith('約束：')) || '';
-    const pick = [structureLine, constraintsLine].filter(Boolean).join(' ');
-    const clean = pick.replace(/^結構：/,'').replace(/^約束：/,'').trim();
-    if (!clean) return '';
+
+    const pickLine = (prefixZhArr) => {
+      if (!vs) return '';
+      const lines = vs.split('\n').map(l => l.trim()).filter(Boolean);
+      for (const p of prefixZhArr) {
+        const hit = lines.find(l => l.startsWith(p));
+        if (hit) return hit;
+      }
+      return '';
+    };
+
+    // 兼容旧版（繁体）与新版（简体）前缀
+    const structureLine = pickLine(['结构：', '結構：']) || '';
+    const constraintsLine = pickLine(['约束：', '約束：']) || '';
+    const cleanSummary = [structureLine, constraintsLine]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/^结构：/,'')
+      .replace(/^結構：/,'')
+      .replace(/^约束：/,'')
+      .replace(/^約束：/,'')
+      .trim();
+
+    const doors = normalize(ex?.doors_windows);
+    const cols = normalize(ex?.columns);
+    const beams = normalize(ex?.beams_ceiling);
+    const notes = Array.isArray(ex?.structure_notes) ? ex.structure_notes.map(x => normalize(x)).filter(Boolean).slice(0, 3) : [];
+    const fin = ex?.finish_level || {};
+    const finLevel = normalize(fin?.level);
+    const finEv = normalize(fin?.evidence);
+
+    const dims = (roomWidthChi || roomHeightChi)
+      ? `Room proportions (approx, HK chi): width ${cap(roomWidthChi || 'unknown', 16)}, ceiling height ${cap(roomHeightChi || 'unknown', 16)}.`
+      : '';
+
+    // 粗略的“长窄房间”判断：用户选的宽度档较小，或结构描述里出现“长/窄”
+    const narrowHint =
+      /7–8尺|7-8尺|7—8尺|7—8|7-8|7–8/.test(roomWidthChi) ||
+      /狭长|长窄|窄长|走廊感|corridor|narrow/.test((doors + ' ' + cleanSummary).toLowerCase());
+
+    const cameraHint = (() => {
+      // 如果门窗描述里有“窗在房间正中”，强制“正对窗”的视角
+      if (/窗在房间正中|窗在中|正中/.test(doors)) {
+        return 'Camera view: standing at the entrance/door side, looking straight towards the centered window on the far wall (no angled/fisheye view).';
+      }
+      return 'Camera view: realistic eye-level photo perspective (no fisheye), keep straight vertical/horizontal lines.';
+    })();
+
+    const shapeHint = narrowHint
+      ? 'Room geometry: a narrow rectangular room (long and slim), keep wall lengths and proportions realistic for a Hong Kong flat.'
+      : 'Room geometry: keep a realistic rectangular room shape and proportions for a Hong Kong flat.';
+
+    const lock = [
+      'STRUCTURE LOCK (hard constraints):',
+      shapeHint,
+      doors ? `Openings: ${cap(doors, 140)} (do NOT add extra windows/doors; keep window position/proportion).` : 'Openings: do NOT add extra windows/doors; keep any window position/proportion consistent.',
+      cols && cols !== '未见' ? `Columns/protrusions: ${cap(cols, 90)} (do NOT remove).` : 'Columns/protrusions: none visible.',
+      beams && beams !== '未见' ? `Beams/ceiling drops: ${cap(beams, 90)} (respect; do NOT raise ceiling height unrealistically).` : 'Beams/ceiling drops: none visible.',
+      notes.length ? `Other structure notes: ${cap(notes.join(' | '), 120)}.` : '',
+      dims,
+      cameraHint,
+      'Do NOT change room shape. Do NOT warp windows/walls. Keep straight lines; no fisheye.',
+      finLevel ? `Finish level reference: ${finLevel}${finEv ? ` (${cap(finEv, 60)})` : ''}.` : '',
+      cleanSummary ? `Extra cues: ${cap(cleanSummary, 160)}.` : '',
+    ].filter(Boolean).join(' ');
+
     // Keep it short to avoid StepFun t2i prompt limit (<=1024 chars)
-    const short = clean.length > 160 ? clean.slice(0, 160) + '...' : clean;
-    return `Structure cues (approximate, not exact): ${short}.`;
+    return lock.length > 420 ? lock.slice(0, 417) + '...' : lock;
   })();
 
   const mustHave = (() => {
