@@ -210,17 +210,30 @@ const App: React.FC = () => {
       { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
     );
 
-    const fast = await analyzeImageFast({
-      imageUrl,
-      imageDataUrl,
+    const tryFast = async (useDataUrl: boolean) => await analyzeImageFast({
+      imageUrl: useDataUrl ? undefined : imageUrl,
+      imageDataUrl: useDataUrl ? imageDataUrl : undefined,
       spaceHint: spaceTypeText,
       clientId,
       debug: debugEnabled,
     });
-    if (!fast.ok || !fast.hkAnchorsLite) {
+
+    let fast = await tryFast(false);
+    const retryCodes = new Set(['IMAGE_FETCH_FAILED', 'IMAGE_URL_UNREACHABLE', 'TIMEOUT', 'FAST_TIMEOUT']);
+    if ((!fast.ok || !fast.hkAnchorsLite) && retryCodes.has(String((fast as any)?.errorCode || '')) && imageDataUrl) {
       upsertOptionsCard(
         analysisCardId,
-        `【图片分析（快速结构锁定）】\n分析失败：${fast.message || '请重试'}\n（建议重新上传同一张图片）`,
+        `【图片分析（快速结构锁定）】\n第一次取图失败，正在用本地压缩图再试一次…`,
+        [],
+        { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
+      );
+      fast = await tryFast(true);
+    }
+
+    if (!fast.ok || !(fast as any)?.hkAnchorsLite) {
+      upsertOptionsCard(
+        analysisCardId,
+        `【图片分析（快速结构锁定）】\n分析失败：${(fast as any)?.message || '请重试'}\n如持续失败，请再影一次或换角度（避免反光/过暗），或重新上传同一张图片。`,
         [],
         { kind: 'hk_flow', stage: 'analysis_fast', uploadId }
       );
