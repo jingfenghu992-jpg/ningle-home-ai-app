@@ -29,6 +29,10 @@ const App: React.FC = () => {
     width?: number;
     height?: number;
     spaceType?: string;
+    hkAnchorsLite?: any;
+    hkLayouts?: any;
+    layoutChoice?: 'A' | 'B';
+    revisionIndex?: number; // 0=首张, 1/2=改图, >=3停止
     visionSummary?: string;
     visionExtraction?: any;
     // Layout suggestions inferred from vision (2-3 options). Used as the FIRST-STEP before generation.
@@ -41,6 +45,7 @@ const App: React.FC = () => {
       style?: string;
       color?: string;
       focus?: string;
+      layoutChoice?: 'A' | 'B';
       roomWidthChi?: string;   // e.g. "8–10尺"
       roomHeightChi?: string;  // e.g. "7尺2–7尺8"
       targetUse?: string; // 当空间类型=其他时，用于锁定文生图的目标用途（客厅/卧室等）
@@ -115,6 +120,152 @@ const App: React.FC = () => {
       }
       return [...prev, nextMsg];
     });
+  };
+
+  const formatAnchorsLiteSummary = (a: any) => {
+    const x = (a && typeof a === 'object') ? a : {};
+    const ww = String(x.window_wall || 'unknown');
+    const wc = typeof x.window_count === 'number' ? String(x.window_count) : String(x.window_count || 'unknown');
+    const lens = String(x.lens_risk || 'unknown');
+    const cam = String(x.camera_view || 'unknown');
+    const day = String(x.daylight_direction || 'unknown');
+    const fin = String(x.finish_level || 'unknown');
+    const uw = String(x.usable_wall || 'unknown');
+    return [
+      `- 门窗：${ww}墙窗位，窗数量=${wc}（不新增侧窗/阳台门）`,
+      `- 镜头：${cam}，镜头风险=${lens}（强制禁止鱼眼/超广角/暗角）`,
+      `- 光线：${day}｜完成度：${fin}`,
+      `- 可用墙面（优先）：${uw}`,
+    ].join('\n');
+  };
+
+  const getHKPreferenceOptions = (u: any) => {
+    const picks = getQuickRenderPicks(u);
+    const styles = ['现代简约', '奶油风', '日式木系', '轻奢'];
+    const goals = ['收纳优先', '显大清爽', '氛围舒适'];
+    const intensities = ['保守（更对位）', '明显（更有设计感）'];
+    const withRadio = (group: string, label: string, picked: string) =>
+      (picked === label ? `${group}：◉ ${label}` : `${group}：○ ${label}`);
+    return [
+      ...styles.map(s => withRadio('风格', s, picks.style)),
+      ...goals.map(g => withRadio('目标', g, picks.goal)),
+      ...intensities.map(i => withRadio('强度', i, picks.intensity)),
+      '一键出图（推荐）',
+    ];
+  };
+
+  const buildHKLayoutOptions = (layouts: any) => {
+    const a = layouts?.A;
+    const b = layouts?.B;
+    const fmt = (k: 'A' | 'B', v: any) => {
+      const name = String(v?.layout_name || k).trim();
+      const ref = String(v?.anchor_reference || '').trim();
+      const why = String(v?.why || '').trim();
+      const circ = String(v?.circulation || '').trim();
+      const store = String(v?.storage_strategy || '').trim();
+      const hint = String(v?.key_dimensions_hint || '').trim();
+      const parts = [
+        `${k}｜${name}`,
+        ref ? `基准：${ref}` : '',
+        circ ? `动线：${circ}` : '',
+        store ? `收纳：${store}` : '',
+        hint ? `要点：${hint}` : '',
+        why ? `根据：${why}` : '',
+      ].filter(Boolean);
+      return parts.join('\n');
+    };
+    const opts: string[] = [];
+    if (a) opts.push(fmt('A', a));
+    if (b) opts.push(fmt('B', b));
+    return opts;
+  };
+
+  const callHKLayouts = async (spaceType: string, hkAnchorsLite: any) => {
+    try {
+      const res = await fetch('/api/layout/hk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spaceType, hkAnchorsLite }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) return null;
+      return data?.layouts || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const startHKFastFlow = async (uploadId: string, spaceTypeText: string) => {
+    const u0 = uploads[uploadId];
+    if (!u0) return;
+    const imageUrl = u0.imageUrl;
+    const imageDataUrl = u0.dataUrl;
+
+    // 1) FAST analysis card (2–4s target)
+    const analysisCardId = `${uploadId}-analysis_fast`;
+    upsertOptionsCard(
+      analysisCardId,
+      `【图片分析（快速结构锁定）】\n正在分析门窗/镜头/光线…（2–4秒）`,
+      [],
+      { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
+    );
+
+    const fast = await analyzeImageFast({
+      imageUrl,
+      imageDataUrl,
+      spaceHint: spaceTypeText,
+      clientId,
+      debug: debugEnabled,
+    });
+    if (!fast.ok || !fast.hkAnchorsLite) {
+      upsertOptionsCard(
+        analysisCardId,
+        `【图片分析（快速结构锁定）】\n分析失败：${fast.message || '请重试'}\n（建议重新上传同一张图片）`,
+        [],
+        { kind: 'hk_flow', stage: 'analysis_fast', uploadId }
+      );
+      return;
+    }
+
+    const hkAnchorsLite = (fast as any).hkAnchorsLite;
+    setUploads(prev => prev[uploadId] ? ({
+      ...prev,
+      [uploadId]: { ...prev[uploadId], hkAnchorsLite }
+    }) : prev);
+
+    upsertOptionsCard(
+      analysisCardId,
+      `【图片分析（快速结构锁定）】\n空间：${spaceTypeText}\n${formatAnchorsLiteSummary(hkAnchorsLite)}`,
+      [],
+      { kind: 'hk_flow', stage: 'analysis_fast', uploadId }
+    );
+
+    // 2) Layout A/B (must cite anchorsLite)
+    const layoutCardId = `${uploadId}-layout_ab`;
+    upsertOptionsCard(
+      layoutCardId,
+      `【布置方案 A/B】\n你一定要先选一个方案（我会按这个方案做对位效果图）：`,
+      [],
+      { kind: 'hk_flow', stage: 'layout_ab', uploadId, loading: true }
+    );
+
+    const layouts = await callHKLayouts(spaceTypeText, hkAnchorsLite);
+    if (!layouts) {
+      upsertOptionsCard(
+        layoutCardId,
+        `【布置方案 A/B】\n生成方案失败，请稍后重试（或重新上传）。`,
+        [],
+        { kind: 'hk_flow', stage: 'layout_ab', uploadId }
+      );
+      return;
+    }
+    setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], hkLayouts: layouts } }) : prev);
+    upsertOptionsCard(
+      layoutCardId,
+      `【布置方案 A/B】\n选一个（单选）：`,
+      buildHKLayoutOptions(layouts),
+      { kind: 'hk_flow', stage: 'layout_ab', uploadId }
+    );
   };
 
   const addLoadingToast = (text: string, meta: Message['meta']) => {
@@ -1207,6 +1358,10 @@ const App: React.FC = () => {
           setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
 
           const u0 = uploadId ? uploads[uploadId] : undefined;
+          if (u0 && Number.isInteger(u0.revisionIndex) && (u0.revisionIndex as number) >= 3) {
+            await typeOutAI("我已帮你改到第 3 次啦～为保证对位和落地质量，建议你直接 WhatsApp 我哋 1对1继续：+852 56273817");
+            return;
+          }
           const base0 = (lastRenderIntakeRef.current && typeof lastRenderIntakeRef.current === 'object')
             ? { ...lastRenderIntakeRef.current }
             : {};
@@ -1262,31 +1417,162 @@ const App: React.FC = () => {
           // Lock this message to prevent double-trigger
           if (message.isLocked) return;
           setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
-          // HK V2 fast path: don't block first render on vision analysis.
+          // HK main flow: SPACE -> FAST结构分析 -> 布置A/B -> 偏好 -> i2i出图
           setUploads(prev => prev[uploadId] ? ({
             ...prev,
             [uploadId]: {
               ...prev[uploadId],
               spaceType: opt,
+              revisionIndex: prev[uploadId].revisionIndex ?? 0,
               render: {
                 ...(prev[uploadId].render || {}),
                 style: (prev[uploadId].render as any)?.style || '现代简约',
                 priority: (prev[uploadId].render as any)?.priority || '收纳优先',
                 intensity: (prev[uploadId].render as any)?.intensity || '保守（更对位）',
-                ...(prev[uploadId].imageUrl ? { preferPrecise: true } : {})
               }
             }
           }) : prev);
 
-          const u2 = uploads[uploadId] || {};
-          const cardId = `${uploadId}-quick_render-picks`;
+          // Kick off FAST analysis + layout A/B (do not block UI)
+          startHKFastFlow(uploadId, opt);
+          return;
+      }
+
+      if (message.meta?.kind === 'hk_flow' && uploadId && u) {
+        // Layout A/B selection
+        if (message.meta.stage === 'layout_ab') {
+          const idx = Array.isArray(message.options) ? message.options.indexOf(opt) : -1;
+          const choice = idx === 1 ? 'B' : 'A';
+          const layouts = u.hkLayouts || {};
+          const chosen = (choice === 'B') ? layouts?.B : layouts?.A;
+          const label = choice === 'B' ? '方案B' : '方案A';
+          const layoutChoiceText = chosen?.layout_name ? `${label}：${String(chosen.layout_name)}` : label;
+
+          setUploads(prev => prev[uploadId] ? ({
+            ...prev,
+            [uploadId]: {
+              ...prev[uploadId],
+              layoutChoice: choice,
+              render: { ...(prev[uploadId].render || {}), layoutChoice: choice, focus: layoutChoiceText }
+            }
+          }) : prev);
+
+          // Preferences card (single-select, then one-click render)
+          const prefsCardId = `${uploadId}-prefs`;
+          const prefU = uploads[uploadId] || u;
           upsertOptionsCard(
-            cardId,
-            `收到～我先按香港常见比例帮你快出第一张（更对位、少问）。\n你可以直接点「一键出图（推荐）」，或先改风格/目标/强度：`,
-            getQuickRenderOptions(u2, debugEnabled),
-            { kind: 'quick_render', stage: 'picks', uploadId }
+            prefsCardId,
+            `【风格/目标/强度】\n（单选）选好后点「一键出图（推荐）」：`,
+            getHKPreferenceOptions(prefU),
+            { kind: 'hk_flow', stage: 'prefs', uploadId }
           );
           return;
+        }
+
+        if (message.meta.stage === 'prefs') {
+          const cleaned = String(opt || '')
+            .replace(/^(风格|目标|强度)：\s*[◉○]\s*/g, '')
+            .trim();
+          const isStyle = ['现代简约', '奶油风', '日式木系', '轻奢'].includes(cleaned);
+          const isGoal = ['收纳优先', '显大清爽', '氛围舒适'].includes(cleaned);
+          const isIntensity = ['保守（更对位）', '明显（更有设计感）'].includes(cleaned);
+
+          if (cleaned === '一键出图（推荐）') {
+            const rev = Number.isInteger(u.revisionIndex) ? (u.revisionIndex as number) : 0;
+            if (rev >= 3) {
+              await typeOutAI("我已帮你改到第 3 次啦～为保证对位和落地质量，建议你直接 WhatsApp 我哋 1对1继续：+852 56273817");
+              return;
+            }
+            // Build render intake
+            const picks = getQuickRenderPicks(u);
+            const layoutChoice = u.layoutChoice || (u.render as any)?.layoutChoice;
+            const layouts = u.hkLayouts || {};
+            const chosen = layoutChoice === 'B' ? layouts?.B : layouts?.A;
+            const layoutText = chosen?.layout_name ? `${layoutChoice || ''} ${chosen.layout_name}` : String(layoutChoice || '');
+            const renderIntake: any = {
+              uploadId,
+              revisionIndex: rev,
+              space: u.spaceType || '',
+              style: picks.style,
+              priority: picks.goal,
+              intensity: picks.intensity,
+              layoutChoice: layoutChoice ? `方案${layoutChoice}` : undefined,
+              focus: layoutText,
+              hkAnchorsLite: u.hkAnchorsLite,
+            };
+
+            setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], revisionIndex: rev + 1 } }) : prev);
+
+            const sourceImageUrl = u.imageUrl;
+            if (!sourceImageUrl) {
+              await typeOutAI("图片链接还没准备好（需要可访问的上传链接）。请重新上传同一张图片再试一次。");
+              return;
+            }
+            const overrides = {
+              outputMode: 'PRECISE_I2I',
+              keep_structure: true,
+              qualityPreset: 'STRUCTURE_LOCK',
+              fastAnchors: true,
+              ...quickI2IOverridesByIntensity(picks.intensity),
+            };
+            setAppState('GENERATING');
+            const genLoadingId = addLoadingToast("收到～我而家帮你生成对位效果图（图生图），请稍等…", { loadingType: 'generating', uploadId });
+            const res = await generateRenderImage({
+              renderIntake,
+              sourceImageUrl,
+              response_format: 'url',
+              debug: debugEnabled,
+              ...(overrides as any),
+            } as any);
+            stopLoadingToast(genLoadingId);
+            if (!res.ok || !res.resultUrl) {
+              await typeOutAI(res.message || '生成失败，请重试。');
+              setAppState('ANALYSIS_DONE');
+              return;
+            }
+            setLastGeneratedImage(res.resultUrl);
+            setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], generatedImageUrl: res.resultUrl } }) : prev);
+            setAppState('RENDER_DONE');
+            setMessages(prev => [...prev, { id: `${Date.now()}-img`, type: 'image', content: res.resultUrl!, sender: 'ai', timestamp: Date.now() }]);
+            const note = String(res.designNotes || '').trim();
+            await typeOutAI(
+              `【设计说明（与本次效果图一致）】${res.renderId ? `\nrenderId: ${res.renderId}` : ''}\n${note || '（已按结构锁定生成，可继续点下面微调）'}\n\n最多还能再改 2 次（超过会引导 WhatsApp）。`,
+              { options: ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"], meta: { kind: 'generated', uploadId } }
+            );
+            return;
+          }
+
+          if (isStyle || isGoal || isIntensity) {
+            setUploads(prev => prev[uploadId] ? ({
+              ...prev,
+              [uploadId]: {
+                ...prev[uploadId],
+                render: {
+                  ...(prev[uploadId].render || {}),
+                  ...(isStyle ? { style: cleaned } : {}),
+                  ...(isGoal ? { priority: cleaned } : {}),
+                  ...(isIntensity ? { intensity: cleaned } : {}),
+                }
+              }
+            }) : prev);
+            const previewU = {
+              ...(u || {}),
+              render: {
+                ...(u?.render || {}),
+                ...(isStyle ? { style: cleaned } : {}),
+                ...(isGoal ? { priority: cleaned } : {}),
+                ...(isIntensity ? { intensity: cleaned } : {}),
+              }
+            };
+            upsertOptionsCard(
+              `${uploadId}-prefs`,
+              `【风格/目标/强度】\n（单选）选好后点「一键出图（推荐）」：`,
+              getHKPreferenceOptions(previewU),
+              { kind: 'hk_flow', stage: 'prefs', uploadId }
+            );
+            return;
+          }
+        }
       }
 
       if (message.meta?.kind === 'quick_render' && uploadId) {
