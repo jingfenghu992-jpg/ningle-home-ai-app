@@ -80,17 +80,19 @@ export default async function handler(req, res) {
 
   const finishHint = guessFinishLevel(renderIntake?.visionSummary || renderIntake?.requirements || '');
 
+  // 关键调整：默认更“保结构/保视角”，让最终效果图尽量贴近现场空间。
+  // 说明：StepFun i2i 的 source_weight 越小越贴近原图结构；越大变化越大也更容易跑偏。
   const defaultI2I = (() => {
     if (intensityPreset === 'light') {
-      return { sw: 0.45, st: 34, cfg: 6.6 };
+      return { sw: 0.38, st: 36, cfg: 6.8 };
     }
     if (intensityPreset === 'bold') {
-      return { sw: 0.82, st: 46, cfg: 7.6 };
+      return { sw: 0.70, st: 46, cfg: 7.6 };
     }
-    // recommended (明显改造)
-    // Bias stronger when input is bare shell so we don't end up with an empty room.
-    if (finishHint === 'bare_shell') return { sw: 0.86, st: 48, cfg: 7.9 };
-    return { sw: 0.78, st: 44, cfg: 7.4 };
+    // recommended（默认）：在保证“像设计提案效果图”的前提下，收敛到更稳的结构保真区间
+    // 裸房/毛坯也不要用过高 sw，否则容易把门窗比例/透视改坏；通过 prompt 强制补齐完成面即可。
+    if (finishHint === 'bare_shell') return { sw: 0.60, st: 48, cfg: 7.7 };
+    return { sw: 0.55, st: 44, cfg: 7.3 };
   })();
 
   const clientProvidedSW = typeof source_weight === 'number' && source_weight > 0 && source_weight <= 1;

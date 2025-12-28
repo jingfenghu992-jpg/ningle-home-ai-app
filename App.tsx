@@ -7,7 +7,7 @@ import { Composer } from './components/Composer';
 import { Message } from './types';
 import { analyzeImage } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
-import { generateDesignImage, generateInspireImage, qaDesignImage, uploadImage } from './services/generateClient';
+import { generateDesignImage, qaDesignImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
@@ -463,7 +463,8 @@ const App: React.FC = () => {
 
   const getDefaultVibeForHK = () => "明亮通透";
   const getDefaultDecorForHK = () => "标准搭配（推荐）";
-  const getDefaultIntensityForHK = () => "明显改造（推荐）";
+  // 为了“更像现场、结构更准”，默认用轻改（更保结构）；用户后续可通过“再精修/改造更明显”来加大变化。
+  const getDefaultIntensityForHK = () => "保留结构（轻改）";
   const getDefaultStorageForSpace = (space?: string) => {
       const s = normalizeSpaceKey(space);
       if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return "台面整洁收纳（隐藏小家电）";
@@ -840,24 +841,39 @@ const App: React.FC = () => {
             ? ({ ...(base || {}), requirements: `${String(base?.requirements || '').trim()}\n\n修改要求：${revisionText}`.trim() })
             : base;
 
-          // Single t2i generation as the FINAL render (faster for free trial UX)
+          // FINAL render 必须绑定用户原图结构：使用 i2i（/api/design/generate）
           const genLoadingId = addLoadingToast("收到～我现在帮你生成效果图，请稍等…", { loadingType: 'generating', uploadId });
           try {
-            const res = await generateInspireImage({
-              renderIntake,
+            const baseImageBlobUrl = (() => {
+              // 优先使用 Blob 公网 URL（更稳定），否则退回 base64 dataUrl
+              if (uploadId && uploads[uploadId]) return uploads[uploadId].imageUrl || uploads[uploadId].dataUrl;
+              // 兜底：如果 intake 里有 baseImageBlobUrl（未来扩展），也可用
+              return renderIntake?.baseImageBlobUrl || '';
+            })();
+
+            if (!baseImageBlobUrl) {
+              throw new Error('缺少原始图片（baseImageBlobUrl），请重新上传后再生成。');
+            }
+
+            const res = await generateDesignImage({
+              baseImageBlobUrl,
               size,
+              renderIntake,
               response_format: 'url',
-              // Keep it reasonably fast
-              steps: 28,
-              cfg_scale: 6.6,
+              // 关键：更保结构（更贴近现场）。如果用户选择“轻改”，这里再强化一次。
+              source_weight: String(renderIntake?.intensity || '').includes('轻') || String(renderIntake?.intensity || '').includes('保留')
+                ? 0.40
+                : 0.52,
+              steps: 38,
+              cfg_scale: 7.0,
             });
             stopLoadingToast(genLoadingId);
 
-            if (!res.ok || !res.resultUrl) {
+            if (!res.ok || !res.resultBlobUrl) {
               throw new Error(res.message || '生成失败');
             }
 
-            const resultUrl = res.resultUrl;
+            const resultUrl = res.resultBlobUrl;
             setLastGeneratedImage(resultUrl);
             if (uploadId) {
               setUploads(prev => prev[uploadId] ? ({
