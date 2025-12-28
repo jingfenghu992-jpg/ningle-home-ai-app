@@ -22,6 +22,16 @@ export default async function handler(req, res) {
             return String(req?.query?.debug || '') === '1';
         }
     })();
+    const mode = (() => {
+        try {
+            const u = new URL(req.url || '', 'http://localhost');
+            const q = String(u.searchParams.get('mode') || '').trim();
+            return q || '';
+        } catch {
+            return String(req?.body?.mode || req?.query?.mode || '').trim();
+        }
+    })();
+    const fastMode = String(mode || '').toUpperCase() === 'FAST';
 
     const imageUrl = req.body.imageUrl || req.body.imageDataUrl || req.body.image;
     const spaceType = req.body.spaceType; // New: Accept space type hint
@@ -58,6 +68,7 @@ export default async function handler(req, res) {
             imageFetchOk: undefined,
             imageContentType: undefined,
             imageContentLength: undefined,
+            baseImageBytes: undefined,
             model: 'step-1v-8k',
             elapsedMs: undefined,
             retryUsed: false,
@@ -267,7 +278,10 @@ export default async function handler(req, res) {
         }
         if (rawImageStr.startsWith('http')) {
             try {
-                const imgRes = await fetch(rawImageStr);
+                const controller = new AbortController();
+                const t = setTimeout(() => controller.abort(), fastMode ? 6000 : 15000);
+                const imgRes = await fetch(rawImageStr, { signal: controller.signal });
+                clearTimeout(t);
                 debug.imageFetchOk = !!imgRes.ok;
                 debug.imageContentType = imgRes.headers.get('content-type') || null;
                 debug.imageContentLength = imgRes.headers.get('content-length') || null;
@@ -282,6 +296,7 @@ export default async function handler(req, res) {
                     return;
                 }
                 const arrayBuffer = await imgRes.arrayBuffer();
+                debug.baseImageBytes = arrayBuffer?.byteLength || 0;
                 const base64 = Buffer.from(arrayBuffer).toString('base64');
                 const mime = imgRes.headers.get('content-type') || 'image/jpeg';
                 finalImageUrl = `data:${mime};base64,${base64}`;
@@ -291,6 +306,159 @@ export default async function handler(req, res) {
                     ok: false,
                     errorCode: 'IMAGE_URL_UNREACHABLE',
                     message: `Image URL fetch failed. Please re-upload to refresh the image URL.`,
+                    ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
+                });
+                return;
+            }
+        }
+
+        // FAST mode: return hkAnchorsLite only (2–6s priority). No retries, small tokens.
+        if (fastMode) {
+            const spaceHint = String(req.body.spaceHint || spaceType || '').trim();
+            const schemaLite = `Return JSON only with this schema:
+{
+  "hkAnchorsLite": {
+    "space_guess": "SMALL_BEDROOM|MASTER_BEDROOM|LIVING_DINING|KITCHEN|BATHROOM|ENTRY_CORRIDOR|unknown",
+    "camera_view": "frontal|angled|unknown",
+    "lens_risk": "normal|wide_risk|unknown",
+    "vertical_lines": "ok|tilted|unknown",
+    "window_count": 0|1|2|"many"|"unknown",
+    "window_wall": "far|left|right|unknown",
+    "window_span": "narrow|medium|wide|unknown",
+    "door_present": "yes|no|unknown",
+    "door_wall": "far|left|right|unknown",
+    "beam_present": "none|possible|yes|unknown",
+    "column_present": "none|possible|yes|unknown",
+    "bay_window": "none|yes|unknown",
+    "finish_level": "raw|putty|painted|finished|unknown",
+    "daylight_direction": "left|right|front|unknown"
+  }
+}
+Rules:
+- Output JSON only. No markdown.
+- If unsure, use "unknown" (or "none" where applicable).
+- Keep it conservative. Never hallucinate extra windows/doors.`;
+
+            const normalizeLite = (obj) => {
+                const d = (obj && typeof obj === 'object') ? obj : {};
+                const a = (d.hkAnchorsLite && typeof d.hkAnchorsLite === 'object') ? d.hkAnchorsLite : (d || {});
+                const pick = (k, allowed, fallback = 'unknown') => {
+                    const v0 = String(a?.[k] ?? '').trim().toLowerCase();
+                    if (!v0) return fallback;
+                    if (allowed.includes(v0)) return v0;
+                    return fallback;
+                };
+                const pickNoneUnknown = (k) => {
+                    const v0 = String(a?.[k] ?? '').trim().toLowerCase();
+                    if (!v0) return 'unknown';
+                    if (v0 === 'none') return 'none';
+                    if (v0 === 'unknown') return 'unknown';
+                    if (v0 === 'yes') return 'yes';
+                    return 'unknown';
+                };
+                const windowCount = (() => {
+                    const v = a?.window_count;
+                    if (v === 0 || v === 1 || v === 2) return v;
+                    const s = String(v ?? '').trim().toLowerCase();
+                    if (s === 'many') return 'many';
+                    if (s === 'unknown' || !s) return 'unknown';
+                    const n = Number(s);
+                    if (Number.isFinite(n) && (n === 0 || n === 1 || n === 2)) return n;
+                    return 'unknown';
+                })();
+                const spaceGuess = (() => {
+                    const raw = String(a?.space_guess ?? '').trim().toUpperCase();
+                    const allowed = new Set(['SMALL_BEDROOM', 'MASTER_BEDROOM', 'LIVING_DINING', 'KITCHEN', 'BATHROOM', 'ENTRY_CORRIDOR', 'unknown']);
+                    if (allowed.has(raw)) return raw;
+                    return 'unknown';
+                })();
+                return {
+                    space_guess: spaceGuess,
+                    camera_view: pick('camera_view', ['frontal', 'angled', 'unknown']),
+                    lens_risk: pick('lens_risk', ['normal', 'wide_risk', 'unknown']),
+                    vertical_lines: pick('vertical_lines', ['ok', 'tilted', 'unknown']),
+                    window_count: windowCount,
+                    window_wall: pick('window_wall', ['far', 'left', 'right', 'unknown']),
+                    window_span: pick('window_span', ['narrow', 'medium', 'wide', 'unknown']),
+                    door_present: pick('door_present', ['yes', 'no', 'unknown']),
+                    door_wall: pick('door_wall', ['far', 'left', 'right', 'unknown']),
+                    beam_present: pick('beam_present', ['none', 'possible', 'yes', 'unknown']),
+                    column_present: pick('column_present', ['none', 'possible', 'yes', 'unknown']),
+                    bay_window: pickNoneUnknown('bay_window'),
+                    finish_level: pick('finish_level', ['raw', 'putty', 'painted', 'finished', 'unknown']),
+                    daylight_direction: pick('daylight_direction', ['left', 'right', 'front', 'unknown']),
+                };
+            };
+
+            try {
+                const controller = new AbortController();
+                const t = setTimeout(() => controller.abort(), 6000);
+                const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
+                    method: 'POST',
+                    signal: controller.signal,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'step-1v-8k',
+                        temperature: 0.1,
+                        max_tokens: 180,
+                        messages: [
+                            { role: 'system', content: `You are a fast structural anchor extractor for Hong Kong interiors.\nSpace hint: ${spaceHint || 'unknown'}\n${schemaLite}` },
+                            { role: 'user', content: [{ type: 'text', text: 'Extract hkAnchorsLite only.' }, { type: 'image_url', image_url: { url: finalImageUrl } }] }
+                        ]
+                    })
+                });
+                clearTimeout(t);
+
+                if (!resp.ok) {
+                    const txt = await resp.text().catch(() => '');
+                    res.status(resp.status).json({
+                        ok: false,
+                        errorCode: `UPSTREAM_FAST_${resp.status}`,
+                        message: 'FAST 结构分析失败（上游错误）',
+                        ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt, upstreamError: txt.slice(0, 300) } } : {})
+                    });
+                    return;
+                }
+                const data = await resp.json();
+                const content = data?.choices?.[0]?.message?.content || '';
+                const safeJsonParse = (raw) => {
+                    try {
+                        const clean = String(raw || '').replace(/```json/g, '').replace(/```/g, '').trim();
+                        const s = clean.indexOf('{');
+                        const e = clean.lastIndexOf('}');
+                        if (s >= 0 && e > s) return JSON.parse(clean.slice(s, e + 1));
+                        return JSON.parse(clean);
+                    } catch {
+                        return null;
+                    }
+                };
+                const parsed = safeJsonParse(content);
+                if (!parsed) {
+                    res.status(502).json({
+                        ok: false,
+                        errorCode: 'PARSE_FAST_FAIL',
+                        message: 'FAST 结构分析失败（解析错误）',
+                        ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
+                    });
+                    return;
+                }
+                const hkAnchorsLite = normalizeLite(parsed);
+                debug.elapsedMs = Date.now() - startedAt;
+                res.status(200).json({
+                    ok: true,
+                    hkAnchorsLite,
+                    ...(debugEnabled ? { debug } : {})
+                });
+                return;
+            } catch (e) {
+                const isTimeout = String(e?.name || '').includes('Abort');
+                res.status(isTimeout ? 408 : 500).json({
+                    ok: false,
+                    errorCode: isTimeout ? 'FAST_TIMEOUT' : 'FAST_EXCEPTION',
+                    message: isTimeout ? 'FAST 结构分析超时' : 'FAST 结构分析失败',
                     ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
                 });
                 return;
