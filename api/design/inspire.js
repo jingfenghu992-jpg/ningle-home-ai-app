@@ -36,6 +36,7 @@ export default async function handler(req, res) {
     i2i_strength,
     i2i_source_weight,
     keep_structure,
+    qualityPreset,
     // user-selected debug (optional)
     layoutVariant,
     sizeChoice,
@@ -395,6 +396,84 @@ export default async function handler(req, res) {
         }),
       });
 
+    const decodeU32BE = (buf, off) => {
+      if (!buf || off + 4 > buf.length) return null;
+      return (buf[off] << 24) | (buf[off + 1] << 16) | (buf[off + 2] << 8) | buf[off + 3];
+    };
+    const parsePngWH = (buf) => {
+      // PNG signature + IHDR
+      if (!buf || buf.length < 24) return null;
+      const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+      for (let i = 0; i < sig.length; i++) if (buf[i] !== sig[i]) return null;
+      // IHDR chunk begins at 8; type at 12
+      const t = buf.slice(12, 16).toString('ascii');
+      if (t !== 'IHDR') return null;
+      const w = decodeU32BE(buf, 16);
+      const h = decodeU32BE(buf, 20);
+      if (!w || !h) return null;
+      return { w, h };
+    };
+    const parseJpegWH = (buf) => {
+      if (!buf || buf.length < 4) return null;
+      if (buf[0] !== 0xff || buf[1] !== 0xd8) return null; // SOI
+      let off = 2;
+      while (off + 4 < buf.length) {
+        if (buf[off] !== 0xff) { off++; continue; }
+        let marker = buf[off + 1];
+        // skip padding
+        while (marker === 0xff && off + 2 < buf.length) {
+          off++;
+          marker = buf[off + 1];
+        }
+        // SOF0..SOF3, SOF5..SOF7, SOF9..SOF11, SOF13..SOF15
+        const isSOF =
+          (marker >= 0xc0 && marker <= 0xc3) ||
+          (marker >= 0xc5 && marker <= 0xc7) ||
+          (marker >= 0xc9 && marker <= 0xcb) ||
+          (marker >= 0xcd && marker <= 0xcf);
+        const len = (buf[off + 2] << 8) | buf[off + 3];
+        if (len < 2) return null;
+        if (isSOF) {
+          if (off + 2 + len > buf.length) return null;
+          const h = (buf[off + 5] << 8) | buf[off + 6];
+          const w = (buf[off + 7] << 8) | buf[off + 8];
+          if (!w || !h) return null;
+          return { w, h };
+        }
+        off = off + 2 + len;
+      }
+      return null;
+    };
+
+    const fetchProbe = async (url) => {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 12000);
+      try {
+        // Grab first 256KB max for probing dimensions (no resize/crop).
+        const r = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-262143' }, signal: controller.signal });
+        const ok = r.ok && (r.status === 200 || r.status === 206);
+        const ct = r.headers.get('content-type') || '';
+        const cl = r.headers.get('content-length') || null;
+        const ab = ok ? await r.arrayBuffer() : null;
+        const bytes = ab ? ab.byteLength : 0;
+        let wh = null;
+        if (ab) {
+          const buf = Buffer.from(ab);
+          if (ct.includes('png')) wh = parsePngWH(buf);
+          if (!wh && (ct.includes('jpeg') || ct.includes('jpg'))) wh = parseJpegWH(buf);
+          if (!wh) {
+            // Try magic sniff if content-type is missing
+            wh = parsePngWH(buf) || parseJpegWH(buf);
+          }
+        }
+        return { ok, status: r.status, contentType: ct || null, contentLength: cl, bytes, w: wh?.w || null, h: wh?.h || null };
+      } catch {
+        return { ok: false, status: null, contentType: null, contentLength: null, bytes: 0, w: null, h: null };
+      } finally {
+        clearTimeout(t);
+      }
+    };
+
     const validateSourceUrl = async (u) => {
       const raw = String(u || '').trim();
       if (!raw) return { ok: false, reason: 'EMPTY' };
@@ -402,17 +481,8 @@ export default async function handler(req, res) {
       if (raw.startsWith('data:')) return { ok: true, reason: 'DATA_URL' };
       if (!raw.startsWith('http')) return { ok: false, reason: 'INVALID_SCHEME' };
       try {
-        const controller = new AbortController();
-        const t = setTimeout(() => controller.abort(), 8000);
-        try {
-          // Range preflight: avoid downloading full image
-          const r = await fetch(raw, { method: 'GET', headers: { Range: 'bytes=0-0' }, signal: controller.signal });
-          const ok = r.ok && (r.status === 200 || r.status === 206);
-          const ct = r.headers.get('content-type') || '';
-          return { ok, reason: ok ? 'OK' : `HTTP_${r.status}`, contentType: ct };
-        } finally {
-          clearTimeout(t);
-        }
+        const p = await fetchProbe(raw);
+        return { ok: p.ok, reason: p.ok ? 'OK' : (p.status ? `HTTP_${p.status}` : 'FETCH_ERROR'), probe: p };
       } catch {
         return { ok: false, reason: 'FETCH_ERROR' };
       }
@@ -441,14 +511,19 @@ export default async function handler(req, res) {
       (userSelected.styleChoice && applied.styleKey && !String(applied.styleKey).includes(String(userSelected.styleChoice))) // best-effort
     );
 
-    // PRECISE_I2I settings (default as requested)
+    // C7: STRUCTURE_LOCK preset (reduce distortions by preserving geometry/perspective)
+    const preset = String(qualityPreset || '').trim();
     const finalKeepStructure = typeof keep_structure === 'boolean' ? keep_structure : true;
+    const defaultSW = preset === 'STRUCTURE_LOCK' ? 0.90 : 0.85;
+    const defaultStrength = preset === 'STRUCTURE_LOCK' ? 0.55 : 0.80;
+    const defaultCfg = preset === 'STRUCTURE_LOCK' ? 5.6 : finalCfgScale;
     const finalI2ISourceWeight = (typeof i2i_source_weight === 'number' && i2i_source_weight > 0 && i2i_source_weight <= 1)
       ? i2i_source_weight
-      : 0.85;
+      : defaultSW;
     const finalI2IStrength = (typeof i2i_strength === 'number' && i2i_strength > 0 && i2i_strength <= 1)
       ? i2i_strength
-      : 0.80;
+      : defaultStrength;
+    const finalCfgI2I = (typeof cfg_scale === 'number') ? Math.min(Math.max(cfg_scale, 1), 7.0) : defaultCfg;
 
     const doI2I = async () =>
       await fetch('https://api.stepfun.com/v1/images/image2image', {
@@ -468,7 +543,7 @@ export default async function handler(req, res) {
           response_format: finalResponseFormat,
           seed: finalSeed,
           steps: finalSteps,
-          cfg_scale: finalCfgScale,
+          cfg_scale: finalCfgI2I,
           // keep_structure is a soft flag for our product logic; upstream may ignore
           keep_structure: finalKeepStructure,
           strength: finalI2IStrength,
@@ -491,6 +566,7 @@ export default async function handler(req, res) {
     };
 
     let response;
+    let baseImage = null;
     if (desiredMode === 'PRECISE_I2I') {
       const v = await validateSourceUrl(sourceImageUrl);
       if (!v.ok) {
@@ -512,11 +588,15 @@ export default async function handler(req, res) {
             userSelected,
             applied,
             mismatch,
+            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+            sentSize: finalSize,
+            baseImage: v?.probe ? { w: v.probe.w, h: v.probe.h, contentType: v.probe.contentType, bytes: v.probe.bytes, contentLength: v.probe.contentLength } : undefined,
           }
         });
         return;
       }
 
+      baseImage = v?.probe ? { w: v.probe.w, h: v.probe.h, contentType: v.probe.contentType, bytes: v.probe.bytes, contentLength: v.probe.contentLength } : null;
       response = await withRetry429(doI2I);
       if (!response.ok) {
         // Fallback to FAST_T2I unless it's a key issue
@@ -570,7 +650,7 @@ export default async function handler(req, res) {
           finish_reason: finishReason,
           size: finalSize,
           steps: finalSteps,
-          cfg_scale: finalCfgScale,
+          cfg_scale: actualMode === 'PRECISE_I2I' ? finalCfgI2I : finalCfgScale,
           model: 'step-1x-medium',
           usedKey,
           elapsedMs: Date.now() - startedAt,
@@ -580,11 +660,13 @@ export default async function handler(req, res) {
           layoutVariant: built?.layoutVariant,
           dropped: built?.dropped,
           anchorDropped: built?.anchorDropped,
+          antiDistortDropped: built?.antiDistortDropped,
           fallbackUsed,
           ...(fallbackUsed ? { fallbackErrorCode, fallbackErrorMessage } : {}),
           userSelected,
           applied: { ...applied, outputMode: actualMode },
           mismatch,
+          ...(actualMode === 'PRECISE_I2I' ? { i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps }, baseImage, sentSize: finalSize, mode: 'PRECISE_I2I' } : {}),
           ...(debugEnabled ? { usedText: prompt } : {}),
         },
       });
@@ -604,7 +686,7 @@ export default async function handler(req, res) {
         finish_reason: finishReason,
         size: finalSize,
         steps: finalSteps,
-        cfg_scale: finalCfgScale,
+        cfg_scale: actualMode === 'PRECISE_I2I' ? finalCfgI2I : finalCfgScale,
         model: 'step-1x-medium',
         usedKey,
         elapsedMs: Date.now() - startedAt,
@@ -614,11 +696,13 @@ export default async function handler(req, res) {
         layoutVariant: built?.layoutVariant,
         dropped: built?.dropped,
         anchorDropped: built?.anchorDropped,
+        antiDistortDropped: built?.antiDistortDropped,
         fallbackUsed,
         ...(fallbackUsed ? { fallbackErrorCode, fallbackErrorMessage } : {}),
         userSelected,
         applied: { ...applied, outputMode: actualMode },
         mismatch,
+        ...(actualMode === 'PRECISE_I2I' ? { i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps }, baseImage, sentSize: finalSize, mode: 'PRECISE_I2I' } : {}),
         ...(debugEnabled ? { usedText: prompt } : {}),
       },
     });
