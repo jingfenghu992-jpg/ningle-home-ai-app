@@ -250,6 +250,15 @@ export default async function handler(req, res) {
   "doors_windows": "门/窗/窗台位置（必须带相对方位：左墙/右墙/远端墙/入口侧；看不到写未见）",
   "columns": "墙面是否有立柱/凸位（必须带相对方位：左墙/右墙/远端墙/入口侧；没有则写未见）",
   "beams_ceiling": "天花是否有横梁/降板/灯槽条件（必须带相对方位或走向：左右向/前后向；没有则写未见）",
+  "hkAnchors": {
+    "cameraAngle": "FRONTAL/SLIGHT_45/UNKNOWN",
+    "cameraDistanceFeel": "NEAR/MID/FAR/UNKNOWN",
+    "windowWall": "FAR_WALL/SIDE_WALL/NONE/UNKNOWN",
+    "windowOffset": "CENTER/LEFT/RIGHT/UNKNOWN",
+    "daylightDirection": "LEFT_TO_RIGHT/RIGHT_TO_LEFT/UNKNOWN",
+    "shadowType": "HARD_LONG/SOFT_SHORT/UNKNOWN",
+    "finishLevel": "RAW_CONCRETE/PUTTY_LINES/FINISHED/UNKNOWN"
+  },
   "structure_notes": [
     "补充结构点（可选，必须带相对方位；不确定写未见）"
   ],
@@ -275,6 +284,7 @@ Rules:
 - Must respect: do NOT hallucinate what you cannot see; if not visible, say "未见".
 - If user confirmed space_type, MUST keep it consistent and do NOT mention other spaces.
 - Relative directions MUST be based on the photo view (NOT east/west/south/north).
+- hkAnchors MUST include ALL keys even if UNKNOWN. Do NOT omit keys.
 - For 小睡房:
   - Always include bed + wardrobe as the core; prioritize space-saving (platform/tatami/Murphy) and sliding doors.
   - Do NOT default to calling it "书房/工作间". Only mention a desk as "可选（如需要）" unless a desk is clearly visible in the photo.
@@ -340,6 +350,23 @@ ${schema}`
 
         const parsed = safeJsonParse(content);
 
+        const normalizeAnchors = (raw) => {
+            const pick = (v, allowed) => {
+                const s = String(v || '').trim();
+                return allowed.includes(s) ? s : 'UNKNOWN';
+            };
+            const a = raw && typeof raw === 'object' ? raw : {};
+            return {
+                cameraAngle: pick(a.cameraAngle, ['FRONTAL', 'SLIGHT_45', 'UNKNOWN']),
+                cameraDistanceFeel: pick(a.cameraDistanceFeel, ['NEAR', 'MID', 'FAR', 'UNKNOWN']),
+                windowWall: pick(a.windowWall, ['FAR_WALL', 'SIDE_WALL', 'NONE', 'UNKNOWN']),
+                windowOffset: pick(a.windowOffset, ['CENTER', 'LEFT', 'RIGHT', 'UNKNOWN']),
+                daylightDirection: pick(a.daylightDirection, ['LEFT_TO_RIGHT', 'RIGHT_TO_LEFT', 'UNKNOWN']),
+                shadowType: pick(a.shadowType, ['HARD_LONG', 'SOFT_SHORT', 'UNKNOWN']),
+                finishLevel: pick(a.finishLevel, ['RAW_CONCRETE', 'PUTTY_LINES', 'FINISHED', 'UNKNOWN']),
+            };
+        };
+
         const to4LineSummary = (p) => {
             if (!p) return String(content || '').trim();
             const forbid = (s) => {
@@ -377,9 +404,11 @@ ${schema}`
         // Enforce consistent spaceType if provided by user
         const enforcedSpace = normalizeSpaceType(spaceType || parsed?.space_type);
         const baseParsed = parsed || {};
+        const hkAnchors = normalizeAnchors(baseParsed.hkAnchors);
         const extraction = {
             ...baseParsed,
             space_type: enforcedSpace,
+            hkAnchors,
             // Always lock to 2 standard options for HK standardization
             layout_options: standardLayoutOptions(enforcedSpace, baseParsed),
             recommended_index: 0
