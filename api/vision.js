@@ -6,6 +6,8 @@ export const config = {
     },
 };
 
+import { fetchImageToDataUrl } from '../lib/imageFetch.js';
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         res.status(405).json({ error: 'Method Not Allowed' });
@@ -341,52 +343,36 @@ export default async function handler(req, res) {
             ];
         };
         
-        let finalImageUrl = imageUrl;
         const rawImageStr = String(imageUrl || '').trim();
-        if (rawImageStr.startsWith('blob:')) {
-            res.status(400).json({
+        const fetchRes = await fetchImageToDataUrl(rawImageStr, { timeoutMs: fastMode ? 5000 : 12000, retries: fastMode ? 1 : 0 });
+        debug.imageFetchOk = Boolean(fetchRes.ok);
+        debug.imageContentType = fetchRes.contentType;
+        debug.imageContentLength = debug.imageContentLength; // keep legacy field if present
+        debug.baseImageBytes = fetchRes.bytes || 0;
+
+        if (!fetchRes.ok || !fetchRes.dataUrl || !fetchRes.bytes) {
+            const reason = String(fetchRes.reason || 'FETCH_FAIL');
+            const isTimeout = reason === 'FETCH_TIMEOUT';
+            res.status(isTimeout ? 408 : 400).json({
                 ok: false,
-                errorCode: 'IMAGE_URL_UNREACHABLE',
-                message: 'Invalid image URL (blob:). Please re-upload to obtain a public URL.',
-                ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
+                errorCode: isTimeout ? 'TIMEOUT' : 'IMAGE_FETCH_FAILED',
+                message: '请重新上传同一张相片再试（需要相片可访达）',
+                ...(debugEnabled ? {
+                    debug: {
+                        ...debug,
+                        imageFetchStatus: fetchRes.status,
+                        finalUrl: fetchRes.finalUrl,
+                        contentType: fetchRes.contentType,
+                        bytes: fetchRes.bytes,
+                        fetchElapsedMs: fetchRes.elapsedMs,
+                        totalElapsedMs: Date.now() - startedAt,
+                        errorCode: isTimeout ? 'TIMEOUT' : 'IMAGE_FETCH_FAILED',
+                    }
+                } : {})
             });
             return;
         }
-        if (rawImageStr.startsWith('http')) {
-            try {
-                const controller = new AbortController();
-                const t = setTimeout(() => controller.abort(), fastMode ? 6000 : 15000);
-                const imgRes = await fetch(rawImageStr, { signal: controller.signal });
-                clearTimeout(t);
-                debug.imageFetchOk = !!imgRes.ok;
-                debug.imageContentType = imgRes.headers.get('content-type') || null;
-                debug.imageContentLength = imgRes.headers.get('content-length') || null;
-
-                if (!imgRes.ok) {
-                    res.status(400).json({
-                        ok: false,
-                        errorCode: 'IMAGE_URL_UNREACHABLE',
-                        message: `Image URL fetch failed (HTTP ${imgRes.status}). Please re-upload to refresh the image URL.`,
-                        ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
-                    });
-                    return;
-                }
-                const arrayBuffer = await imgRes.arrayBuffer();
-                debug.baseImageBytes = arrayBuffer?.byteLength || 0;
-                const base64 = Buffer.from(arrayBuffer).toString('base64');
-                const mime = imgRes.headers.get('content-type') || 'image/jpeg';
-                finalImageUrl = `data:${mime};base64,${base64}`;
-            } catch (e) {
-                debug.imageFetchOk = false;
-                res.status(400).json({
-                    ok: false,
-                    errorCode: 'IMAGE_URL_UNREACHABLE',
-                    message: `Image URL fetch failed. Please re-upload to refresh the image URL.`,
-                    ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
-                });
-                return;
-            }
-        }
+        const finalImageUrl = fetchRes.dataUrl;
 
         // FAST mode: return hkAnchorsLite only (2–6s priority). No retries, small tokens.
         if (fastMode) {
@@ -480,7 +466,7 @@ Rules:
 
             try {
                 const controller = new AbortController();
-                const t = setTimeout(() => controller.abort(), 6000);
+                const t = setTimeout(() => controller.abort(), 8000);
                 const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
                     method: 'POST',
                     signal: controller.signal,
@@ -534,11 +520,23 @@ Rules:
                     return;
                 }
                 const hkAnchorsLite = normalizeLite(parsed);
+                const totalElapsedMs = Date.now() - startedAt;
                 debug.elapsedMs = Date.now() - startedAt;
                 res.status(200).json({
                     ok: true,
                     hkAnchorsLite,
-                    ...(debugEnabled ? { debug } : {})
+                    ...(debugEnabled ? {
+                        debug: {
+                            ...debug,
+                            imageFetchStatus: fetchRes.status,
+                            finalUrl: fetchRes.finalUrl,
+                            contentType: fetchRes.contentType,
+                            bytes: fetchRes.bytes,
+                            fetchElapsedMs: fetchRes.elapsedMs,
+                            vlmElapsedMs: totalElapsedMs - (fetchRes.elapsedMs || 0),
+                            totalElapsedMs,
+                        }
+                    } : {})
                 });
                 return;
             } catch (e) {
@@ -547,7 +545,19 @@ Rules:
                     ok: false,
                     errorCode: isTimeout ? 'FAST_TIMEOUT' : 'FAST_EXCEPTION',
                     message: isTimeout ? 'FAST 结构分析超时' : 'FAST 结构分析失败',
-                    ...(debugEnabled ? { debug: { ...debug, elapsedMs: Date.now() - startedAt } } : {})
+                    ...(debugEnabled ? {
+                        debug: {
+                            ...debug,
+                            imageFetchStatus: fetchRes.status,
+                            finalUrl: fetchRes.finalUrl,
+                            contentType: fetchRes.contentType,
+                            bytes: fetchRes.bytes,
+                            fetchElapsedMs: fetchRes.elapsedMs,
+                            vlmElapsedMs: null,
+                            totalElapsedMs: Date.now() - startedAt,
+                            errorCode: isTimeout ? 'FAST_TIMEOUT' : 'FAST_EXCEPTION',
+                        }
+                    } : {})
                 });
                 return;
             }
