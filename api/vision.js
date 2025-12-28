@@ -26,7 +26,8 @@ export default async function handler(req, res) {
         try {
             const u = new URL(req.url || '', 'http://localhost');
             const q = String(u.searchParams.get('mode') || '').trim();
-            return q || '';
+            // Allow body override when query param is absent (client sends mode in JSON body)
+            return q || String(req?.body?.mode || '').trim();
         } catch {
             return String(req?.body?.mode || req?.query?.mode || '').trim();
         }
@@ -331,7 +332,8 @@ export default async function handler(req, res) {
     "column_present": "none|possible|yes|unknown",
     "bay_window": "none|yes|unknown",
     "finish_level": "raw|putty|painted|finished|unknown",
-    "daylight_direction": "left|right|front|unknown"
+    "daylight_direction": "left|right|front|unknown",
+    "usable_wall": "left|right|far|unknown"
   }
 }
 Rules:
@@ -339,7 +341,7 @@ Rules:
 - If unsure, use "unknown" (or "none" where applicable).
 - Keep it conservative. Never hallucinate extra windows/doors.`;
 
-            const normalizeLite = (obj) => {
+                const normalizeLite = (obj) => {
                 const d = (obj && typeof obj === 'object') ? obj : {};
                 const a = (d.hkAnchorsLite && typeof d.hkAnchorsLite === 'object') ? d.hkAnchorsLite : (d || {});
                 const pick = (k, allowed, fallback = 'unknown') => {
@@ -372,6 +374,16 @@ Rules:
                     if (allowed.has(raw)) return raw;
                     return 'unknown';
                 })();
+                    const usableWall = (() => {
+                        const v0 = String(a?.usable_wall ?? '').trim().toLowerCase();
+                        if (['left', 'right', 'far', 'unknown'].includes(v0)) return v0;
+                        // best-effort derive: prefer wall opposite the window wall
+                        const ww = pick('window_wall', ['far', 'left', 'right', 'unknown']);
+                        if (ww === 'left') return 'right';
+                        if (ww === 'right') return 'left';
+                        if (ww === 'far') return 'right';
+                        return 'unknown';
+                    })();
                 return {
                     space_guess: spaceGuess,
                     camera_view: pick('camera_view', ['frontal', 'angled', 'unknown']),
@@ -387,6 +399,7 @@ Rules:
                     bay_window: pickNoneUnknown('bay_window'),
                     finish_level: pick('finish_level', ['raw', 'putty', 'painted', 'finished', 'unknown']),
                     daylight_direction: pick('daylight_direction', ['left', 'right', 'front', 'unknown']),
+                        usable_wall: usableWall,
                 };
             };
 
