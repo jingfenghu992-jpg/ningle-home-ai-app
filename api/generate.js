@@ -15,14 +15,14 @@ export default async function handler(req, res) {
     const { prompt, size = "1024x1024" } = req.body;
     
     // Prefer unified key; keep legacy fallback for backward compatibility.
-    const apiKey = process.env.STEPFUN_API_KEY || process.env.STEPFUN_IMAGE_API_KEY;
-    const usedKey = process.env.STEPFUN_API_KEY ? 'STEPFUN_API_KEY' : 'STEPFUN_IMAGE_API_KEY';
+    const apiKey = process.env.STEPFUN_API_KEY;
+    const usedKey = 'STEPFUN_API_KEY';
     if (!apiKey) {
-        console.error('Missing STEPFUN_API_KEY / STEPFUN_IMAGE_API_KEY');
+        console.error('Missing STEPFUN_API_KEY');
         res.status(500).json({ 
             ok: false,
             errorCode: 'MISSING_KEY',
-            message: 'Missing STEPFUN_API_KEY or STEPFUN_IMAGE_API_KEY' 
+            message: 'Missing STEPFUN_API_KEY'
         });
         return;
     }

@@ -1,9 +1,8 @@
 export default function handler(req, res) {
-  // This project uses a unified Stepfun key for chat/vision/t2i/i2i.
+  // This project uses a SINGLE Stepfun key for chat/vision/t2i/i2i.
   // Keep the output stable for the UI/ops checks: booleans only, no secrets.
   const hasStepfunApiKey = !!process.env.STEPFUN_API_KEY;
-  const hasStepfunImageApiKey = !!process.env.STEPFUN_IMAGE_API_KEY;
-  const hasAnyStepfunKey = hasStepfunApiKey || hasStepfunImageApiKey;
+  const hasStepfunImageApiKey = !!process.env.STEPFUN_IMAGE_API_KEY; // legacy (should be unused)
 
   const keys = {
     // Core (required)
@@ -18,15 +17,14 @@ export default function handler(req, res) {
 
     // Legacy/compat (kept for backward visibility)
     STEPFUN_IMAGE_API_KEY: hasStepfunImageApiKey,
-    STEPFUN_VISION_API_KEY: !!process.env.STEPFUN_VISION_API_KEY,
-    STEPFUN_VISION_API_KEY_2: !!process.env.STEPFUN_VISION_API_KEY_2,
-    DEEPSEEK_API_KEY: !!process.env.DEEPSEEK_API_KEY,
+    STEPFUN_VISION_API_KEY: !!process.env.STEPFUN_VISION_API_KEY, // legacy (should be unused)
+    STEPFUN_VISION_API_KEY_2: !!process.env.STEPFUN_VISION_API_KEY_2, // legacy (should be unused)
+    DEEPSEEK_API_KEY: !!process.env.DEEPSEEK_API_KEY, // unused (chat uses Stepfun)
 
     // Clear status fields (recommended to consume)
     hasStepfunApiKey,
     hasStepfunImageApiKey,
-    hasAnyStepfunKey,
-    stepfunKeyOk: hasAnyStepfunKey,
+    stepfunKeyOk: hasStepfunApiKey,
   };
 
   res.status(200).json(keys);

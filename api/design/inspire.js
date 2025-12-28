@@ -64,9 +64,9 @@ export default async function handler(req, res) {
   const finalCfgScale = (typeof cfg_scale === 'number') ? Math.min(Math.max(cfg_scale, 1), 7.0) : 6.6;
   const finalSeed = Number.isInteger(seed) && seed > 0 ? seed : undefined;
 
-  // Unified key (same as chat/vision/i2i)
-  const apiKey = process.env.STEPFUN_API_KEY || process.env.STEPFUN_IMAGE_API_KEY;
-  const usedKey = process.env.STEPFUN_API_KEY ? 'STEPFUN_API_KEY' : 'STEPFUN_IMAGE_API_KEY';
+  // Unified key (single source of truth for chat/vision/i2i)
+  const apiKey = process.env.STEPFUN_API_KEY;
+  const usedKey = 'STEPFUN_API_KEY';
   if (!apiKey) {
     res.status(500).json({ ok: false, errorCode: 'MISSING_KEY', message: 'Missing STEPFUN_API_KEY' });
     return;
