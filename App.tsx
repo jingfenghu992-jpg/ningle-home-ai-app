@@ -96,6 +96,27 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, { id: Date.now().toString(), type: 'text', content: text, sender: 'ai', timestamp: Date.now(), options }]);
   };
 
+  const upsertOptionsCard = (id: string, text: string, options: string[], meta: Message['meta']) => {
+    setMessages(prev => {
+      const idx = prev.findIndex(m => m.id === id);
+      const nextMsg: Message = {
+        id,
+        type: 'text',
+        content: text,
+        sender: 'ai',
+        timestamp: Date.now(),
+        options,
+        meta,
+      };
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...nextMsg };
+        return next;
+      }
+      return [...prev, nextMsg];
+    });
+  };
+
   const addLoadingToast = (text: string, meta: Message['meta']) => {
       const id = `${Date.now()}-ai-loading`;
       setMessages(prev => [
@@ -1272,9 +1293,12 @@ const App: React.FC = () => {
           }) : prev);
 
           const u2 = uploads[uploadId] || {};
-          await typeOutAI(
-            `收到～我先按香港常見比例幫你快出第一张（更对位、少问）。\n你可以直接点「一键出图（推荐）」，或先改风格/目标/强度：`,
-            { options: getQuickRenderOptions(u2, debugEnabled), meta: { kind: 'quick_render', stage: 'picks', uploadId } }
+          const cardId = `${uploadId}-quick_render-picks`;
+          upsertOptionsCard(
+            cardId,
+            `收到～我先按香港常见比例帮你快出第一张（更对位、少问）。\n你可以直接点「一键出图（推荐）」，或先改风格/目标/强度：`,
+            getQuickRenderOptions(u2, debugEnabled),
+            { kind: 'quick_render', stage: 'picks', uploadId }
           );
           return;
       }
@@ -1357,9 +1381,12 @@ const App: React.FC = () => {
           }) : prev);
 
           const picks = getQuickRenderPicks(previewU);
-          await typeOutAI(
+          const cardId = `${uploadId}-quick_render-picks`;
+          upsertOptionsCard(
+            cardId,
             `已选：风格=${picks.style}｜目标=${picks.goal}｜强度=${picks.intensity}\n点「一键出图（推荐）」就会开始生成。`,
-            { options: getQuickRenderOptions(previewU, debugEnabled), meta: { kind: 'quick_render', stage: 'picks', uploadId } }
+            getQuickRenderOptions(previewU, debugEnabled),
+            { kind: 'quick_render', stage: 'picks', uploadId }
           );
           return;
         }
