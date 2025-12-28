@@ -28,6 +28,8 @@
 ### 0.4 验收方法（给 King 截图用）
 1) 打开 `/?debug=1`，上传同一张「毛坯小睡房」  
 2) 先看到 **图片分析卡**（FAST）：包含窗墙/窗数/镜头风险/光线/完成度/可用墙面  
+   - 若第一次失败：前端会**自动用 imageDataUrl 重试一次**（避免反复重传）
+   - debug=1 时可看到是 **fetch fail** 还是 **VLM timeout**（`fetchElapsedMs/vlmElapsedMs/totalElapsedMs`）
 3) 看到 **布置 A/B 卡**：每个方案都有 “根据 anchorsLite …” 的一句解释  
 4) 选好偏好后点 **一键出图（推荐）**：  
    - 不得鱼眼/暗角/圆框、不得左右加窗  
