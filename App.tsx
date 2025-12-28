@@ -61,6 +61,7 @@ const App: React.FC = () => {
   // Keep the last used render intake so "再精修" can reuse the same selections.
   const lastRenderIntakeRef = useRef<any>(null);
   const lastGuardrailRef = useRef<any>(null);
+  const hkFastFlowStartedRef = useRef<Set<string>>(new Set());
   
   // Chat history for context, but we display sparingly
   const [messages, setMessages] = useState<Message[]>([]);
@@ -122,63 +123,112 @@ const App: React.FC = () => {
     });
   };
 
-  const formatAnchorsLiteSummary = (a: any) => {
+  const buildHKAnalysisCardText = (spaceTypeText: string, a: any) => {
     const x = (a && typeof a === 'object') ? a : {};
-    const ww = String(x.window_wall || 'unknown');
-    const wc = typeof x.window_count === 'number' ? String(x.window_count) : String(x.window_count || 'unknown');
-    const lens = String(x.lens_risk || 'unknown');
-    const cam = String(x.camera_view || 'unknown');
-    const day = String(x.daylight_direction || 'unknown');
-    const fin = String(x.finish_level || 'unknown');
-    const uw = String(x.usable_wall || 'unknown');
-    return [
-      `- 门窗：${ww}墙窗位，窗数量=${wc}（不新增侧窗/阳台门）`,
-      `- 镜头：${cam}，镜头风险=${lens}（强制禁止鱼眼/超广角/暗角）`,
-      `- 光线：${day}｜完成度：${fin}`,
-      `- 可用墙面（优先）：${uw}`,
-    ].join('\n');
+    const ww0 = String(x.window_wall || 'unknown').trim().toLowerCase();
+    const wc0 = x.window_count;
+    const cam0 = String(x.camera_view || 'unknown').trim().toLowerCase();
+    const day0 = String(x.daylight_direction || 'unknown').trim().toLowerCase();
+    const fin0 = String(x.finish_level || 'unknown').trim().toLowerCase();
+    const uw0 = String(x.usable_wall || 'unknown').trim().toLowerCase();
+
+    const mapWall = (v: string) => {
+      if (v === 'far') return '遠端牆';
+      if (v === 'left') return '左牆';
+      if (v === 'right') return '右牆';
+      return '未確定';
+    };
+    const mapCount = (v: any) => {
+      if (v === 0 || v === 1 || v === 2) return `${v}個`;
+      const s = String(v ?? '').trim().toLowerCase();
+      if (s === 'many') return '多個';
+      return '';
+    };
+    const mapView = (v: string) => {
+      if (v === 'frontal') return '正面';
+      if (v === 'angled') return '斜角';
+      return '未確定';
+    };
+    const mapDay = (v: string) => {
+      if (v === 'left') return '由窗位入光';
+      if (v === 'right') return '由窗位入光';
+      if (v === 'front') return '由窗位入光';
+      return '由窗位入光';
+    };
+    const mapFinish = (v: string) => {
+      if (v === 'putty') return '批灰';
+      if (v === 'raw') return '毛坯';
+      if (v === 'painted') return '已髹油';
+      if (v === 'finished') return '已裝修';
+      return '批灰／毛坯';
+    };
+
+    const wall = mapWall(ww0);
+    const count = mapCount(wc0);
+    const windowLine = (() => {
+      if (wall === '未確定') return '窗位：未確定';
+      return `窗位：${wall}${count ? count : ''}`;
+    })();
+
+    const usableLine = (() => {
+      if (uw0 !== 'left' && uw0 !== 'right' && uw0 !== 'far') return '';
+      const w = uw0 === 'far' ? '右邊' : (uw0 === 'left' ? '右邊' : '右邊');
+      return `可用牆面：${w}較適合收納`;
+    })();
+
+    const lines = [
+      `空間：${String(spaceTypeText || '').trim() || '室內空間'}`,
+      windowLine,
+      `視角：${mapView(cam0)}`,
+      `採光：${mapDay(day0)}`,
+      `完成度：${mapFinish(fin0)}`,
+      ...(usableLine ? [usableLine] : []),
+    ]
+      .map(s => String(s).trim())
+      .filter(Boolean)
+      .slice(0, 6);
+
+    return `【圖片分析】\n${lines.join('\n')}`;
   };
 
   const getHKPreferenceOptions = (u: any) => {
     const picks = getQuickRenderPicks(u);
-    const styles = ['现代简约', '奶油风', '日式木系', '轻奢'];
-    const goals = ['收纳优先', '显大清爽', '氛围舒适'];
-    const intensities = ['保守（更对位）', '明显（更有设计感）'];
+    const styles = [
+      '現代簡約（白＋淺木）',
+      '奶油暖白（米白＋淺木）',
+      '日式木系（原木＋暖白）',
+    ];
+    const goals = ['收納優先', '顯大清爽'];
+    const intensities = ['更貼近原相', '設計感多啲'];
     const withRadio = (group: string, label: string, picked: string) =>
       (picked === label ? `${group}：◉ ${label}` : `${group}：○ ${label}`);
     return [
-      ...styles.map(s => withRadio('风格', s, picks.style)),
-      ...goals.map(g => withRadio('目标', g, picks.goal)),
-      ...intensities.map(i => withRadio('强度', i, picks.intensity)),
-      '一键出图（推荐）',
+      ...styles.map(s => withRadio('風格', s, picks.style)),
+      ...goals.map(g => withRadio('目標', g, picks.goal)),
+      ...intensities.map(i => withRadio('強度', i, picks.intensity)),
+      '一鍵出圖',
     ];
   };
 
-  const buildHKLayoutOptions = (layouts: any) => {
-    const a = layouts?.A;
-    const b = layouts?.B;
-    const fmt = (k: 'A' | 'B', v: any) => {
-      const name = String(v?.layout_name || k).trim();
-      const ref = String(v?.anchor_reference || '').trim();
-      const why = String(v?.why || '').trim();
-      const circ = String(v?.circulation || '').trim();
-      const store = String(v?.storage_strategy || '').trim();
-      const hint = String(v?.key_dimensions_hint || '').trim();
-      const parts = [
-        `${k}｜${name}`,
-        ref ? `基准：${ref}` : '',
-        circ ? `动线：${circ}` : '',
-        store ? `收纳：${store}` : '',
-        hint ? `要点：${hint}` : '',
-        why ? `根据：${why}` : '',
-      ].filter(Boolean);
-      return parts.join('\n');
-    };
-    const opts: string[] = [];
-    if (a) opts.push(fmt('A', a));
-    if (b) opts.push(fmt('B', b));
-    return opts;
+  const buildHKLayoutCardText = () => {
+    const a = [
+      '方案 A：地台床＋到頂衣櫃',
+      '右牆：趟門衣櫃到頂',
+      '床下：抽屜收納',
+      '窗邊：留通道採光',
+      '原因：右牆較完整',
+    ].join('\n');
+    const b = [
+      '方案 B：活動床＋收納牆',
+      '右牆：收納牆到頂',
+      '書枱：窗邊細書枱',
+      '動線：保留窗前位',
+      '原因：顯大又夠用',
+    ].join('\n');
+    return `【布置方案 A/B】\n揀一個（單選）：\n\n${a}\n\n${b}`;
   };
+
+  const buildHKLayoutChoiceOptions = () => ['方案 A', '方案 B'];
 
   const callHKLayouts = async (spaceType: string, hkAnchorsLite: any) => {
     try {
@@ -196,6 +246,9 @@ const App: React.FC = () => {
   };
 
   const startHKFastFlow = async (uploadId: string, spaceTypeText: string) => {
+    if (hkFastFlowStartedRef.current.has(uploadId)) return;
+    hkFastFlowStartedRef.current.add(uploadId);
+
     const u0 = uploads[uploadId];
     if (!u0) return;
     const imageUrl = u0.imageUrl;
@@ -205,7 +258,7 @@ const App: React.FC = () => {
     const analysisCardId = `${uploadId}-analysis_fast`;
     upsertOptionsCard(
       analysisCardId,
-      `【图片分析（快速结构锁定）】\n正在分析门窗/镜头/光线…（2–4秒）`,
+      `【圖片分析】\n分析緊…（約 2–4 秒）`,
       [],
       { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
     );
@@ -223,7 +276,7 @@ const App: React.FC = () => {
     if ((!fast.ok || !fast.hkAnchorsLite) && retryCodes.has(String((fast as any)?.errorCode || '')) && imageDataUrl) {
       upsertOptionsCard(
         analysisCardId,
-        `【图片分析（快速结构锁定）】\n第一次取图失败，正在用本地压缩图再试一次…`,
+        `【圖片分析】\n我再試一次…`,
         [],
         { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
       );
@@ -233,7 +286,7 @@ const App: React.FC = () => {
     if (!fast.ok || !(fast as any)?.hkAnchorsLite) {
       upsertOptionsCard(
         analysisCardId,
-        `【图片分析（快速结构锁定）】\n分析失败：${(fast as any)?.message || '请重试'}\n如持续失败，请再影一次或换角度（避免反光/过暗），或重新上传同一张图片。`,
+        `【圖片分析】\n暫時分析唔到。\n你可以再影一次或換角度，之後再上傳。`,
         [],
         { kind: 'hk_flow', stage: 'analysis_fast', uploadId }
       );
@@ -248,7 +301,7 @@ const App: React.FC = () => {
 
     upsertOptionsCard(
       analysisCardId,
-      `【图片分析（快速结构锁定）】\n空间：${spaceTypeText}\n${formatAnchorsLiteSummary(hkAnchorsLite)}`,
+      buildHKAnalysisCardText(spaceTypeText, hkAnchorsLite),
       [],
       { kind: 'hk_flow', stage: 'analysis_fast', uploadId }
     );
@@ -257,7 +310,7 @@ const App: React.FC = () => {
     const layoutCardId = `${uploadId}-layout_ab`;
     upsertOptionsCard(
       layoutCardId,
-      `【布置方案 A/B】\n你一定要先选一个方案（我会按这个方案做对位效果图）：`,
+      `【布置方案 A/B】\n準備緊…`,
       [],
       { kind: 'hk_flow', stage: 'layout_ab', uploadId, loading: true }
     );
@@ -266,7 +319,7 @@ const App: React.FC = () => {
     if (!layouts) {
       upsertOptionsCard(
         layoutCardId,
-        `【布置方案 A/B】\n生成方案失败，请稍后重试（或重新上传）。`,
+        `【布置方案 A/B】\n暫時出唔到方案。\n你可以稍後再試或重新上傳。`,
         [],
         { kind: 'hk_flow', stage: 'layout_ab', uploadId }
       );
@@ -275,8 +328,8 @@ const App: React.FC = () => {
     setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], hkLayouts: layouts } }) : prev);
     upsertOptionsCard(
       layoutCardId,
-      `【布置方案 A/B】\n选一个（单选）：`,
-      buildHKLayoutOptions(layouts),
+      buildHKLayoutCardText(),
+      buildHKLayoutChoiceOptions(),
       { kind: 'hk_flow', stage: 'layout_ab', uploadId }
     );
   };
@@ -435,25 +488,29 @@ const App: React.FC = () => {
   const getQuickRenderPicks = (u: any) => {
     const r = (u?.render || {}) as any;
     return {
-      style: String(r.style || '现代简约'),
-      goal: String(r.priority || '收纳优先'),
-      intensity: String(r.intensity || '保守（更对位）'),
+      style: String(r.style || '現代簡約（白＋淺木）'),
+      goal: String(r.priority || '收納優先'),
+      intensity: String(r.intensity || '更貼近原相'),
     };
   };
 
   const getQuickRenderOptions = (u: any, includeVision: boolean) => {
     const picks = getQuickRenderPicks(u);
-    const styles = ['现代简约', '奶油风', '日式木系', '轻奢'];
-    const goals = ['收纳优先', '氛围舒适', '显大清爽'];
-    const intensities = ['保守（更对位）', '明显（更有设计感）'];
+    const styles = [
+      '現代簡約（白＋淺木）',
+      '奶油暖白（米白＋淺木）',
+      '日式木系（原木＋暖白）',
+    ];
+    const goals = ['收納優先', '顯大清爽'];
+    const intensities = ['更貼近原相', '設計感多啲'];
     const withRadio = (group: string, label: string, picked: string) =>
       (picked === label ? `${group}：◉ ${label}` : `${group}：○ ${label}`);
 
     const opts = [
-      ...styles.map(s => withRadio('风格', s, picks.style)),
-      ...goals.map(g => withRadio('目标', g, picks.goal)),
-      ...intensities.map(i => withRadio('强度', i, picks.intensity)),
-      '一键出图（推荐）',
+      ...styles.map(s => withRadio('風格', s, picks.style)),
+      ...goals.map(g => withRadio('目標', g, picks.goal)),
+      ...intensities.map(i => withRadio('強度', i, picks.intensity)),
+      '一鍵出圖',
       '概念示意（较快，不保证对位）',
       ...(includeVision ? ['更似我间屋（精准校准，需要分析）'] : []),
     ];
@@ -1481,7 +1538,7 @@ const App: React.FC = () => {
           const prefU = uploads[uploadId] || u;
           upsertOptionsCard(
             prefsCardId,
-            `【风格/目标/强度】\n（单选）选好后点「一键出图（推荐）」：`,
+            `【風格選擇】\n揀一款就得，我先幫你出第一張。`,
             getHKPreferenceOptions(prefU),
             { kind: 'hk_flow', stage: 'prefs', uploadId }
           );
@@ -1490,13 +1547,13 @@ const App: React.FC = () => {
 
         if (message.meta.stage === 'prefs') {
           const cleaned = String(opt || '')
-            .replace(/^(风格|目标|强度)：\s*[◉○]\s*/g, '')
+            .replace(/^(风格|目标|强度|風格|目標|強度)：\s*[◉○]\s*/g, '')
             .trim();
-          const isStyle = ['现代简约', '奶油风', '日式木系', '轻奢'].includes(cleaned);
-          const isGoal = ['收纳优先', '显大清爽', '氛围舒适'].includes(cleaned);
-          const isIntensity = ['保守（更对位）', '明显（更有设计感）'].includes(cleaned);
+          const isStyle = ['現代簡約（白＋淺木）', '奶油暖白（米白＋淺木）', '日式木系（原木＋暖白）'].includes(cleaned);
+          const isGoal = ['收納優先', '顯大清爽'].includes(cleaned);
+          const isIntensity = ['更貼近原相', '設計感多啲'].includes(cleaned);
 
-          if (cleaned === '一键出图（推荐）') {
+          if (cleaned === '一鍵出圖' || cleaned === '一键出图（推荐）' || cleaned === '一键出图') {
             const rev = Number.isInteger(u.revisionIndex) ? (u.revisionIndex as number) : 0;
             if (rev >= 3) {
               await typeOutAI("我已帮你改到第 3 次啦～为保证对位和落地质量，建议你直接 WhatsApp 我哋 1对1继续：+852 56273817");
@@ -1585,7 +1642,7 @@ const App: React.FC = () => {
             };
             upsertOptionsCard(
               `${uploadId}-prefs`,
-              `【风格/目标/强度】\n（单选）选好后点「一键出图（推荐）」：`,
+              `【風格選擇】\n揀一款就得，我先幫你出第一張。`,
               getHKPreferenceOptions(previewU),
               { kind: 'hk_flow', stage: 'prefs', uploadId }
             );
