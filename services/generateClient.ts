@@ -23,6 +23,7 @@ export interface InspireResponse {
   ok: boolean;
   resultUrl?: string;
   debug?: any;
+  fallbackPlan?: any;
   message?: string;
   errorCode?: string;
 }
@@ -130,7 +131,14 @@ export async function generateInspireImage(params: {
     });
   } catch (error: any) {
     console.error('[Inspire Client] Error:', error);
-    return { ok: false, message: error.message || 'Inspiration generation failed', errorCode: error.code || 'NETWORK_ERROR' };
+    const details = error?.details;
+    return {
+      ok: false,
+      message: (details?.message || error.message || 'Inspiration generation failed'),
+      errorCode: (details?.errorCode || error.code || 'NETWORK_ERROR'),
+      debug: details?.debug,
+      fallbackPlan: details?.fallbackPlan,
+    };
   }
 }
 

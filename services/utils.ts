@@ -1,5 +1,5 @@
 export class APIError extends Error {
-  constructor(public status: number, public message: string, public code?: string) {
+  constructor(public status: number, public message: string, public code?: string, public details?: any) {
     super(message);
     this.name = 'APIError';
   }
@@ -24,8 +24,10 @@ export async function fetchJSON<T>(url: string, options: RequestInit = {}): Prom
     if (!response.ok) {
       let errorMessage = `HTTP error! status: ${response.status}`;
       let errorCode;
+      let errorDetails: any = undefined;
       try {
         const errorBody = await response.json();
+        errorDetails = errorBody;
         errorMessage = errorBody.message || errorMessage;
         errorCode = errorBody.errorCode || errorBody.code;
         // Special handling for Vercel 500s which might be HTML
@@ -45,7 +47,7 @@ export async function fetchJSON<T>(url: string, options: RequestInit = {}): Prom
           errorCode = 'TIMEOUT';
       }
       
-      throw new APIError(response.status, errorMessage, errorCode);
+      throw new APIError(response.status, errorMessage, errorCode, errorDetails);
     }
 
     return response.json();
