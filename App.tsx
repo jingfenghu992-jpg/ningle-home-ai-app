@@ -900,8 +900,16 @@ const App: React.FC = () => {
             const resultUrl = res.resultUrl;
             if (debugEnabled && (res as any)?.debug?.usedText) {
               const d: any = (res as any).debug || {};
-              const p = d.i2iParams ? ` | i2i(str=${d.i2iParams.strength}, sw=${d.i2iParams.source_weight}, cfg=${d.i2iParams.cfg_scale}, st=${d.i2iParams.steps})` : '';
-              const header = `mode: ${d.outputMode ?? ''} | mismatch: ${d.mismatch ?? ''} | chars: ${d.promptChars ?? ''} | hash: ${d.promptHash ?? ''} | hkSpace: ${d.hkSpace ?? ''} | A/B: ${d.layoutVariant ?? ''} | dropped: ${(d.dropped || []).join(',')}${p}`;
+              const i2i = d.i2iParams ? ` i2i(str=${d.i2iParams.strength}, sw=${d.i2iParams.source_weight}, cfg=${d.i2iParams.cfg_scale}, st=${d.i2iParams.steps})` : '';
+              const base = (d.baseImageBytes || d.baseImageWidth || d.baseImageHeight)
+                ? ` base=${d.baseImageWidth ?? ''}x${d.baseImageHeight ?? ''} bytes=${d.baseImageBytes ?? ''}`
+                : '';
+              const ar = d.aspectRatio ? ` ar=${Number(d.aspectRatio).toFixed(3)}` : '';
+              const sizeInfo = d.targetSize ? ` target=${d.targetSize}` : (d.sentSize ? ` target=${d.sentSize}` : '');
+              const pad = (typeof d.padded === 'boolean') ? ` padded=${d.padded}` : '';
+              const header =
+                `endpoint=${d.requestedEndpoint ?? ''} | mode=${d.outputMode ?? ''} | fallback=${d.fallbackUsed ?? ''} | mismatch=${d.mismatch ?? ''} | chars=${d.promptChars ?? ''} | hash=${d.promptHash ?? ''} | hkSpace=${d.hkSpace ?? ''} | A/B=${d.layoutVariant ?? ''} | dropped=${(d.dropped || []).join(',')}` +
+                `${i2i}${base}${ar}${sizeInfo}${pad}`;
               const usedText = String(d.usedText || '').trim();
               if (usedText) {
                 console.log('[DEBUG] inspire usedText', usedText);
