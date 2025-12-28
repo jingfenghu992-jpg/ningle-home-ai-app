@@ -574,9 +574,11 @@ export default async function handler(req, res) {
     const preset = String(qualityPreset || '').trim();
     const finalKeepStructure = typeof keep_structure === 'boolean' ? keep_structure : true;
     const defaultSW = preset === 'STRUCTURE_LOCK' ? 0.90 : 0.85;
-    const defaultStrength = preset === 'STRUCTURE_LOCK' ? 0.50 : 0.80;
-    const defaultCfg = preset === 'STRUCTURE_LOCK' ? 5.0 : finalCfgScale;
-    const defaultSW2 = preset === 'STRUCTURE_LOCK' ? 0.92 : defaultSW;
+    // Product-level "strength" is tracked in debug and used to pick conservative params.
+    // Upstream StepFun image2image uses source_weight as the main structure control.
+    const defaultStrength = preset === 'STRUCTURE_LOCK' ? 0.35 : 0.80;
+    const defaultCfg = preset === 'STRUCTURE_LOCK' ? 4.5 : finalCfgScale;
+    const defaultSW2 = preset === 'STRUCTURE_LOCK' ? 0.95 : defaultSW;
     const finalI2ISourceWeight = (typeof i2i_source_weight === 'number' && i2i_source_weight > 0 && i2i_source_weight <= 1)
       ? i2i_source_weight
       : defaultSW2;
