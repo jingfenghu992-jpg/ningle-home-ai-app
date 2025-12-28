@@ -2,6 +2,7 @@
 // This endpoint returns StepFun temporary URLs (or base64 data URLs) only.
 
 import { hashTextShort } from '../../lib/hkPrompt.js';
+import { stepfunImage2Image } from '../../lib/stepfunImageClient.js';
 
 export const config = {
     api: {
@@ -842,24 +843,18 @@ Also MUST embed an explicit layered lighting script into prompt_en (concrete com
         console.log(`[Design Gen] Calling StepFun image2image with ${urlToUse.slice(0, 50)}...`);
         // StepFun may enforce very low concurrency (e.g. limit=1). Add a small retry for 429.
         const doFetch = async () =>
-          await fetch('https://api.stepfun.com/v1/images/image2image', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              model: 'step-1x-medium',
-              prompt: promptToUse,
-              source_url: urlToUse,
-              source_weight: sw,
-              size: finalSize,
-              n: 1,
-              response_format: rf,
-              seed: finalSeed,
-              steps: st,
-              cfg_scale: cfg
-            })
+          await stepfunImage2Image({
+            apiKey,
+            model: 'step-1x-medium',
+            prompt: promptToUse,
+            source_url: urlToUse,
+            source_weight: sw,
+            size: finalSize,
+            n: 1,
+            response_format: rf,
+            seed: finalSeed,
+            steps: st,
+            cfg_scale: cfg
           });
 
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));

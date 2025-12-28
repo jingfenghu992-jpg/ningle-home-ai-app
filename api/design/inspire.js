@@ -1,4 +1,5 @@
 import { buildHKPrompt } from '../../lib/hkPrompt.js';
+import { stepfunT2I, stepfunImage2Image } from '../../lib/stepfunImageClient.js';
 
 export const config = {
   api: {
@@ -378,22 +379,16 @@ export default async function handler(req, res) {
   try {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const doT2I = async () =>
-      await fetch('https://api.stepfun.com/v1/images/generations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'step-1x-medium',
-          prompt,
-          size: finalSize,
-          n: 1,
-          response_format: finalResponseFormat,
-          seed: finalSeed,
-          steps: finalSteps,
-          cfg_scale: finalCfgScale,
-        }),
+      await stepfunT2I({
+        apiKey,
+        model: 'step-1x-medium',
+        prompt,
+        size: finalSize,
+        n: 1,
+        response_format: finalResponseFormat,
+        seed: finalSeed,
+        steps: finalSteps,
+        cfg_scale: finalCfgScale,
       });
 
     const decodeU32BE = (buf, off) => {
@@ -474,6 +469,46 @@ export default async function handler(req, res) {
       }
     };
 
+    const fetchFullImageAsDataUrl = async (url) => {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 20000);
+      try {
+        const r = await fetch(url, { method: 'GET', signal: controller.signal });
+        if (!r.ok) return { ok: false, status: r.status, contentType: null, bytes: 0, dataUrl: null, w: null, h: null };
+        const ct = r.headers.get('content-type') || 'image/jpeg';
+        const ab = await r.arrayBuffer();
+        const bytes = ab.byteLength || 0;
+        if (!bytes) return { ok: false, status: r.status, contentType: ct, bytes: 0, dataUrl: null, w: null, h: null };
+        const buf = Buffer.from(ab);
+        const wh = (ct.includes('png') ? parsePngWH(buf) : null) || ((ct.includes('jpeg') || ct.includes('jpg')) ? parseJpegWH(buf) : null) || parsePngWH(buf) || parseJpegWH(buf);
+        const dataUrl = `data:${ct};base64,${buf.toString('base64')}`;
+        return { ok: true, status: r.status, contentType: ct, bytes, dataUrl, w: wh?.w || null, h: wh?.h || null };
+      } catch {
+        return { ok: false, status: null, contentType: null, bytes: 0, dataUrl: null, w: null, h: null };
+      } finally {
+        clearTimeout(t);
+      }
+    };
+
+    const pickTargetSizeByWH = (w, h) => {
+      const ww = Number(w);
+      const hh = Number(h);
+      if (!ww || !hh) return finalSize;
+      const r = ww / hh;
+      const candidates = [
+        { s: '1280x800', r: 1280 / 800 },
+        { s: '800x1280', r: 800 / 1280 },
+        { s: '1024x1024', r: 1 },
+      ];
+      let best = candidates[0];
+      let bestDiff = Math.abs(r - best.r);
+      for (const c of candidates.slice(1)) {
+        const d = Math.abs(r - c.r);
+        if (d < bestDiff) { best = c; bestDiff = d; }
+      }
+      return best.s;
+    };
+
     const validateSourceUrl = async (u) => {
       const raw = String(u || '').trim();
       if (!raw) return { ok: false, reason: 'EMPTY' };
@@ -525,29 +560,19 @@ export default async function handler(req, res) {
       : defaultStrength;
     const finalCfgI2I = (typeof cfg_scale === 'number') ? Math.min(Math.max(cfg_scale, 1), 7.0) : defaultCfg;
 
-    const doI2I = async () =>
-      await fetch('https://api.stepfun.com/v1/images/image2image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'step-1x-medium',
-          prompt,
-          source_url: String(sourceImageUrl),
-          // StepFun param naming matches /api/design/generate usage
-          source_weight: finalI2ISourceWeight,
-          size: finalSize,
-          n: 1,
-          response_format: finalResponseFormat,
-          seed: finalSeed,
-          steps: finalSteps,
-          cfg_scale: finalCfgI2I,
-          // keep_structure is a soft flag for our product logic; upstream may ignore
-          keep_structure: finalKeepStructure,
-          strength: finalI2IStrength,
-        }),
+    const doI2I = async ({ sourceUrl, sizeToUse }) =>
+      await stepfunImage2Image({
+        apiKey,
+        model: 'step-1x-medium',
+        prompt,
+        source_url: String(sourceUrl),
+        source_weight: finalI2ISourceWeight,
+        size: String(sizeToUse || finalSize),
+        n: 1,
+        response_format: finalResponseFormat,
+        seed: finalSeed,
+        steps: finalSteps,
+        cfg_scale: finalCfgI2I,
       });
 
     let actualMode = desiredMode;
@@ -570,6 +595,7 @@ export default async function handler(req, res) {
     let baseImageBytes = 0;
     let requestedEndpoint = desiredMode === 'PRECISE_I2I' ? 'image2image' : 'generations';
     let aspectRatio = null;
+    let targetSizeUsed = finalSize;
     if (desiredMode === 'PRECISE_I2I') {
       const v = await validateSourceUrl(sourceImageUrl);
       if (!v.ok) {
@@ -642,7 +668,49 @@ export default async function handler(req, res) {
         });
         return;
       }
-      response = await withRetry429(doI2I);
+
+      // Download the base image and send as data URL so StepFun definitely uses the same pixels.
+      // No resize, no crop, preserve aspect ratio.
+      const full = await fetchFullImageAsDataUrl(String(sourceImageUrl));
+      if (!full.ok || !full.dataUrl || !full.bytes) {
+        res.status(400).json({
+          ok: false,
+          errorCode: 'BASE_IMAGE_REQUIRED',
+          message: '请重新上传相片再试（更贴原相需要相片可访问）',
+          debug: {
+            outputMode: 'PRECISE_I2I',
+            requestedEndpoint: 'image2image',
+            usedKey,
+            model: 'step-1x-medium',
+            elapsedMs: Date.now() - startedAt,
+            promptChars: built?.promptChars,
+            promptHash: built?.promptHash,
+            hkSpace: built?.hkSpace,
+            layoutVariant: built?.layoutVariant,
+            dropped: built?.dropped,
+            anchorDropped: built?.anchorDropped,
+            antiDistortDropped: built?.antiDistortDropped,
+            userSelected,
+            applied,
+            mismatch,
+            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
+            sentSize: finalSize,
+            baseImageBytes: full.bytes || 0,
+            baseImage: { w: full.w, h: full.h, contentType: full.contentType, bytes: full.bytes, contentLength: null },
+            baseImageContentType: full.contentType,
+            baseImageWidth: full.w,
+            baseImageHeight: full.h,
+            aspectRatio: (full.w && full.h) ? (full.w / full.h) : null,
+          }
+        });
+        return;
+      }
+      baseImage = { w: full.w, h: full.h, contentType: full.contentType, bytes: full.bytes, contentLength: null };
+      baseImageBytes = full.bytes;
+      aspectRatio = (full.w && full.h) ? (full.w / full.h) : aspectRatio;
+      const targetSize = pickTargetSizeByWH(full.w, full.h);
+      targetSizeUsed = targetSize;
+      response = await withRetry429(() => doI2I({ sourceUrl: full.dataUrl, sizeToUse: targetSize }));
       if (!response.ok) {
         // Only allow fallback for temporary upstream failures (NOT base image issues).
         const status = response.status;
@@ -758,7 +826,9 @@ export default async function handler(req, res) {
             baseImageWidth: baseImage?.w || null,
             baseImageHeight: baseImage?.h || null,
             aspectRatio,
-            sentSize: finalSize,
+            targetSize: targetSizeUsed,
+            padded: false,
+            sentSize: targetSizeUsed,
             mode: 'PRECISE_I2I'
           } : {}),
           ...(debugEnabled ? { usedText: prompt } : {}),
@@ -805,7 +875,9 @@ export default async function handler(req, res) {
           baseImageWidth: baseImage?.w || null,
           baseImageHeight: baseImage?.h || null,
           aspectRatio,
-          sentSize: finalSize,
+          targetSize: targetSizeUsed,
+          padded: false,
+          sentSize: targetSizeUsed,
           mode: 'PRECISE_I2I'
         } : {}),
         ...(debugEnabled ? { usedText: prompt } : {}),
