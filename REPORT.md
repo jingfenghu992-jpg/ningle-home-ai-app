@@ -36,6 +36,111 @@
    - debug 折叠块必须看到：`endpoint=image2image`、`fetchOk=true`、`baseImageBytes>0`、`targetSize/padded`、`lite(win=far/1, ...)`  
 5) 最多改 3 次：第 4 次提示 WhatsApp：`+852 56273817`
 
+---
+
+## Step 1｜客户可见文案来源盘点（定位清单）
+
+> 目的：把“卡片/按钮/消息”的文案来源一网打尽，后续改文案与修复重复渲染时不漏改。  
+> 说明：这里列的是**代码里出现的位置**；其中 `/api/*` 的 prompt/规则不一定直接展示给客户，但如果被前端透传/展示，就会变成客户可见内容，因此也一并列出。
+
+### 1) 关键词命中位置（客户可见：前端 message builder / 后端回传）
+
+- **`"图片分析"` / `"图片分析（快速结构锁定）"`**
+  - **前端拼装**：`/workspace/App.tsx`
+    - FAST 流程卡片：`startHKFastFlow()` 里 `analysisCardId` 的 `upsertOptionsCard(...)`
+    - 传统分析卡片：`runAnalysisForUpload()` 里 `typeOutAI("【图片分析】...")`
+
+- **`"快速结构"`**
+  - **前端拼装**：`/workspace/App.tsx`
+    - `【图片分析（快速结构锁定）】`（FAST 分析卡：加载/失败/完成三种状态）
+
+- **`"布置方案"` / `"布置方案 A/B"`**
+  - **前端拼装**：`/workspace/App.tsx`
+    - `startHKFastFlow()` 里 `layoutCardId` 的 `upsertOptionsCard(...)`
+  - **后端回传（布局解释文本）**：`/workspace/api/vision.js`
+    - `mode=LAYOUT_HK` 返回 `layouts.A/B`（字段：`layout_name/why/...`）
+
+- **`"风格/目标/强度"`**
+  - **前端拼装**：`/workspace/App.tsx`
+    - 偏好选项卡：`getHKPreferenceOptions()` + `hk_flow stage='prefs'`
+
+- **`"一键出图"`**
+  - **前端拼装**：`/workspace/App.tsx`
+    - 偏好选项卡固定选项：`'一键出图（推荐）'`
+
+- **`"设计说明"` / `"设计重点"`**
+  - **前端拼装（当前为“设计说明”）**：`/workspace/App.tsx`
+    - 出图后卡片：`typeOutAI("【设计说明（与本次效果图一致）】...")`（含 renderId 与引导文案）
+  - **后端回传（会被前端直接展示）**：`/workspace/api/design/inspire.js`
+    - `designNotes`（`/api/design/render` 主出图接口的返回字段）
+
+- **`"再精修"`**
+  - **前端拼装**：`/workspace/App.tsx`
+    - `opt.startsWith('再精修：')`（旧的精修按钮逻辑入口）
+
+- **`"按钮"`（泛指选项按钮/卡片选项）**
+  - **前端渲染层**：`/workspace/components/MessageCard.tsx`（渲染 options 为按钮；本次只改文本/数量/显示，不改布局样式）
+  - **前端拼装层**：`/workspace/App.tsx`（`upsertOptionsCard()` / `typeOutAI(..., { options })`）
+
+### 2) 禁词/敏感词命中位置（必须避免出现在客户可见文案）
+
+- **`"风险"`**
+  - **前端客户可见（当前存在）**：`/workspace/App.tsx`
+    - `formatAnchorsLiteSummary()` 里有 `镜头风险=...`
+  - **后端潜在透传**：`/workspace/api/vision.js`
+    - `standardLayoutOptions(...).risk` 字段与 schema 示例里出现 `risk/风险：...`
+
+- **`"禁止"` / `"强制"`**
+  - **前端客户可见（当前存在）**：`/workspace/App.tsx`
+    - `formatAnchorsLiteSummary()` 里 `强制禁止...`
+  - **后端回传且前端会展示（当前存在）**：`/workspace/api/design/inspire.js`
+    - `designNotes` 里出现 `禁止鱼眼/超广角/暗角`、`不新增侧窗/阳台门` 等字样
+
+- **`"图生图"`**
+  - **前端客户可见（当前存在）**：`/workspace/App.tsx`
+    - 生成中 toast：`"生成对位效果图（图生图）"`
+
+- **`"次数"` / `"超过"` / `"最多"`**
+  - **前端客户可见（当前存在）**：`/workspace/App.tsx`
+    - 出图后文案：`"最多还能再改 2 次（超过会引导 WhatsApp）。"`
+
+（备注：`fisheye/wide-angle/i2i/t2i` 等英文技术词在 `lib/hkPrompt.js`、`api/design/*` prompt 中大量出现，属于服务端内部指令；只要不被前端直接展示给客户即可。）
+
+---
+
+## 13) 香港上传后体验流程简化（本轮落地情况）
+
+> 范围：只改“卡片内文案/显示逻辑/选项数量/重复渲染 bug/聊天规则”，不改首页与 UI 外观框架。
+
+### 13.1 改动文件
+
+- `App.tsx`
+  - FAST 流程：`【圖片分析】` 短版（繁体、港式口吻、纯描述）
+  - `【布置方案 A/B】`：去重（同一 uploadId 只触发一次）+ 文案短版（每方案 5 行）+ 选项改为「方案 A / 方案 B」
+  - `【風格選擇】`：风格 3 + 目标 2 + 强度 2（单选）+ 主按钮统一为「一鍵出圖」
+  - 出图提示：改口语，移除技术词/禁词
+  - 出图后：改为 `【設計重點】`（4–6 点短句）并移除所有精修按钮入口
+  - 聊天改图：使用内部 `revisionIndex` 控制（>2 后不再出图，转 WhatsApp；对用户不提任何次数/限制字眼）
+- `api/chat.js`
+  - System 规则：只收集改图信息（收纳/床/衣柜/书枱/灯光/色温/窗帘/地台/动线），不回答材料/价钱/施工等，收敛式 2–3 个短问题，必要时转 WhatsApp（不提次数/限制）
+- `REPORT.md`
+  - Step 1 文案来源盘点 + 本节验收记录
+
+### 13.2 验收清单（代码级对照 + 本地构建结果）
+
+- **上传后先见 `【圖片分析】`**：已改为固定 5–6 行短句，且移除“风险/禁止/强制”等禁词（FAST 分析卡）。
+- **`【布置方案 A/B】` 只出现一次**：已对 `uploadId` 加去重锁，避免重复触发导致重复卡片。
+- **选项最少化（单选）**
+  - 风格：3 个（現代簡約／奶油暖白／日式木系）
+  - 目标：2 个（收納優先／顯大清爽）
+  - 强度：2 个（更貼近原相／設計感多啲）
+- **出图提示无技术词/禁词**：前端已移除“图生图/次数/最多/超过”等字眼；出图后引导改为“打几句我再出一张”。
+- **出图后只显示 `【設計重點】`，无精修按钮**：已删除旧的 `再精修` 与快捷微调按钮逻辑入口，卡片改为短版重点。
+- **聊天改图最多再出 2 次，之后转 WhatsApp（不提次数/限制）**：已用 `revisionIndex`（0/1/2）控制；当再提出修改且达到阈值后仅回复 WhatsApp 引导文案。
+- **本地构建**：`npm ci` + `npm run build` ✅ 通过（`tsc && vite build`）。
+
+> 需要你在浏览器用同一张「小睡房毛坯相」按 1→8 顺序实际走一遍（含 2 次改图 + 第 3 次请求改图），确认线上 Vercel Production 行为与文案一致。
+
 ## 1) 系统概览（技术栈 / 部署方式 / 结构）
 
 ### 1.1 技术栈
