@@ -2,6 +2,38 @@
 
 > 目标：先“检查与定位”，不做大改动。本报告用于后续按问题逐步精准修正（香港户型纯文生图精度、分类稳定性、超时/并发等）。
 
+## 0) 置顶：现况 → 问题 → 改动清单 → 验收方法（香港客戶体验型：快速出效果图）
+
+### 0.1 现况（最新主流程）
+- **主流程**：上传 → `FAST 结构锚点分析` → `布置 A/B（引用 anchorsLite）` → `风格/目标/强度（单选）` → **i2i 出图（/api/design/render）** → 输出一致说明（同 renderId）→ 最多再改 2 次 → WhatsApp 引导
+- **唯一出图接口**：`POST /api/design/render`（通过 `vercel.json rewrites` 映射到 `api/design/inspire.js`，避免新增 Function 文件导致部署失败）
+- **FAST 分析接口**：`POST /api/vision-fast`（rewrite 到 `POST /api/vision?mode=FAST`）
+- **A/B 布置接口**：`POST /api/layout/hk`（rewrite 到 `POST /api/vision?mode=LAYOUT_HK`，纯规则生成，2–6 秒内完成）
+- **Key 策略（唯一真源）**：所有 chat/vision/i2i 统一只读取 `STEPFUN_API_KEY`
+
+### 0.2 关键问题（已定位/已处理）
+- **/api 不能随意新增新文件**：一旦新增新的 `api/*` Function 文件，Vercel Production 会出现 “Deployment has failed”（原因疑似与函数打包/体积限制相关）。因此采用 **rewrite + mode 分支**实现新端点。
+- **i2i 对位失效/静默 fallback**：已移除精确模式静默 fallback（i2i 失败直接报错，不再偷偷改 t2i 误导）。
+- **选项卡重复/多选矛盾**：改为 upsert 同一张卡（不 append），偏好项改为 radio-like 单选（◉/○）。
+
+### 0.3 本轮改动清单（可回滚的小步提交）
+- **FAST anchorsLite**：`api/vision.js` 增加 `mode=FAST` 输出 `hkAnchorsLite`（含 `usable_wall`），并增加 `mode=LAYOUT_HK` 输出 A/B 方案。
+- **端点别名**：`vercel.json` 增加 rewrites：`/api/vision-fast`、`/api/layout/hk`、`/api/design/render`。
+- **i2i 结构锁定**：`api/design/inspire.js` 增加 `fastAnchors`（快速抽 anchorsLite 并注入 STRUCTURE_LOCK）。
+- **一致说明**：`api/design/inspire.js` 返回 `{ renderId, designNotes }`，前端直接展示，避免“图/说明不一致”。
+- **聊天清理**：`api/chat.js` 移除知识库，严格限制只做改图收集 + WhatsApp 引导。
+- **Key 统一**：`api/design/inspire.js`、`api/generate.js`、`api/vision-health.js` 全面只使用 `STEPFUN_API_KEY`。
+- **前端主流程**：`App.tsx` 新增 FAST 分析卡 + A/B 布置卡 + 单选偏好卡；生成统一走 `/api/design/render`（rewrite），强制 i2i。
+
+### 0.4 验收方法（给 King 截图用）
+1) 打开 `/?debug=1`，上传同一张「毛坯小睡房」  
+2) 先看到 **图片分析卡**（FAST）：包含窗墙/窗数/镜头风险/光线/完成度/可用墙面  
+3) 看到 **布置 A/B 卡**：每个方案都有 “根据 anchorsLite …” 的一句解释  
+4) 选好偏好后点 **一键出图（推荐）**：  
+   - 不得鱼眼/暗角/圆框、不得左右加窗  
+   - debug 折叠块必须看到：`endpoint=image2image`、`fetchOk=true`、`baseImageBytes>0`、`targetSize/padded`、`lite(win=far/1, ...)`  
+5) 最多改 3 次：第 4 次提示 WhatsApp：`+852 56273817`
+
 ## 1) 系统概览（技术栈 / 部署方式 / 结构）
 
 ### 1.1 技术栈
