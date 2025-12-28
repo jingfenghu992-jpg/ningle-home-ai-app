@@ -384,9 +384,11 @@ const App: React.FC = () => {
                           return uniq;
                         })();
 
-                        await typeOutAI(
+                        upsertOptionsCard(
+                          `${uploadId}-space_pick`,
                           `我猜你这张图是「${primary}」\n你点一下确认就行（不对也可以改）`,
-                          { options, meta: { kind: 'space_pick', uploadId } }
+                          options,
+                          { kind: 'space_pick', uploadId }
                         );
                       } catch (err) {
                         stopLoadingToast(classifyId);
