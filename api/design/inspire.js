@@ -213,6 +213,40 @@ export default async function handler(req, res) {
     const finLevel = normalize(fin?.level);
     const finEv = normalize(fin?.evidence);
 
+    const parseWall = (t) => {
+      const s = String(t || '');
+      if (s.includes('右墙') || s.includes('東墙') || s.includes('东墙')) return 'right wall';
+      if (s.includes('左墙') || s.includes('西墙') || s.includes('西牆')) return 'left wall';
+      if (s.includes('远端墙') || s.includes('端墙') || s.includes('对面墙') || s.includes('正对')) return 'far wall';
+      if (s.includes('入口侧') || s.includes('近端墙') || s.includes('门口侧')) return 'near wall (entrance side)';
+      return '';
+    };
+
+    const windowSpec = (() => {
+      if (!doors || doors === '未见') return '';
+      if (!doors.includes('窗')) return '';
+      const wall = parseWall(doors);
+      const count = /两|二|2|三|3|多扇|多個|多个|多窗/.test(doors) ? 'multiple' : 'exactly 1';
+      const kind = /落地|全落地|全高|通顶|大窗/.test(doors) ? 'tall window' : 'regular window';
+      // 强制：不要生成一整排日式格栅落地窗
+      return `Window constraint: ${count} ${kind} on the ${wall || 'same wall as in the photo'}; do NOT add extra windows; NOT floor-to-ceiling grid windows; add realistic curtains on this window.`;
+    })();
+
+    const beamSpec = (() => {
+      if (!beams || beams === '未见') return '';
+      const dir =
+        beams.includes('左右向') || beams.includes('东西向') ? 'left-to-right'
+        : beams.includes('前后向') ? 'front-to-back'
+        : '';
+      return `Ceiling beam constraint: visible ceiling beam/drop running ${dir || 'as in the photo'}; keep ceiling height realistic (HK).`;
+    })();
+
+    const columnSpec = (() => {
+      if (!cols || cols === '未见') return '';
+      const wall = parseWall(cols);
+      return `Column/protrusion constraint: keep the column/protrusion on the ${wall || 'same wall as in the photo'}; do NOT remove.`;
+    })();
+
     const dims = (roomWidthChi || roomHeightChi)
       ? `Room proportions (approx, HK chi): width ${cap(roomWidthChi || 'unknown', 16)}, ceiling height ${cap(roomHeightChi || 'unknown', 16)}.`
       : '';
@@ -237,9 +271,13 @@ export default async function handler(req, res) {
     const lock = [
       'STRUCTURE LOCK (hard constraints):',
       shapeHint,
-      doors ? `Openings: ${cap(doors, 140)} (do NOT add extra windows/doors; keep window position/proportion).` : 'Openings: do NOT add extra windows/doors; keep any window position/proportion consistent.',
-      cols && cols !== '未见' ? `Columns/protrusions: ${cap(cols, 90)} (do NOT remove).` : 'Columns/protrusions: none visible.',
-      beams && beams !== '未见' ? `Beams/ceiling drops: ${cap(beams, 90)} (respect; do NOT raise ceiling height unrealistically).` : 'Beams/ceiling drops: none visible.',
+      // 先给“可执行”的约束，再补充原文（提升 t2i 遵循度）
+      windowSpec,
+      columnSpec,
+      beamSpec,
+      doors ? `Openings (raw): ${cap(doors, 120)}.` : '',
+      cols && cols !== '未见' ? `Columns (raw): ${cap(cols, 80)}.` : '',
+      beams && beams !== '未见' ? `Beams (raw): ${cap(beams, 80)}.` : '',
       notes.length ? `Other structure notes: ${cap(notes.join(' | '), 120)}.` : '',
       dims,
       cameraHint,
@@ -261,7 +299,7 @@ export default async function handler(req, res) {
       if (targetUse.includes('书房')) return 'Must include: slim desk + storage wall/bookcase + task lighting + optional sofa bed (if suitable). Modern Hong Kong flat proportions.';
       if (targetUse.includes('玄关') || targetUse.includes('走廊')) return 'Must include: shoe cabinet/storage + clear circulation + wall wash/linear lighting. Modern Hong Kong flat proportions.';
     }
-    if (s.includes('客餐')) return 'Must include: TV wall + sofa seating + dining table for 2-4 OR a bar counter (space-saving) + dining sideboard/pantry cabinet.';
+    if (s.includes('客餐')) return 'MUST include: TV wall with built-in storage + sofa (2-3 seats) + coffee table + rug + curtains on the existing window; dining table for 4 + chairs + pendant light above table; dining sideboard/tall pantry cabinet. Keep HK compact proportions.';
     if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return 'Must include: base cabinets + wall cabinets to ceiling + countertop + sink/cooktop zones + under-cabinet task lighting.';
     if (s.includes('卫生') || s.includes('衛') || s.includes('浴') || s.includes('洗手')) return 'Must include: vanity cabinet + mirror cabinet + shower zone with screen OR compact bathtub (only if suitable) + anti-slip floor tiles + mirror/vanity light.';
     if (s.includes('入户') || s.includes('玄')) return 'Must include: full-height shoe cabinet + bench + full-length mirror + concealed clutter storage.';
@@ -271,7 +309,7 @@ export default async function handler(req, res) {
       const deskLine = wantsDesk ? ' + slim desk (only if space allows)' : '';
       return `Must include: space-saving bed (${bedType || 'platform/tatami/Murphy'}) + full-height slim wardrobe with sliding doors${deskLine}.`;
     }
-    if (s.includes('大睡房')) return 'Must include: bed + full-height wardrobe with sliding doors + bedside + curtains + optional vanity (compact).';
+    if (s.includes('大睡房')) return 'MUST include: bed + headboard + 2 bedside tables + full-height wardrobe (sliding doors preferred) + curtains; layered lighting + soft rug.';
     if (s.includes('睡') || s.includes('卧') || s.includes('房')) return 'Must include: residential bed + full-height wardrobe + bedside + curtains.';
     return 'Must include: finished ceiling/walls/floor + built-in cabinetry + layered lighting + soft furnishings.';
   })();
@@ -297,20 +335,21 @@ export default async function handler(req, res) {
   })();
 
   let prompt = [
-    'Photorealistic high-end interior design rendering, V-Ray/Corona render style, magazine quality.',
+    // 前置：结构锁定越靠前越有效（避免被 1024 截断）
+    structureCues,
+    roomTypeLock,
+    mustHave,
     `${spaceEn}.`,
+    'Photorealistic high-end interior design rendering, V-Ray/Corona render style, magazine quality.',
     `Style: ${styleEn}.`,
     `Color palette: ${colorEn}.`,
-    structureCues,
     housingType ? `Hong Kong home type: ${housingType}.` : '',
     needsWorkstation ? `Workstation needed: ${needsWorkstation}.` : '',
     hallType ? `Hall type: ${hallType}.` : '',
-    roomTypeLock,
     dimsLine,
     layoutLine,
     bedLine,
     builtInsFromFocus,
-    mustHave,
     storageLine,
     decorLine,
     intensityLine,

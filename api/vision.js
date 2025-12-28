@@ -247,11 +247,11 @@ export default async function handler(req, res) {
         const schema = `Return JSON only, with this schema:
 {
   "space_type": "客餐厅/大睡房/小睡房/厨房/卫生间/入户/走廊/其他",
-  "doors_windows": "门/窗/窗台位置（必须带方位；看不到写未见）",
-  "columns": "墙面是否有立柱/凸位（必须带方位；没有则写未见）",
-  "beams_ceiling": "天花是否有横梁/降板/灯槽条件（必须带方位；没有则写未见）",
+  "doors_windows": "门/窗/窗台位置（必须带相对方位：左墙/右墙/远端墙/入口侧；看不到写未见）",
+  "columns": "墙面是否有立柱/凸位（必须带相对方位：左墙/右墙/远端墙/入口侧；没有则写未见）",
+  "beams_ceiling": "天花是否有横梁/降板/灯槽条件（必须带相对方位或走向：左右向/前后向；没有则写未见）",
   "structure_notes": [
-    "补充结构点（可选，必须带方位，例如电箱/冷气位/凹位/窗下台）"
+    "补充结构点（可选，必须带相对方位；不确定写未见）"
   ],
   "light": "自然光方向 + 冷/暖（短句）",
   "finish_level": { "level": "毛坯/半装/已装", "evidence": "一句画面证据" },
@@ -274,6 +274,7 @@ Rules:
 - layout_options must be 2-3 options, each <= 90 Chinese chars total across fields.
 - Must respect: do NOT hallucinate what you cannot see; if not visible, say "未见".
 - If user confirmed space_type, MUST keep it consistent and do NOT mention other spaces.
+- Relative directions MUST be based on the photo view (NOT east/west/south/north).
 - For 小睡房:
   - Always include bed + wardrobe as the core; prioritize space-saving (platform/tatami/Murphy) and sliding doors.
   - Do NOT default to calling it "书房/工作间". Only mention a desk as "可选（如需要）" unless a desk is clearly visible in the photo.
@@ -303,6 +304,8 @@ Key checks you MUST explicitly answer:
 - beams_ceiling: any ceiling beams / drops (or say "未见")
 Forbidden:
 - Do NOT mention electrical panels / switches / sockets (电箱/开关/插座/弱电/水表等). Keep structure and constraints limited to door/window/column/beam only.
+Directions:
+- Use relative directions only: 左墙/右墙/远端墙/入口侧, and beam direction: 左右向/前后向. Do NOT use 东西南北.
 ${schema}`
                     },
                     {
