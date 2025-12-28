@@ -102,6 +102,7 @@ export default async function handler(req, res) {
 
   const spaceEn = mapSpace(intake?.space);
   const spaceZh = normalize(intake?.space);
+  const targetUse = normalize(intake?.targetUse);
   const styleEn = mapStyle(intake?.style);
   const colorEn = mapColor(intake?.color);
   const focus = normalize(intake?.focus);
@@ -122,7 +123,17 @@ export default async function handler(req, res) {
   const storageLine = storage ? `Storage strategy: ${storage}.` : 'Storage strategy: practical full-height cabinetry, space-saving built-ins.';
   const decorLine = decor ? `Soft furnishing density: ${decor}.` : 'Soft furnishing density: balanced and livable.';
   const intensityLine = intensity ? `Renovation intensity: ${cap(intensity, 28)}.` : '';
-  const roomTypeLock = spaceEn ? `Room type lock: this MUST be a ${spaceEn}. Do NOT depict any other room type.` : '';
+  const roomTypeLock = (() => {
+    // 当 space=其他时，用 targetUse 锁定“目标用途”，否则模型很容易自由发挥成不相关空间
+    if (spaceZh === '其他' && targetUse) {
+      if (targetUse.includes('客餐')) return 'Room type lock: MUST be a Hong Kong living-dining room (modern). Do NOT depict tatami/tea room.';
+      if (targetUse.includes('卧室')) return 'Room type lock: MUST be a Hong Kong bedroom (modern). Do NOT depict living room / tea room.';
+      if (targetUse.includes('书房')) return 'Room type lock: MUST be a Hong Kong compact study/multi-purpose room (modern). Do NOT depict tatami/tea room.';
+      if (targetUse.includes('玄关') || targetUse.includes('走廊')) return 'Room type lock: MUST be a Hong Kong entryway/corridor (modern). Do NOT depict living room / bedroom.';
+      return 'Room type lock: MUST be a Hong Kong apartment interior (modern), keep it realistic.';
+    }
+    return spaceEn ? `Room type lock: this MUST be a ${spaceEn}. Do NOT depict any other room type.` : '';
+  })();
   const dimsLine = (roomWidthChi || roomHeightChi)
     ? `Approx room size (chi): width ${cap(roomWidthChi || 'unknown', 16)}, ceiling height ${cap(roomHeightChi || 'unknown', 16)}.`
     : '';
@@ -243,6 +254,13 @@ export default async function handler(req, res) {
 
   const mustHave = (() => {
     const s = normalize(intake?.space);
+    // space=其他时按 targetUse 约束必备物（减少“跑偏”）
+    if (s === '其他' && targetUse) {
+      if (targetUse.includes('客餐')) return 'Must include: TV wall + sofa seating + dining table for 2-4 + dining sideboard/pantry cabinet. Modern Hong Kong flat proportions.';
+      if (targetUse.includes('卧室')) return 'Must include: bed + full-height wardrobe (sliding doors preferred) + bedside + curtains. Modern Hong Kong flat proportions.';
+      if (targetUse.includes('书房')) return 'Must include: slim desk + storage wall/bookcase + task lighting + optional sofa bed (if suitable). Modern Hong Kong flat proportions.';
+      if (targetUse.includes('玄关') || targetUse.includes('走廊')) return 'Must include: shoe cabinet/storage + clear circulation + wall wash/linear lighting. Modern Hong Kong flat proportions.';
+    }
     if (s.includes('客餐')) return 'Must include: TV wall + sofa seating + dining table for 2-4 OR a bar counter (space-saving) + dining sideboard/pantry cabinet.';
     if (s.includes('厨房') || s.includes('廚') || s.includes('厨')) return 'Must include: base cabinets + wall cabinets to ceiling + countertop + sink/cooktop zones + under-cabinet task lighting.';
     if (s.includes('卫生') || s.includes('衛') || s.includes('浴') || s.includes('洗手')) return 'Must include: vanity cabinet + mirror cabinet + shower zone with screen OR compact bathtub (only if suitable) + anti-slip floor tiles + mirror/vanity light.';
@@ -260,6 +278,9 @@ export default async function handler(req, res) {
 
   const avoidBySpace = (() => {
     const s = normalize(intake?.space);
+    if (s === '其他') {
+      return 'Avoid: traditional Japanese tatami room, shoji screens, tea room, floor-to-ceiling grid windows, extra windows/doors not in the structure lock.';
+    }
     if (s.includes('小睡房') || s.includes('眼镜房') || s.includes('次卧') || s.includes('儿童')) {
       const wantsDesk = /书桌|工作位|工作|办公/.test(storage);
       return wantsDesk
@@ -300,7 +321,8 @@ export default async function handler(req, res) {
     'Ceiling design: slim gypsum board ceiling with recessed cove lighting + downlights (no office grid ceiling).',
     'Materials: coherent warm textures, clean realistic details; built-in cabinetry with toe-kick and shadow gaps.',
     avoidBySpace,
-    'Avoid: cartoon, CGI toy look, low-poly, distorted straight lines, fisheye, clutter, unfinished concrete.',
+    // 关键反例：强行排除“日式榻榻米/障子窗/茶室”等最常见跑偏方向
+    'Avoid: traditional Japanese tatami room, shoji paper screens, tea room, zen dojo, floor-to-ceiling shoji windows, extra windows/doors, cartoon, CGI toy look, low-poly, distorted straight lines, fisheye, clutter, unfinished concrete.',
   ].filter(Boolean).join(' ');
 
   // StepFun t2i prompt must be 1..1024 chars

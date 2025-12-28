@@ -36,6 +36,7 @@ const App: React.FC = () => {
       focus?: string;
       roomWidthChi?: string;   // e.g. "8–10尺"
       roomHeightChi?: string;  // e.g. "7尺2–7尺8"
+      targetUse?: string; // 当空间类型=其他时，用于锁定文生图的目标用途（客厅/卧室等）
       storage?: string;
       priority?: string;
       intensity?: string;
@@ -1053,6 +1054,14 @@ const App: React.FC = () => {
           // Start clickable intake flow in chat (designer-first workflow: layout -> storage/cabinet -> style -> palette -> lighting -> soft)
           const space = u.spaceType || '';
           // Skip extra intake questions for now: go straight to hall type (if living-dining) or layout.
+          // 若空间被判为“其他”，先问“目标用途”，否则文生图容易自由发挥（例如日式榻榻米厅）。
+          if (String(space).trim() === '其他') {
+              await typeOutAI("这个空间你准备做成什么用途？（会直接影响出图像不像原图）", {
+                  options: ["客餐厅", "卧室", "书房/多功能房", "玄关/走廊", "保持“其他”"],
+                  meta: { kind: 'render_flow', stage: 'target_use', uploadId }
+              });
+              return;
+          }
           if (isLivingDiningSpace(space)) {
               await typeOutAI("客餐厅再确认一下（更贴合香港常见户型）：你家偏哪种厅？", {
                   options: ["标准厅（推荐）", "钻石厅", "长厅", "不确定"],
@@ -1073,6 +1082,29 @@ const App: React.FC = () => {
 
       // Render flow steps (bound to the analysis/upload)
       if (message.meta?.kind === 'render_flow' && uploadId && u) {
+          if (message.meta.stage === 'target_use') {
+              const chosen =
+                opt.includes('客餐') ? '客餐厅'
+                : opt.includes('卧室') ? '卧室'
+                : opt.includes('书房') ? '书房'
+                : opt.includes('玄关') || opt.includes('走廊') ? '玄关/走廊'
+                : '其他';
+              setUploads(prev => prev[uploadId] ? ({
+                  ...prev,
+                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), targetUse: chosen } }
+              }) : prev);
+
+              // 继续走原流程：其他空间不需要厅型，直接到 layout
+              const space = u.spaceType || '';
+              const layouts = (u.layoutOptions && u.layoutOptions.length)
+                ? u.layoutOptions.slice(0, 2)
+                : pickLayoutOptionsHK(space, (u.render as any)?.hallType);
+              await typeOutAI("好，先定「布置/动线」（最影响落地和出图准确）。\n你想用哪个摆位？", {
+                  options: layouts,
+                  meta: { kind: 'render_flow', stage: 'layout', uploadId }
+              });
+              return;
+          }
           if (message.meta.stage === 'hall') {
               const hallType =
                   opt.includes('钻石') ? '钻石厅'
@@ -1203,6 +1235,8 @@ const App: React.FC = () => {
                   const roomHeightChi = (u.render as any)?.roomHeightChi || '';
                   const intake = {
                       space,
+                      // 当空间类型=其他时，用于文生图锁定目标用途（否则模型容易跑偏成日式房/茶室等）
+                      targetUse: (u.render as any)?.targetUse,
                       style: style0,
                       color: color0,
                       focus,
