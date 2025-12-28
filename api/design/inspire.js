@@ -1,5 +1,6 @@
 import { buildHKPrompt } from '../../lib/hkPrompt.js';
 import { stepfunT2I, stepfunImage2Image } from '../../lib/stepfunImageClient.js';
+import sharp from 'sharp';
 
 export const config = {
   api: {
@@ -482,12 +483,35 @@ export default async function handler(req, res) {
         const buf = Buffer.from(ab);
         const wh = (ct.includes('png') ? parsePngWH(buf) : null) || ((ct.includes('jpeg') || ct.includes('jpg')) ? parseJpegWH(buf) : null) || parsePngWH(buf) || parseJpegWH(buf);
         const dataUrl = `data:${ct};base64,${buf.toString('base64')}`;
-        return { ok: true, status: r.status, contentType: ct, bytes, dataUrl, w: wh?.w || null, h: wh?.h || null };
+        return { ok: true, status: r.status, contentType: ct, bytes, dataUrl, buffer: buf, w: wh?.w || null, h: wh?.h || null };
       } catch {
-        return { ok: false, status: null, contentType: null, bytes: 0, dataUrl: null, w: null, h: null };
+        return { ok: false, status: null, contentType: null, bytes: 0, dataUrl: null, buffer: null, w: null, h: null };
       } finally {
         clearTimeout(t);
       }
+    };
+    const parseSize = (s) => {
+      const m = String(s || '').match(/^(\d+)x(\d+)$/);
+      if (!m) return null;
+      return { w: Number(m[1]), h: Number(m[2]) };
+    };
+
+    const letterboxPadBlur = async (inputBuf, targetW, targetH) => {
+      // Build a blurred background (cover) + foreground (contain) to avoid black borders.
+      const bg = await sharp(inputBuf)
+        .resize(targetW, targetH, { fit: 'cover' })
+        .blur(18)
+        .jpeg({ quality: 82 })
+        .toBuffer();
+      const fg = await sharp(inputBuf)
+        .resize(targetW, targetH, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .jpeg({ quality: 92 })
+        .toBuffer();
+      const out = await sharp(bg)
+        .composite([{ input: fg }])
+        .jpeg({ quality: 88 })
+        .toBuffer();
+      return out;
     };
 
     const pickTargetSizeByWH = (w, h) => {
@@ -594,9 +618,13 @@ export default async function handler(req, res) {
     let response;
     let baseImage = null;
     let baseImageBytes = 0;
+    let baseImageBytesSent = 0;
     let requestedEndpoint = desiredMode === 'PRECISE_I2I' ? 'image2image' : 'generations';
     let aspectRatio = null;
     let targetSizeUsed = finalSize;
+    let padded = false;
+    let paddingMethod = null;
+    let resizeMode = 'none';
     if (desiredMode === 'PRECISE_I2I') {
       const v = await validateSourceUrl(sourceImageUrl);
       if (!v.ok) {
@@ -711,7 +739,27 @@ export default async function handler(req, res) {
       aspectRatio = (full.w && full.h) ? (full.w / full.h) : aspectRatio;
       const targetSize = pickTargetSizeByWH(full.w, full.h);
       targetSizeUsed = targetSize;
-      response = await withRetry429(() => doI2I({ sourceUrl: full.dataUrl, sizeToUse: targetSize }));
+      const sz = parseSize(targetSize);
+      let sourceUrlToSend = full.dataUrl;
+      if (sz && full.buffer && full.w && full.h) {
+        const r0 = full.w / full.h;
+        const r1 = sz.w / sz.h;
+        const diff = Math.abs(r0 - r1);
+        // If aspect ratios differ meaningfully, pad (letterbox) to prevent stretched corners / vignette.
+        if (diff > 0.03) {
+          const paddedBuf = await letterboxPadBlur(full.buffer, sz.w, sz.h);
+          padded = true;
+          paddingMethod = 'blur';
+          resizeMode = 'contain+blur';
+          baseImageBytesSent = paddedBuf.byteLength;
+          sourceUrlToSend = `data:image/jpeg;base64,${Buffer.from(paddedBuf).toString('base64')}`;
+        } else {
+          baseImageBytesSent = full.bytes;
+        }
+      } else {
+        baseImageBytesSent = full.bytes;
+      }
+      response = await withRetry429(() => doI2I({ sourceUrl: sourceUrlToSend, sizeToUse: targetSize }));
       if (!response.ok) {
         // Only allow fallback for temporary upstream failures (NOT base image issues).
         const status = response.status;
@@ -823,12 +871,15 @@ export default async function handler(req, res) {
             i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
             baseImage,
             baseImageBytes,
+            baseImageBytesSent,
             baseImageContentType: baseImage?.contentType || null,
             baseImageWidth: baseImage?.w || null,
             baseImageHeight: baseImage?.h || null,
             aspectRatio,
             targetSize: targetSizeUsed,
-            padded: false,
+            padded,
+            paddingMethod,
+            resizeMode,
             sentSize: targetSizeUsed,
             mode: 'PRECISE_I2I'
           } : {}),
@@ -872,12 +923,15 @@ export default async function handler(req, res) {
           i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
           baseImage,
           baseImageBytes,
+          baseImageBytesSent,
           baseImageContentType: baseImage?.contentType || null,
           baseImageWidth: baseImage?.w || null,
           baseImageHeight: baseImage?.h || null,
           aspectRatio,
           targetSize: targetSizeUsed,
-          padded: false,
+          padded,
+          paddingMethod,
+          resizeMode,
           sentSize: targetSizeUsed,
           mode: 'PRECISE_I2I'
         } : {}),
