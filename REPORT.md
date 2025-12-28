@@ -25,7 +25,9 @@
 - **超时（maxDuration）**（见 `vercel.json`）：
   - `api/design/generate.js`: 300s
   - `api/design/qa.js`: 120s
-  - 其余 `api/**/*`: 60s（含 `/api/vision`、`/api/space`、`/api/chat`、`/api/upload`、`/api/design/inspire`、`/api/generate` 等）
+  - `api/vision.js`: 120s
+  - `api/design/inspire.js`: 180s
+  - 其余 `api/**/*`: 60s
 
 ---
 
@@ -78,6 +80,25 @@
    - 立即在 UI 展示用户图片（chat bubble）
    - 并发尝试上传 Blob（不阻塞 UI）
      - `services/generateClient.ts::uploadImage` → `POST /api/upload`
+
+### 3.3 香港市场 V2（首张“更对位”快出图：不阻塞 /api/vision）
+为解决“第一张出图太慢 + 结构容易跑偏”，新增了一个 **快出图**交互分支（仍复用 `/api/design/inspire` 的 `PRECISE_I2I` 能力）：
+
+- **触发点**：用户上传图片后 → `/api/space` 给出空间猜测 → 用户点击确认空间（`meta.kind='space_pick'`）
+- **前端（`App.tsx`）**：
+  - 不再默认调用 `/api/vision`（分析变成可选按钮：仅 `debug=1` 或用户主动点「更似我间屋（精准校准，需要分析）」才触发）
+  - 直接让用户选择最少字段：`spaceType + style + goal + intensity`，然后点击「一键出图（推荐）」
+  - 调用 `generateInspireImage()`（`POST /api/design/inspire`），强制走：
+    - `outputMode='PRECISE_I2I'`
+    - `qualityPreset='STRUCTURE_LOCK'`
+    - `i2i_strength`：保守=0.30 / 明显=0.40（UI 层控制）
+    - `i2i_source_weight`：0.95（保守）/ 0.92（明显）
+    - `cfg_scale=5`，`steps=22~24`
+- **后端（`api/design/inspire.js`）**：
+  - **强校验 base image**：`PRECISE_I2I` 必须可读取 `sourceImageUrl`（否则返回 `BASE_IMAGE_REQUIRED`，禁止静默 fallback）
+  - **保持宽高比**：自动选最接近原图比例的 size；比例差异大时会做 letterbox padding（blur）
+  - **Prompt 强约束**：`lib/hkPrompt.js` 已加入 `STRUCTURE_LOCK`（禁止乱加窗门/阳台门/侧窗）+ `CAMERA_LOCK` + `NO_VIGNETTE`，且**不可 drop**
+
      - 成功后回填 `uploads[uploadId].imageUrl = <public blob url>`
 
 2) **空间分类（自动）**

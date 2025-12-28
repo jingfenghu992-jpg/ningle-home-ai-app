@@ -269,7 +269,7 @@ const App: React.FC = () => {
       ...intensities.map(i => withCheck(i, picks.intensity)),
       '一键出图（推荐）',
       '概念示意（较快，不保证对位）',
-      ...(includeVision ? ['更似我间屋（精準校準，需要分析）'] : []),
+      ...(includeVision ? ['更似我间屋（精准校准，需要分析）'] : []),
     ];
     const uniq: string[] = [];
     for (const o of opts) {
@@ -978,7 +978,7 @@ const App: React.FC = () => {
                 ]);
               }
               if (d.fallbackUsed) {
-                await typeOutAI("提示：精準模式暫時失敗，已改用快速概念圖（可能不对位）。");
+                await typeOutAI("提示：精准模式暂时失败，已改用快速概念图（可能不对位）。");
               }
             }
             setLastGeneratedImage(resultUrl);
@@ -1282,7 +1282,7 @@ const App: React.FC = () => {
         const isGoal = ['收纳优先', '氛围舒适', '显大清爽'].includes(cleaned);
         const isIntensity = ['保守（更对位）', '明显（更有设计感）'].includes(cleaned);
 
-        if (cleaned === '更似我间屋（精準校準，需要分析）') {
+        if (cleaned === '更似我间屋（精准校准，需要分析）') {
           await runAnalysisForUpload(uploadId, u0.spaceType || '其他');
           return;
         }
