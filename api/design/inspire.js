@@ -39,6 +39,8 @@ export default async function handler(req, res) {
     i2i_source_weight,
     keep_structure,
     qualityPreset,
+    // HK: fast structure anchors (best-effort, 2–6s)
+    fastAnchors,
     // user-selected debug (optional)
     layoutVariant,
     sizeChoice,
@@ -363,15 +365,16 @@ export default async function handler(req, res) {
   })();
 
   // P1: Hong Kong 6-space prompt builder (short, hard, <= 1024 chars)
-  const built = buildHKPrompt({
+  let built = buildHKPrompt({
     renderIntake: intake,
     hkAnchors: intake?.visionExtraction?.hkAnchors || intake?.extraction?.hkAnchors || intake?.hkAnchors,
+    hkAnchorsLite: intake?.hkAnchorsLite || intake?.visionExtraction?.hkAnchorsLite || intake?.extraction?.hkAnchorsLite,
     spaceType: intake?.space,
     layoutVariant,
     sizeChoice,
     styleChoice,
   });
-  const prompt = String(built?.prompt || '').replace(/\s+/g, ' ').trim();
+  let prompt = String(built?.prompt || '').replace(/\s+/g, ' ').trim();
   if (!prompt) {
     res.status(400).json({ ok: false, errorCode: 'INVALID_PROMPT', message: 'Empty prompt' });
     return;
@@ -629,6 +632,9 @@ export default async function handler(req, res) {
     let padded = false;
     let paddingMethod = null;
     let resizeMode = 'none';
+    let hkAnchorsLite = intake?.hkAnchorsLite || null;
+    let fastAnchorsUsed = false;
+    let fastAnchorsElapsedMs = null;
     if (desiredMode === 'PRECISE_I2I') {
       const v = await validateSourceUrl(sourceImageUrl);
       if (!v.ok) {
@@ -748,6 +754,138 @@ export default async function handler(req, res) {
       baseImage = { w: full.w, h: full.h, contentType: full.contentType, bytes: full.bytes, contentLength: null };
       baseImageBytes = full.bytes;
       aspectRatio = (full.w && full.h) ? (full.w / full.h) : aspectRatio;
+
+      // Optional FAST anchors (structure lock hints). Use the already-downloaded base image dataUrl.
+      if (fastAnchors === true && full.dataUrl && !hkAnchorsLite) {
+        const started = Date.now();
+        const schemaLite = `Return JSON only with this schema:
+{
+  "hkAnchorsLite": {
+    "space_guess": "SMALL_BEDROOM|MASTER_BEDROOM|LIVING_DINING|KITCHEN|BATHROOM|ENTRY_CORRIDOR|unknown",
+    "camera_view": "frontal|angled|unknown",
+    "lens_risk": "normal|wide_risk|unknown",
+    "vertical_lines": "ok|tilted|unknown",
+    "window_count": 0|1|2|"many"|"unknown",
+    "window_wall": "far|left|right|unknown",
+    "window_span": "narrow|medium|wide|unknown",
+    "door_present": "yes|no|unknown",
+    "door_wall": "far|left|right|unknown",
+    "beam_present": "none|possible|yes|unknown",
+    "column_present": "none|possible|yes|unknown",
+    "bay_window": "none|yes|unknown",
+    "finish_level": "raw|putty|painted|finished|unknown",
+    "daylight_direction": "left|right|front|unknown"
+  }
+}
+Rules:
+- Output JSON only.
+- Be conservative. If unsure, use "unknown".`;
+        const safeJsonParse = (raw) => {
+          try {
+            const clean = String(raw || '').replace(/```json/g, '').replace(/```/g, '').trim();
+            const s = clean.indexOf('{');
+            const e = clean.lastIndexOf('}');
+            if (s >= 0 && e > s) return JSON.parse(clean.slice(s, e + 1));
+            return JSON.parse(clean);
+          } catch {
+            return null;
+          }
+        };
+        const normalizeLite = (obj) => {
+          const d = (obj && typeof obj === 'object') ? obj : {};
+          const a = (d.hkAnchorsLite && typeof d.hkAnchorsLite === 'object') ? d.hkAnchorsLite : (d || {});
+          const pick = (k, allowed, fallback = 'unknown') => {
+            const v0 = String(a?.[k] ?? '').trim().toLowerCase();
+            if (!v0) return fallback;
+            if (allowed.includes(v0)) return v0;
+            return fallback;
+          };
+          const windowCount = (() => {
+            const v = a?.window_count;
+            if (v === 0 || v === 1 || v === 2) return v;
+            const s = String(v ?? '').trim().toLowerCase();
+            if (s === 'many') return 'many';
+            if (s === 'unknown' || !s) return 'unknown';
+            const n = Number(s);
+            if (Number.isFinite(n) && (n === 0 || n === 1 || n === 2)) return n;
+            return 'unknown';
+          })();
+          const spaceGuess = (() => {
+            const raw = String(a?.space_guess ?? '').trim().toUpperCase();
+            const allowed = new Set(['SMALL_BEDROOM', 'MASTER_BEDROOM', 'LIVING_DINING', 'KITCHEN', 'BATHROOM', 'ENTRY_CORRIDOR', 'unknown']);
+            return allowed.has(raw) ? raw : 'unknown';
+          })();
+          return {
+            space_guess: spaceGuess,
+            camera_view: pick('camera_view', ['frontal', 'angled', 'unknown']),
+            lens_risk: pick('lens_risk', ['normal', 'wide_risk', 'unknown']),
+            vertical_lines: pick('vertical_lines', ['ok', 'tilted', 'unknown']),
+            window_count: windowCount,
+            window_wall: pick('window_wall', ['far', 'left', 'right', 'unknown']),
+            window_span: pick('window_span', ['narrow', 'medium', 'wide', 'unknown']),
+            door_present: pick('door_present', ['yes', 'no', 'unknown']),
+            door_wall: pick('door_wall', ['far', 'left', 'right', 'unknown']),
+            beam_present: pick('beam_present', ['none', 'possible', 'yes', 'unknown']),
+            column_present: pick('column_present', ['none', 'possible', 'yes', 'unknown']),
+            bay_window: pick('bay_window', ['none', 'yes', 'unknown']),
+            finish_level: pick('finish_level', ['raw', 'putty', 'painted', 'finished', 'unknown']),
+            daylight_direction: pick('daylight_direction', ['left', 'right', 'front', 'unknown']),
+          };
+        };
+
+        try {
+          const controller = new AbortController();
+          const tt = setTimeout(() => controller.abort(), 6000);
+          const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
+            method: 'POST',
+            signal: controller.signal,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({
+              model: 'step-1v-8k',
+              temperature: 0.1,
+              max_tokens: 180,
+              messages: [
+                { role: 'system', content: `You are a fast structural anchor extractor for Hong Kong interiors. ${schemaLite}` },
+                { role: 'user', content: [{ type: 'text', text: `Space hint: ${String(intake?.space || '')}` }, { type: 'image_url', image_url: { url: full.dataUrl } }] }
+              ],
+            }),
+          });
+          clearTimeout(tt);
+          if (resp.ok) {
+            const jd = await resp.json();
+            const raw = String(jd?.choices?.[0]?.message?.content || '').trim();
+            const parsed = safeJsonParse(raw);
+            const lite = parsed ? normalizeLite(parsed) : null;
+            if (lite) {
+              hkAnchorsLite = lite;
+              fastAnchorsUsed = true;
+            }
+          }
+        } catch {
+          // ignore
+        } finally {
+          fastAnchorsElapsedMs = Date.now() - started;
+        }
+      }
+
+      // Rebuild prompt with hkAnchorsLite if available (STRUCTURE_LOCK will include extra rules).
+      if (hkAnchorsLite) {
+        const rebuilt = buildHKPrompt({
+          renderIntake: { ...(intake || {}), hkAnchorsLite },
+          hkAnchors: intake?.visionExtraction?.hkAnchors || intake?.extraction?.hkAnchors || intake?.hkAnchors,
+          hkAnchorsLite,
+          spaceType: intake?.space,
+          layoutVariant,
+          sizeChoice,
+          styleChoice,
+        });
+        const p2 = String(rebuilt?.prompt || '').replace(/\s+/g, ' ').trim();
+        if (p2) {
+          built = rebuilt;
+          prompt = p2;
+        }
+      }
+
       const targetSize = pickTargetSizeByWH(full.w, full.h);
       targetSizeUsed = targetSize;
       const sz = parseSize(targetSize);
@@ -827,6 +965,9 @@ export default async function handler(req, res) {
             requestedEndpoint: 'image2image',
             usedEndpoint: 'image2image',
             imageFetchOk,
+            hkAnchorsLite,
+            fastAnchorsUsed,
+            fastAnchorsElapsedMs,
             usedKey,
             model: 'step-1x-medium',
             elapsedMs: Date.now() - startedAt,
@@ -1138,6 +1279,9 @@ export default async function handler(req, res) {
             cornerCheck,
             i2iParams: { strength: appliedStrength ?? finalI2IStrength, source_weight: appliedSourceWeight ?? finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
             imageFetchOk,
+            hkAnchorsLite,
+            fastAnchorsUsed,
+            fastAnchorsElapsedMs,
             baseImage,
             baseImageBytes,
             baseImageBytesSent,
@@ -1195,6 +1339,9 @@ export default async function handler(req, res) {
           cornerCheck,
           i2iParams: { strength: appliedStrength ?? finalI2IStrength, source_weight: appliedSourceWeight ?? finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
           imageFetchOk,
+          hkAnchorsLite,
+          fastAnchorsUsed,
+          fastAnchorsElapsedMs,
           baseImage,
           baseImageBytes,
           baseImageBytesSent,

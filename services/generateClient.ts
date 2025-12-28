@@ -112,6 +112,7 @@ export async function generateInspireImage(params: {
   i2i_source_weight?: number;
   keep_structure?: boolean;
   qualityPreset?: 'STRUCTURE_LOCK' | string;
+  fastAnchors?: boolean; // if true, backend will run FAST structural anchors (hkAnchorsLite)
   layoutVariant?: 'A' | 'B';
   sizeChoice?: string;
   styleChoice?: string;

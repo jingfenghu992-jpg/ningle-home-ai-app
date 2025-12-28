@@ -1272,6 +1272,7 @@ const App: React.FC = () => {
             outputMode: 'PRECISE_I2I',
             keep_structure: true,
             qualityPreset: 'STRUCTURE_LOCK',
+            fastAnchors: true,
             ...quickI2IOverridesByIntensity(intensity),
           });
           return;
@@ -1357,6 +1358,7 @@ const App: React.FC = () => {
             outputMode: 'PRECISE_I2I',
             keep_structure: true,
             qualityPreset: 'STRUCTURE_LOCK',
+            fastAnchors: true,
             ...quickI2IOverridesByIntensity(picks.intensity),
           });
           return;
