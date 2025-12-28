@@ -104,6 +104,15 @@ export async function qaDesignImage(params: {
 
 export async function generateInspireImage(params: {
   renderIntake: any;
+  // C3: dual mode support (optional, backward compatible)
+  sourceImageUrl?: string;
+  outputMode?: 'FAST_T2I' | 'PRECISE_I2I';
+  i2i_strength?: number;
+  i2i_source_weight?: number;
+  keep_structure?: boolean;
+  layoutVariant?: 'A' | 'B';
+  sizeChoice?: string;
+  styleChoice?: string;
   size?: string;
   response_format?: 'b64_json' | 'url';
   steps?: number;

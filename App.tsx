@@ -862,8 +862,17 @@ const App: React.FC = () => {
           // FINAL render：使用文生图（/api/design/inspire），但通过 visionExtraction + 动线/尺寸指令尽量贴近原图结构（目标 80%+）
           const genLoadingId = addLoadingToast("收到～我现在帮你生成效果图，请稍等…", { loadingType: 'generating', uploadId });
           try {
+            const u = uploadId ? uploads[uploadId] : undefined;
+            const sourceImageUrl = u?.imageUrl;
+            const preferPrecise = (u?.render as any)?.preferPrecise;
+            const outputMode = sourceImageUrl && preferPrecise !== false ? 'PRECISE_I2I' : 'FAST_T2I';
             const res = await generateInspireImage({
               renderIntake,
+              sourceImageUrl,
+              outputMode,
+              layoutVariant: (u?.render as any)?.layoutVariant,
+              sizeChoice: (u?.render as any)?.sizeChoice,
+              styleChoice: (u?.render as any)?.styleChoice,
               response_format: 'url',
               // 速度优先：默认稍低 steps；同时保持一定 cfg 让“有设计感”
               steps: 24,
@@ -880,7 +889,7 @@ const App: React.FC = () => {
             const resultUrl = res.resultUrl;
             if (debugEnabled && (res as any)?.debug?.usedText) {
               const d: any = (res as any).debug || {};
-              const header = `Prompt chars: ${d.promptChars ?? ''} | hash: ${d.promptHash ?? ''} | space: ${d.hkSpace ?? ''} | A/B: ${d.layoutVariant ?? ''}`;
+              const header = `mode: ${d.outputMode ?? ''} | mismatch: ${d.mismatch ?? ''} | chars: ${d.promptChars ?? ''} | hash: ${d.promptHash ?? ''} | hkSpace: ${d.hkSpace ?? ''} | A/B: ${d.layoutVariant ?? ''} | dropped: ${(d.dropped || []).join(',')}`;
               const usedText = String(d.usedText || '').trim();
               if (usedText) {
                 console.log('[DEBUG] inspire usedText', usedText);
@@ -1173,6 +1182,8 @@ const App: React.FC = () => {
           // 1) Layout first (stores into focus). Bed type is part of layout; infer it if mentioned.
           if (message.meta.stage === 'layout') {
               const inferredBed = inferBedTypeFromLayout(opt);
+              const layoutIdx = Array.isArray(message.options) ? message.options.indexOf(opt) : -1;
+              const layoutVariant = layoutIdx === 1 ? 'B' : 'A';
               setUploads(prev => prev[uploadId] ? ({
                   ...prev,
                   [uploadId]: {
@@ -1180,6 +1191,7 @@ const App: React.FC = () => {
                       render: {
                           ...(prev[uploadId].render || {}),
                           focus: opt,
+                          layoutVariant,
                           ...(inferredBed ? { bedType: inferredBed } : {})
                       }
                   }
@@ -1202,6 +1214,7 @@ const App: React.FC = () => {
                       ...prev[uploadId],
                       render: {
                           ...(prev[uploadId].render || {}),
+                          sizeChoice: opt,
                           ...(roomWidthChi ? { roomWidthChi } : {}),
                           ...(roomHeightChi ? { roomHeightChi } : {}),
                       }
@@ -1218,9 +1231,20 @@ const App: React.FC = () => {
 
           if (message.meta.stage === 'style_tone') {
               const { style, color } = parseStyleTone(opt);
+              const hasSource = Boolean(u?.imageUrl);
               setUploads(prev => prev[uploadId] ? ({
                   ...prev,
-                  [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), ...(style ? { style } : {}), ...(color ? { color } : {}) } }
+                  [uploadId]: {
+                    ...prev[uploadId],
+                    render: {
+                      ...(prev[uploadId].render || {}),
+                      styleChoice: opt,
+                      ...(style ? { style } : {}),
+                      ...(color ? { color } : {}),
+                      // Default: if we have a public image URL, enable precise mode unless user turned it off.
+                      ...(hasSource && typeof (prev[uploadId].render as any)?.preferPrecise !== 'boolean' ? { preferPrecise: true } : {})
+                    }
+                  }
               }) : prev);
 
               const space = u.spaceType || '';
@@ -1234,14 +1258,35 @@ const App: React.FC = () => {
               const intensity0 = r0.intensity || getDefaultIntensityForHK();
               const hall0 = r0.hallType || '不确定';
 
+              const preferPrecise = hasSource ? ((u?.render as any)?.preferPrecise ?? true) : false;
+              const toggleOpt = preferPrecise ? '☑ 更贴原相（推荐）' : '☐ 更贴原相（更快）';
+              const opts = hasSource ? [toggleOpt, "直接生成（推荐）"] : ["直接生成（推荐）"];
               await typeOutAI(
-                `收到～我建议先用「香港推荐预设」直接出图（更快、更像提案效果图）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n要不要直接生成？`,
-                { options: ["直接生成（推荐）"], meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
+                `收到～我建议先用「香港推荐预设」直接出图（更快、更像提案效果图）：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n${hasSource ? '（默认：更贴原相；取消勾选会更快，但可能不对位）\n' : ''}要不要直接生成？`,
+                { options: opts, meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
               );
               return;
           }
 
           if (message.meta.stage === 'fast_confirm') {
+              if (opt.includes('更贴原相') && uploadId) {
+                  const current = Boolean((u?.render as any)?.preferPrecise ?? true);
+                  const next = !current;
+                  setUploads(prev => prev[uploadId] ? ({
+                      ...prev,
+                      [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), preferPrecise: next } }
+                  }) : prev);
+                  // Update the same message's options to reflect the checkbox state
+                  setMessages(prev => prev.map(m => {
+                      if (m.id !== message.id) return m;
+                      const hasSource = Boolean(u?.imageUrl);
+                      if (!hasSource) return m;
+                      const toggleOpt = next ? '☑ 更贴原相（推荐）' : '☐ 更贴原相（更快）';
+                      const rest = (m.options || []).filter(x => !String(x).includes('更贴原相'));
+                      return { ...m, options: [toggleOpt, ...rest] };
+                  }));
+                  return;
+              }
               if (opt === "直接生成（推荐）") {
                   const space = u.spaceType || '';
                   const r0 = (u.render as any) || {};
@@ -1291,6 +1336,10 @@ const App: React.FC = () => {
                       decor: decor0,
                       intensity: intensity0,
                       hallType: hall0,
+                      // pass-through for debug alignment
+                      layoutVariant: (u.render as any)?.layoutVariant,
+                      sizeChoice: (u.render as any)?.sizeChoice,
+                      styleChoice: (u.render as any)?.styleChoice,
                       // For t2i, we keep vision summary only as structure cues (approximate)
                       visionSummary: u.visionSummary,
                       // 关键：把结构提取也带过去，供 /api/design/inspire 生成“结构锁定”提示词（更贴近原图）
