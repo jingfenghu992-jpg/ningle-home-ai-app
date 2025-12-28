@@ -979,6 +979,11 @@ const App: React.FC = () => {
                 setAppState('ANALYSIS_DONE');
                 return;
               }
+              if (typeof code === 'string' && code.startsWith('UPSTREAM_I2I_')) {
+                await typeOutAI("精准模式暂时失败（我未有偷偷改用概念图，避免不对位）。你可以稍后再试一次，或者点「概念示意（较快，不保证对位）」。");
+                setAppState('ANALYSIS_DONE');
+                return;
+              }
               throw new Error(msg);
             }
 
