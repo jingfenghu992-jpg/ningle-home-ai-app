@@ -246,6 +246,49 @@ const App: React.FC = () => {
     }
   };
 
+  // HK V2: fast first render (no vision dependency).
+  const getQuickRenderPicks = (u: any) => {
+    const r = (u?.render || {}) as any;
+    return {
+      style: String(r.style || '现代简约'),
+      goal: String(r.priority || '收纳优先'),
+      intensity: String(r.intensity || '保守（更对位）'),
+    };
+  };
+
+  const getQuickRenderOptions = (u: any, includeVision: boolean) => {
+    const picks = getQuickRenderPicks(u);
+    const styles = ['现代简约', '奶油风', '日式木系', '轻奢'];
+    const goals = ['收纳优先', '氛围舒适', '显大清爽'];
+    const intensities = ['保守（更对位）', '明显（更有设计感）'];
+    const withCheck = (label: string, picked: string) => (picked === label ? `☑ ${label}` : `☐ ${label}`);
+
+    const opts = [
+      ...styles.map(s => withCheck(s, picks.style)),
+      ...goals.map(g => withCheck(g, picks.goal)),
+      ...intensities.map(i => withCheck(i, picks.intensity)),
+      '一键出图（推荐）',
+      '概念示意（较快，不保证对位）',
+      ...(includeVision ? ['更似我间屋（精準校準，需要分析）'] : []),
+    ];
+    const uniq: string[] = [];
+    for (const o of opts) {
+      const t = String(o || '').trim();
+      if (!t) continue;
+      if (!uniq.includes(t)) uniq.push(t);
+      if (uniq.length >= 14) break;
+    }
+    return uniq;
+  };
+
+  const quickI2IOverridesByIntensity = (label: string) => {
+    const t = String(label || '');
+    if (t.includes('明显') || t.includes('明顯')) {
+      return { i2i_strength: 0.40, i2i_source_weight: 0.92, cfg_scale: 5.0, steps: 24 };
+    }
+    return { i2i_strength: 0.30, i2i_source_weight: 0.95, cfg_scale: 5.0, steps: 22 };
+  };
+
   const handleUpload = (file: File) => {
     // Prefer URL-first (Vercel Blob) for Stepfun vision/i2i stability; fallback to base64-only if upload fails.
     compressImage(file, 1024, 0.75).then(blob => {
@@ -951,7 +994,7 @@ const App: React.FC = () => {
               { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
             ]);
 
-            const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：软装更丰富"];
+            const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
             const bgId = addLoadingToast("效果图已出，我再帮你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
             try {
               const qaRes = await qaDesignImage({ imageUrl: resultUrl, renderIntake });
@@ -1058,7 +1101,7 @@ const App: React.FC = () => {
                 { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
               ]);
 
-              const refineOptions = ["再精修：灯光更高级", "再精修：柜体更清晰", "再精修：软装更丰富"];
+              const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
                 const bgId = addLoadingToast("细节已增强，我再帮你做一次智能复核并补充设计说明…", { loadingType: 'analyzing', uploadId });
               try {
                 const qaRes = await qaDesignImage({ imageUrl: resultUrl, renderIntake });
@@ -1143,12 +1186,170 @@ const App: React.FC = () => {
           return;
       }
 
+      // HK V2 post-render refine buttons (rerun i2i from the original upload)
+      if (opt === '更似我间屋（保留窗位/透视）' || opt === '收纳更强（加到顶柜/地台）' || opt === '氛围更靓（灯光+软装）') {
+          if (message.isLocked || appState === 'GENERATING') {
+              await typeOutAI("收到～我而家生成緊，你等我出完先再点下一张～");
+              return;
+          }
+          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
+
+          const u0 = uploadId ? uploads[uploadId] : undefined;
+          const base0 = (lastRenderIntakeRef.current && typeof lastRenderIntakeRef.current === 'object')
+            ? { ...lastRenderIntakeRef.current }
+            : {};
+          const intensity =
+            opt.includes('更似') ? '保守（更对位）'
+              : (base0?.intensity || (u0?.render as any)?.intensity || '保守（更对位）');
+          const goal =
+            opt.includes('收纳') ? '收纳优先'
+              : opt.includes('氛围') ? '氛围舒适'
+                : (base0?.priority || (u0?.render as any)?.priority || '收纳优先');
+
+          const nextBase = {
+            ...(base0 || {}),
+            uploadId,
+            baseWidth: u0?.width || base0?.baseWidth,
+            baseHeight: u0?.height || base0?.baseHeight,
+            space: u0?.spaceType || base0?.space || '',
+            priority: goal,
+            intensity,
+            // add a tiny note (keeps prompts short; structure is locked in hkPrompt)
+            requirements: opt.includes('更似')
+              ? `${String(base0?.requirements || '').trim()}\nKeep materials/lighting closer to the photo; keep openings unchanged.`.trim()
+              : String(base0?.requirements || '').trim()
+          };
+
+          // Persist pick in upload state
+          if (uploadId) {
+            setUploads(prev => prev[uploadId] ? ({
+              ...prev,
+              [uploadId]: {
+                ...prev[uploadId],
+                render: {
+                  ...(prev[uploadId].render || {}),
+                  priority: goal,
+                  intensity,
+                  ...(prev[uploadId].imageUrl ? { preferPrecise: true } : {})
+                }
+              }
+            }) : prev);
+          }
+
+          await triggerGeneration(nextBase, undefined, {
+            outputMode: 'PRECISE_I2I',
+            keep_structure: true,
+            qualityPreset: 'STRUCTURE_LOCK',
+            ...quickI2IOverridesByIntensity(intensity),
+          });
+          return;
+      }
+
       if (message.meta?.kind === 'space_pick' && uploadId) {
           // Lock this message to prevent double-trigger
           if (message.isLocked) return;
           setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
-          await runAnalysisForUpload(uploadId, opt);
+          // HK V2 fast path: don't block first render on vision analysis.
+          setUploads(prev => prev[uploadId] ? ({
+            ...prev,
+            [uploadId]: {
+              ...prev[uploadId],
+              spaceType: opt,
+              render: {
+                ...(prev[uploadId].render || {}),
+                style: (prev[uploadId].render as any)?.style || '现代简约',
+                priority: (prev[uploadId].render as any)?.priority || '收纳优先',
+                intensity: (prev[uploadId].render as any)?.intensity || '保守（更对位）',
+                ...(prev[uploadId].imageUrl ? { preferPrecise: true } : {})
+              }
+            }
+          }) : prev);
+
+          const u2 = uploads[uploadId] || {};
+          await typeOutAI(
+            `收到～我先按香港常見比例幫你快出第一张（更对位、少问）。\n你可以直接点「一键出图（推荐）」，或先改风格/目标/强度：`,
+            { options: getQuickRenderOptions(u2, debugEnabled), meta: { kind: 'quick_render', stage: 'picks', uploadId } }
+          );
           return;
+      }
+
+      if (message.meta?.kind === 'quick_render' && uploadId) {
+        const u0 = uploads[uploadId];
+        if (!u0) return;
+
+        const cleaned = opt.replace(/^☑\s+|^☐\s+/, '').trim();
+        const isStyle = ['现代简约', '奶油风', '日式木系', '轻奢'].includes(cleaned);
+        const isGoal = ['收纳优先', '氛围舒适', '显大清爽'].includes(cleaned);
+        const isIntensity = ['保守（更对位）', '明显（更有设计感）'].includes(cleaned);
+
+        if (cleaned === '更似我间屋（精準校準，需要分析）') {
+          await runAnalysisForUpload(uploadId, u0.spaceType || '其他');
+          return;
+        }
+
+        if (cleaned === '概念示意（较快，不保证对位）') {
+          const picks = getQuickRenderPicks(u0);
+          const base = {
+            uploadId,
+            baseWidth: u0.width,
+            baseHeight: u0.height,
+            space: u0.spaceType || '',
+            style: picks.style,
+            priority: picks.goal,
+            intensity: picks.intensity,
+          };
+          await triggerGeneration(base, undefined, {
+            outputMode: 'FAST_T2I',
+            sourceImageUrl: null,
+            keep_structure: false,
+            qualityPreset: undefined,
+          });
+          return;
+        }
+
+        if (cleaned === '一键出图（推荐）') {
+          const picks = getQuickRenderPicks(u0);
+          const base = {
+            uploadId,
+            baseWidth: u0.width,
+            baseHeight: u0.height,
+            space: u0.spaceType || '',
+            style: picks.style,
+            priority: picks.goal,
+            intensity: picks.intensity,
+          };
+          await triggerGeneration(base, undefined, {
+            outputMode: 'PRECISE_I2I',
+            keep_structure: true,
+            qualityPreset: 'STRUCTURE_LOCK',
+            ...quickI2IOverridesByIntensity(picks.intensity),
+          });
+          return;
+        }
+
+        if (isStyle || isGoal || isIntensity) {
+          setUploads(prev => prev[uploadId] ? ({
+            ...prev,
+            [uploadId]: {
+              ...prev[uploadId],
+              render: {
+                ...(prev[uploadId].render || {}),
+                ...(isStyle ? { style: cleaned } : {}),
+                ...(isGoal ? { priority: cleaned } : {}),
+                ...(isIntensity ? { intensity: cleaned } : {}),
+              }
+            }
+          }) : prev);
+
+          const nextU = uploads[uploadId] || u0;
+          const picks = getQuickRenderPicks(nextU);
+          await typeOutAI(
+            `已选：风格=${picks.style}｜目标=${picks.goal}｜强度=${picks.intensity}\n点「一键出图（推荐）」就会开始生成。`,
+            { options: getQuickRenderOptions(nextU, debugEnabled), meta: { kind: 'quick_render', stage: 'picks', uploadId } }
+          );
+          return;
+        }
+        return;
       }
 
       if (opt === '生成智能效果图') {
