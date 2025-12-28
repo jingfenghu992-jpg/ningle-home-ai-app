@@ -1083,16 +1083,22 @@ const App: React.FC = () => {
           try {
             const u = uploadId ? uploads[uploadId] : undefined;
             const sourceImageUrl = u?.imageUrl;
-            const preferPrecise = (u?.render as any)?.preferPrecise;
-            const outputMode = sourceImageUrl && preferPrecise !== false ? 'PRECISE_I2I' : 'FAST_T2I';
-            const keep_structure = outputMode === 'PRECISE_I2I';
-            const qualityPreset = outputMode === 'PRECISE_I2I' ? 'STRUCTURE_LOCK' : undefined;
+            if (!sourceImageUrl) {
+              stopLoadingToast(genLoadingId);
+              await typeOutAI("图片链接还没准备好（需要可访问的上传链接）。请重新上传同一张图片再试一次。");
+              setAppState('ANALYSIS_DONE');
+              return;
+            }
+            const outputMode = 'PRECISE_I2I';
+            const keep_structure = true;
+            const qualityPreset = 'STRUCTURE_LOCK';
             const payload: any = {
               renderIntake,
               sourceImageUrl,
               outputMode,
               keep_structure,
               qualityPreset,
+              fastAnchors: true,
               layoutVariant: (u?.render as any)?.layoutVariant,
               sizeChoice: (u?.render as any)?.sizeChoice,
               styleChoice: (u?.render as any)?.styleChoice,
@@ -1104,7 +1110,7 @@ const App: React.FC = () => {
               debug: debugEnabled,
               ...(overrides || {}),
             };
-            const res = await generateInspireImage(payload);
+            const res = await generateRenderImage(payload);
             stopLoadingToast(genLoadingId);
 
             if (!res.ok || !res.resultUrl) {
