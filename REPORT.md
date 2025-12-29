@@ -147,8 +147,14 @@
 
 ### 15.4 Production 记录
 
-- Production URL：`https://ningle-home-ai-lafnzdrph-kings-projects-bb32b161.vercel.app`
-- Latest main commit：`87ac7e7c559e156e8ccd6df93330589fbfa073fa`
+ - Production URL：`https://ningle-home-ai-pq8o2rfd5-kings-projects-bb32b161.vercel.app`
+- Production URL：`https://ningle-home-ai-65shgiagl-kings-projects-bb32b161.vercel.app`
+- Latest main commit：`f2f2a437379a54be7411e6080e7459a2a83bbfee`
+
+### 15.5 验收建议截图点
+
+- **截图 1**：空间分类卡（8 个选项）+ 底部输入条同屏 —— 看选项是否为两列 chips，且左右边距与输入条一致。
+- **截图 2**：风格/目标/强度卡 —— 看每组是否多列 chips（不再单列全宽），以及「一鍵出圖」为单个明显按钮但不霸屏。
 
 ## 1) 系统概览（技术栈 / 部署方式 / 结构）
 

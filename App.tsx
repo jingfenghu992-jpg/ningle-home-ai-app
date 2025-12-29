@@ -60,7 +60,7 @@ const App: React.FC = () => {
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
   const [analysisSummary, setAnalysisSummary] = useState<string | null>(null);
   const [lastGeneratedImage, setLastGeneratedImage] = useState<string | null>(null);
-  // Keep the last used render intake so "再精修" can reuse the same selections.
+  // Keep the last used render intake for revision.
   const lastRenderIntakeRef = useRef<any>(null);
   const lastGuardrailRef = useRef<any>(null);
   const hkFastFlowStartedRef = useRef<Set<string>>(new Set());
@@ -1225,7 +1225,7 @@ const App: React.FC = () => {
                 const plan = (res as any)?.fallbackPlan;
                 lastGuardrailRef.current = { uploadId, renderIntake, sourceImageUrl, plan };
                 await typeOutAI(
-                  "我检测到这次出图可能有广角/鱼眼/黑角/拉伸变形，为避免误导我先不出图。\n你要点哪个方案继续？",
+                  "我发现呢张效果图可能唔够自然，所以先唔出住。\n你想点边个方案继续？",
                   {
                     options: ["再试：更保守（推荐）", "改用概念图（较快）"],
                     meta: { kind: 'guardrail', stage: 'distortion', uploadId }
@@ -1262,13 +1262,9 @@ const App: React.FC = () => {
               { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
             ]);
 
-            // Post-render copy: keep it short; no technical terms; no quota wording.
-            const renderId = (res as any)?.renderId;
-            const notes = String((res as any)?.designNotes || '').trim();
-            const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
             await typeOutAI(
-              `【设计说明】${renderId ? `\nrenderId: ${renderId}` : ''}\n${notes || '效果图已出。'}\n\n想再调整边度？你打几句（例如：衣柜改趟门／加书枱／灯光暖啲），我帮你再出一张。`,
-              { options: refineOptions, meta: { kind: 'generated', uploadId } }
+              `【設計重點】\n- 收納：到頂櫃更整齊\n- 睡眠：床位更順手\n- 燈光：主燈＋燈帶\n- 色調：跟你揀嘅風格\n\n想再調整？直接打字講你想改邊樣（例如：衣櫃改趟門／加書枱／想暖啲光），我幫你再出一張。`,
+              { meta: { kind: 'generated', uploadId } }
             );
           } finally {
             stopLoadingToast(genLoadingId);
@@ -1294,11 +1290,11 @@ const App: React.FC = () => {
 
           const renderIntake = ({
               ...(base || {}),
-              requirements: `${String(base?.requirements || '').trim()}\n\n精修重点：${tweak}`.trim()
+              requirements: `${String(base?.requirements || '').trim()}\n\n修改要點：${tweak}`.trim()
           });
           lastRenderIntakeRef.current = renderIntake;
 
-          const genLoadingId = addLoadingToast("收到～我现在帮你做细节增强（会比第一次慢一点），请稍等…", { loadingType: 'generating', uploadId });
+          const genLoadingId = addLoadingToast("收到，我而家幫你再出一張，請稍等…", { loadingType: 'generating', uploadId });
           try {
               const res = await generateDesignImage({
                   baseImageBlobUrl: baseImageUrl,
@@ -1316,12 +1312,12 @@ const App: React.FC = () => {
               stopLoadingToast(genLoadingId);
               if (!res.ok || !res.resultBlobUrl) {
                   if (res.errorCode === 'RATE_LIMITED') {
-                      await typeOutAI("而家生成排队中（同一时间只能处理一单），建议等 30–60 秒再点一次精修～");
+                      await typeOutAI("而家多人處理中，你可以等一陣再試～");
                       setAppState('ANALYSIS_DONE');
                       return;
                   }
                   if (res.errorCode === 'TIMEOUT') {
-                      await typeOutAI("精修超时了（服务器繁忙时会出现）。你可以稍后再点一次「再精修：柜体更清晰」。");
+                      await typeOutAI("暫時等耐咗少少，你可以稍後再試一次。");
                       setAppState('ANALYSIS_DONE');
                       return;
                   }
@@ -1348,11 +1344,10 @@ const App: React.FC = () => {
                 { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
               ]);
 
-              const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
-              await typeOutAI("细节已增强，想再改一张？点下面一个：", {
-                options: refineOptions,
-                meta: { kind: 'generated', uploadId }
-              });
+              await typeOutAI(
+                `【設計重點】\n- 收納：到頂櫃更整齊\n- 睡眠：床位更順手\n- 燈光：主燈＋燈帶\n- 色調：跟你揀嘅風格\n\n想再調整？直接打字講你想改邊樣（例如：衣櫃改趟門／加書枱／想暖啲光），我幫你再出一張。`,
+                { meta: { kind: 'generated', uploadId } }
+              );
           } finally {
               stopLoadingToast(genLoadingId);
           }
@@ -1392,92 +1387,7 @@ const App: React.FC = () => {
           }
       }
 
-      // One-tap refinement actions (mobile friendly)
-      if (opt.startsWith('再精修：')) {
-          // Prevent spamming (StepFun often enforces very low concurrency)
-          if (message.isLocked || appState === 'GENERATING') {
-              await typeOutAI("收到～我现在精修中，通常要 1–3 分钟；完成后我会出新效果图。");
-              return;
-          }
-          // Lock this message so the user won't accidentally queue multiple jobs
-          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
-
-          const tweak = opt.replace('再精修：', '').trim();
-          setAppState('GENERATING');
-          // Prefer detail enhancement using the current generated image as reference.
-          const baseImg = (uploadId && uploads[uploadId]?.generatedImageUrl) ? uploads[uploadId]!.generatedImageUrl! : (lastGeneratedImage || '');
-          if (baseImg) {
-            triggerEnhanceFromCurrent(baseImg, tweak, uploadId);
-          } else {
-            // Fallback: regenerate from text only
-            triggerGeneration(null, tweak);
-          }
-          return;
-      }
-
-      // HK V2 post-render refine buttons (rerun i2i from the original upload)
-      if (opt === '更似我间屋（保留窗位/透视）' || opt === '收纳更强（加到顶柜/地台）' || opt === '氛围更靓（灯光+软装）') {
-          if (message.isLocked || appState === 'GENERATING') {
-              await typeOutAI("收到～我而家生成緊，你等我出完先再点下一张～");
-              return;
-          }
-          setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isLocked: true } : m));
-
-          const u0 = uploadId ? uploads[uploadId] : undefined;
-          if (u0 && Number.isInteger(u0.revisionIndex) && (u0.revisionIndex as number) >= 3) {
-            await typeOutAI("我可以一对一免费帮你再调到更贴合你屋企，方便 WhatsApp 我哋：+852 56273817");
-            return;
-          }
-          const base0 = (lastRenderIntakeRef.current && typeof lastRenderIntakeRef.current === 'object')
-            ? { ...lastRenderIntakeRef.current }
-            : {};
-          const intensity =
-            opt.includes('更似') ? '保守（更对位）'
-              : (base0?.intensity || (u0?.render as any)?.intensity || '保守（更对位）');
-          const goal =
-            opt.includes('收纳') ? '收纳优先'
-              : opt.includes('氛围') ? '氛围舒适'
-                : (base0?.priority || (u0?.render as any)?.priority || '收纳优先');
-
-          const nextBase = {
-            ...(base0 || {}),
-            uploadId,
-            baseWidth: u0?.width || base0?.baseWidth,
-            baseHeight: u0?.height || base0?.baseHeight,
-            space: u0?.spaceType || base0?.space || '',
-            priority: goal,
-            intensity,
-            // add a tiny note (keeps prompts short; structure is locked in hkPrompt)
-            requirements: opt.includes('更似')
-              ? `${String(base0?.requirements || '').trim()}\nKeep materials/lighting closer to the photo; keep openings unchanged.`.trim()
-              : String(base0?.requirements || '').trim()
-          };
-
-          // Persist pick in upload state
-          if (uploadId) {
-            setUploads(prev => prev[uploadId] ? ({
-              ...prev,
-              [uploadId]: {
-                ...prev[uploadId],
-                render: {
-                  ...(prev[uploadId].render || {}),
-                  priority: goal,
-                  intensity,
-                  ...(prev[uploadId].imageUrl ? { preferPrecise: true } : {})
-                }
-              }
-            }) : prev);
-          }
-
-          await triggerGeneration(nextBase, undefined, {
-            outputMode: 'PRECISE_I2I',
-            keep_structure: true,
-            qualityPreset: 'STRUCTURE_LOCK',
-            fastAnchors: true,
-            ...quickI2IOverridesByIntensity(intensity),
-          });
-          return;
-      }
+      // Post-generation adjustments are handled via chat text only (no refine button groups).
 
       if (message.meta?.kind === 'space_pick' && uploadId) {
           // Lock this message to prevent double-trigger
@@ -1600,10 +1510,9 @@ const App: React.FC = () => {
             setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], generatedImageUrl: res.resultUrl } }) : prev);
             setAppState('RENDER_DONE');
             setMessages(prev => [...prev, { id: `${Date.now()}-img`, type: 'image', content: res.resultUrl!, sender: 'ai', timestamp: Date.now() }]);
-            const note = String(res.designNotes || '').trim();
             await typeOutAI(
-              `【设计说明】${res.renderId ? `\nrenderId: ${res.renderId}` : ''}\n${note || '效果图已出。'}\n\n想再调整边度？你打几句（例如：衣柜改趟门／加书枱／灯光暖啲），我帮你再出一张。`,
-              { options: ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"], meta: { kind: 'generated', uploadId } }
+              `【設計重點】\n- 收納：到頂櫃更整齊\n- 睡眠：床位更順手\n- 燈光：主燈＋燈帶\n- 色調：跟你揀嘅風格\n\n想再調整？直接打字講你想改邊樣（例如：衣櫃改趟門／加書枱／想暖啲光），我幫你再出一張。`,
+              { meta: { kind: 'generated', uploadId } }
             );
             return;
           }
@@ -2006,7 +1915,7 @@ const App: React.FC = () => {
               }
 
               // Fine-tuning entry removed for now (post-generation refinements are handled after first render).
-              await typeOutAI("收到～我先按推荐预设直接出图，你之后可以基于第一张效果图再精修。");
+              await typeOutAI("收到～我先幫你出第一張；之後你直接打字講想改邊度就得。");
               return;
           }
 
