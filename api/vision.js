@@ -38,7 +38,8 @@ export default async function handler(req, res) {
     const fastMode = modeUpper === 'FAST';
     const layoutMode = modeUpper === 'LAYOUT_HK';
 
-    const imageUrl = req.body.imageUrl || req.body.imageDataUrl || req.body.image;
+    const imageUrl = req.body.imageUrl || req.body.image;
+    const imageDataUrl = req.body.imageDataUrl;
     const spaceType = req.body.spaceType; // New: Accept space type hint
 
     // LAYOUT_HK mode: deterministic A/B suggestions based on hkAnchorsLite (no image needed).
@@ -114,8 +115,14 @@ export default async function handler(req, res) {
         return;
     }
 
-    if (!imageUrl) {
-        res.status(400).json({ error: 'Missing imageUrl' });
+    if (!imageUrl && !imageDataUrl) {
+        res.status(400).json({
+            ok: false,
+            errorCode: 'BAD_INPUT',
+            retryable: false,
+            message: '暫時分析唔到',
+            ...(debugEnabled ? { debug: { usedInput: 'none' } } : {})
+        });
         return;
     }
 
@@ -343,7 +350,8 @@ export default async function handler(req, res) {
             ];
         };
         
-        const rawImageStr = String(imageUrl || '').trim();
+        const usedInput = (imageDataUrl && String(imageDataUrl).startsWith('data:image/')) ? 'dataUrl' : 'url';
+        const rawImageStr = String((usedInput === 'dataUrl' ? imageDataUrl : imageUrl) || '').trim();
         const fetchRes = await fetchImageToDataUrl(rawImageStr, { timeoutMs: fastMode ? 5000 : 12000, retries: fastMode ? 1 : 0 });
         debug.imageFetchOk = Boolean(fetchRes.ok);
         debug.imageContentType = fetchRes.contentType;
@@ -356,10 +364,12 @@ export default async function handler(req, res) {
             res.status(isTimeout ? 408 : 400).json({
                 ok: false,
                 errorCode: isTimeout ? 'TIMEOUT' : 'IMAGE_FETCH_FAILED',
-                message: '请重新上传同一张相片再试（需要相片可访达）',
+                retryable: Boolean(isTimeout || usedInput === 'url'),
+                message: '暫時分析唔到',
                 ...(debugEnabled ? {
                     debug: {
                         ...debug,
+                        usedInput,
                         imageFetchStatus: fetchRes.status,
                         finalUrl: fetchRes.finalUrl,
                         contentType: fetchRes.contentType,
@@ -376,7 +386,7 @@ export default async function handler(req, res) {
 
         // FAST mode: return hkAnchorsLite only (2–6s priority). No retries, small tokens.
         if (fastMode) {
-            const spaceHint = String(req.body.spaceHint || spaceType || '').trim();
+            const spaceHint = String(req.body.spaceHint || spaceType || req.body.spaceType || '').trim();
             const schemaLite = `Return JSON only with this schema:
 {
   "hkAnchorsLite": {
@@ -466,7 +476,7 @@ Rules:
 
             try {
                 const controller = new AbortController();
-                const t = setTimeout(() => controller.abort(), 8000);
+                const t = setTimeout(() => controller.abort(), 12000);
                 const resp = await fetch('https://api.stepfun.com/v1/chat/completions', {
                     method: 'POST',
                     signal: controller.signal,
@@ -524,10 +534,16 @@ Rules:
                 debug.elapsedMs = Date.now() - startedAt;
                 res.status(200).json({
                     ok: true,
+                    // stable schema for frontend:
+                    anchorsLite: hkAnchorsLite,
+                    extraction: { anchorsLite: hkAnchorsLite },
+                    summary: 'FAST',
+                    // backward compatibility:
                     hkAnchorsLite,
                     ...(debugEnabled ? {
                         debug: {
                             ...debug,
+                            usedInput,
                             imageFetchStatus: fetchRes.status,
                             finalUrl: fetchRes.finalUrl,
                             contentType: fetchRes.contentType,
@@ -535,6 +551,7 @@ Rules:
                             fetchElapsedMs: fetchRes.elapsedMs,
                             vlmElapsedMs: totalElapsedMs - (fetchRes.elapsedMs || 0),
                             totalElapsedMs,
+                            model: 'step-1v-8k',
                         }
                     } : {})
                 });
@@ -544,10 +561,12 @@ Rules:
                 res.status(isTimeout ? 408 : 500).json({
                     ok: false,
                     errorCode: isTimeout ? 'FAST_TIMEOUT' : 'FAST_EXCEPTION',
-                    message: isTimeout ? 'FAST 结构分析超时' : 'FAST 结构分析失败',
+                    retryable: Boolean(isTimeout || usedInput === 'url'),
+                    message: '暫時分析唔到',
                     ...(debugEnabled ? {
                         debug: {
                             ...debug,
+                            usedInput,
                             imageFetchStatus: fetchRes.status,
                             finalUrl: fetchRes.finalUrl,
                             contentType: fetchRes.contentType,
