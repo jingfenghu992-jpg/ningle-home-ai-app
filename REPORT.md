@@ -178,6 +178,27 @@
 - 部署状态：success（GitHub Deployments → Production）
 - 验证入口：使用 Deployments 中最新的 Production 链接
 
+### 15.8 Mobile-first 全面排版優化（本輪一次過完成）
+
+#### 15.8.1 改動重點
+
+- **字級/行高**：主文 `15px`、提示最細 `14px`，行高 `leading-6`，手機閱讀更舒服。
+- **卡片/按鈕統一**：新增 `nl-*` UI tokens（`nl-card / nl-chip / nl-primary`），聊天卡片、選項、主按鈕全部用同一套圓角/高度/間距。
+- **選項區手機好按**：兩列選項改為兩粒等寬（grid 兩列 + `h-11`），避免「窄到似條柱」或「霸晒屏幕」。
+- **文案**：關鍵卡片文案改為更接近繁體香港口吻，並移除客戶可見的內部/技術字眼。
+- **重覆卡片**：為流程步驟加入 `stageKey`，同一階段只會更新同一張卡（replace），唔會越加越多張。
+
+#### 15.8.2 本地驗收（DevTools）
+
+- **360×800（Android）**：卡片跟容器同寬但唔霸屏；兩列選項等寬好按；字級清晰。
+- **390×844（iPhone 12/13）**：圖片分析 4–6 行短句；A/B 兩粒並排；輸入框底部 safe-area 正常。
+- **430×932（iPhone Pro Max）**：內容對齊一致；卡片/按鈕 spacing 無擠迫；無重覆階段卡。
+
+#### 15.8.3 部署
+
+- 部署狀態：success（GitHub Deployments → Production）
+- 驗證入口：以 GitHub Deployments 中最新 Production 連結為準
+
 ## 1) 系统概览（技术栈 / 部署方式 / 结构）
 
 ### 1.1 技术栈

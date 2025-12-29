@@ -106,7 +106,18 @@ const App: React.FC = () => {
 
   const upsertOptionsCard = (id: string, text: string, options: string[], meta: Message['meta']) => {
     setMessages(prev => {
-      const idx = prev.findIndex(m => m.id === id);
+      const stageKey = (meta as any)?.stageKey ? String((meta as any).stageKey) : '';
+      const byId = prev.findIndex(m => m.id === id);
+      const idx =
+        byId >= 0
+          ? byId
+          : stageKey
+            ? prev.findIndex(m => String((m.meta as any)?.stageKey || '') === stageKey)
+            : prev.findIndex(m =>
+                m.meta?.kind === meta?.kind &&
+                (m.meta as any)?.stage === (meta as any)?.stage &&
+                (m.meta as any)?.uploadId === (meta as any)?.uploadId
+              );
       const nextMsg: Message = {
         id,
         type: 'text',
@@ -260,7 +271,7 @@ const App: React.FC = () => {
       analysisCardId,
       `【圖片分析】\n分析緊…（約 2–4 秒）`,
       [],
-      { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
+      { kind: 'hk_flow', stage: 'analysis_fast', stageKey: `${uploadId}:analysis_fast`, uploadId, loading: true, loadingType: 'analyzing' }
     );
 
     const callVisionFast = async (payload: { imageUrl?: string; imageDataUrl?: string }) => {
@@ -300,7 +311,7 @@ const App: React.FC = () => {
         analysisCardId,
         `【圖片分析】\n我再試一次…`,
         [],
-        { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
+        { kind: 'hk_flow', stage: 'analysis_fast', stageKey: `${uploadId}:analysis_fast`, uploadId, loading: true, loadingType: 'analyzing' }
       );
       fast = await callVisionFast({ imageDataUrl });
     }
@@ -311,7 +322,7 @@ const App: React.FC = () => {
         analysisCardId,
         `【圖片分析】\n暫時分析唔到。\n你可以再影一次或換角度，之後再上傳。`,
         [],
-        { kind: 'hk_flow', stage: 'analysis_fast', uploadId }
+        { kind: 'hk_flow', stage: 'analysis_fast', stageKey: `${uploadId}:analysis_fast`, uploadId }
       );
       return;
     }
@@ -326,7 +337,7 @@ const App: React.FC = () => {
       analysisCardId,
       buildHKAnalysisCardText(spaceTypeText, hkAnchorsLite),
       [],
-      { kind: 'hk_flow', stage: 'analysis_fast', uploadId }
+      { kind: 'hk_flow', stage: 'analysis_fast', stageKey: `${uploadId}:analysis_fast`, uploadId }
     );
 
     // 2) Layout A/B (must cite anchorsLite)
@@ -335,7 +346,7 @@ const App: React.FC = () => {
       layoutCardId,
       `【布置方案 A/B】\n準備緊…`,
       [],
-      { kind: 'hk_flow', stage: 'layout_ab', uploadId, loading: true }
+      { kind: 'hk_flow', stage: 'layout_ab', stageKey: `${uploadId}:layout_ab`, uploadId, loading: true }
     );
 
     const layouts = await callHKLayouts(spaceTypeText, hkAnchorsLite);
@@ -344,7 +355,7 @@ const App: React.FC = () => {
         layoutCardId,
         `【布置方案 A/B】\n暫時出唔到方案。\n你可以稍後再試或重新上傳。`,
         [],
-        { kind: 'hk_flow', stage: 'layout_ab', uploadId }
+        { kind: 'hk_flow', stage: 'layout_ab', stageKey: `${uploadId}:layout_ab`, uploadId }
       );
       return;
     }
@@ -353,7 +364,7 @@ const App: React.FC = () => {
       layoutCardId,
       buildHKLayoutCardText(),
       buildHKLayoutChoiceOptions(),
-      { kind: 'hk_flow', stage: 'layout_ab', uploadId }
+      { kind: 'hk_flow', stage: 'layout_ab', stageKey: `${uploadId}:layout_ab`, uploadId }
     );
   };
 
@@ -480,7 +491,7 @@ const App: React.FC = () => {
 
         await typeOutAI(
           `【圖片分析】\n${visionRes.vision_summary}\n撳「出效果圖」繼續。`,
-          { options: ["出效果圖"], meta: { kind: 'analysis', uploadId } }
+          { options: ["出效果圖"], meta: { kind: 'analysis', stageKey: `${uploadId}:analysis`, uploadId } }
         );
       } else {
         stopLoadingToast(analysisLoadingId);
@@ -632,7 +643,7 @@ const App: React.FC = () => {
                           `${uploadId}-space_pick`,
                           `我估呢張相係「${primary}」\n你撳一下確認就得（唔啱都可以改）`,
                           options,
-                          { kind: 'space_pick', uploadId }
+                          { kind: 'space_pick', stageKey: `${uploadId}:space_pick`, uploadId }
                         );
                       } catch (err) {
                         stopLoadingToast(classifyId);
@@ -1635,7 +1646,7 @@ const App: React.FC = () => {
             cardId,
             `已選：風格=${picks.style}｜目標=${picks.goal}｜強度=${picks.intensity}\n撳「一鍵出圖」就會開始。`,
             getQuickRenderOptions(previewU, debugEnabled),
-            { kind: 'quick_render', stage: 'picks', uploadId }
+            { kind: 'quick_render', stage: 'picks', stageKey: `${uploadId}:quick_render:picks`, uploadId }
           );
           return;
         }
