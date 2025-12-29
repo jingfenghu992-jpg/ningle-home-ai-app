@@ -24,6 +24,17 @@ const App: React.FC = () => {
       return false;
     }
   })();
+
+  const buildStamp = (() => {
+    try {
+      const sha = (typeof __BUILD_SHA__ !== 'undefined' ? __BUILD_SHA__ : 'unknown') || 'unknown';
+      const t = (typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'unknown') || 'unknown';
+      const env = (typeof __VERCEL_ENV__ !== 'undefined' ? __VERCEL_ENV__ : 'unknown') || 'unknown';
+      return { sha, t, env };
+    } catch {
+      return { sha: 'unknown', t: 'unknown', env: 'unknown' };
+    }
+  })();
   
   const [uploads, setUploads] = useState<Record<string, {
     dataUrl: string;
@@ -2065,6 +2076,14 @@ const App: React.FC = () => {
   return (
     <AppShell>
       <AppBar />
+
+      {debugEnabled && (
+        <div className="pointer-events-none select-none px-4 pt-2">
+          <div className="mx-auto w-full max-w-[520px] text-[12px] leading-4 opacity-70 text-[#4A453C]">
+            版本：{buildStamp.sha}｜{buildStamp.t}｜{buildStamp.env}
+          </div>
+        </div>
+      )}
       
       {appState === 'START' ? (
         <StartScreen 

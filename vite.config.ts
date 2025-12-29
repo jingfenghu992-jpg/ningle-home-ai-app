@@ -47,9 +47,25 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   Object.assign(process.env, env)
 
+  // Internal build stamp (used ONLY when ?debug=1 in UI).
+  const fullSha =
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.GITHUB_SHA ||
+    process.env.GIT_COMMIT_SHA ||
+    process.env.VITE_GIT_COMMIT_SHA ||
+    'unknown';
+  const shortSha = (String(fullSha || 'unknown').trim() || 'unknown').slice(0, 7);
+  const vercelEnv = (process.env.VERCEL_ENV || process.env.NODE_ENV || mode || 'unknown').toString();
+  const buildTime = (process.env.VITE_BUILD_TIME || new Date().toISOString()).toString();
+
   return {
     base: '/',
     plugins: [react(), apiMockPlugin()],
+    define: {
+      __BUILD_SHA__: JSON.stringify(shortSha),
+      __BUILD_TIME__: JSON.stringify(buildTime),
+      __VERCEL_ENV__: JSON.stringify(vercelEnv),
+    },
     server: {
       open: '/',
     },

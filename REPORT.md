@@ -199,6 +199,13 @@
 - 部署狀態：success（GitHub Deployments → Production）
 - 驗證入口：以 GitHub Deployments 中最新 Production 連結為準
 
+### 15.9 內部版本標記（debug=1）
+
+- **位置**：`App.tsx`（AppBar 下方一行細字）
+- **顯示條件**：URL 帶 `?debug=1` 才會顯示；一般客戶唔會見到
+- **顯示內容**：短 commit、build time（ISO）、Vercel env
+- **用途**：打開 Production URL 後加 `?debug=1`，即可一眼分辨而家跑緊邊個部署/commit
+
 ## 1) 系统概览（技术栈 / 部署方式 / 结构）
 
 ### 1.1 技术栈
