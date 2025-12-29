@@ -9,6 +9,7 @@ import { analyzeImage, analyzeImageFast } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
 import { generateDesignImage, generateInspireImage, generateRenderImage, uploadImage } from './services/generateClient';
 import { compressImage } from './services/utils';
+import { APIError } from './services/utils';
 import { classifySpace } from './services/spaceClient';
 
 const App: React.FC = () => {
@@ -263,27 +264,50 @@ const App: React.FC = () => {
       { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
     );
 
-    const tryFast = async (useDataUrl: boolean) => await analyzeImageFast({
-      imageUrl: useDataUrl ? undefined : imageUrl,
-      imageDataUrl: useDataUrl ? imageDataUrl : undefined,
-      spaceHint: spaceTypeText,
-      clientId,
-      debug: debugEnabled,
-    });
+    const callVisionFast = async (payload: { imageUrl?: string; imageDataUrl?: string }) => {
+      const url = debugEnabled ? '/api/vision-fast?debug=1' : '/api/vision-fast';
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientId,
+            spaceType: spaceTypeText,
+            imageUrl: payload.imageUrl,
+            imageDataUrl: payload.imageDataUrl,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          return {
+            ok: false,
+            errorCode: String(data?.errorCode || `HTTP_${res.status}`),
+            retryable: Boolean(data?.retryable),
+            message: String(data?.message || ''),
+            debug: data?.debug,
+          };
+        }
+        return data || { ok: false, errorCode: 'BAD_RESPONSE' };
+      } catch (e: any) {
+        const code = (e instanceof APIError) ? (e.code || `HTTP_${e.status}`) : (e?.code || 'NETWORK_ERROR');
+        return { ok: false, errorCode: String(code), retryable: true, message: String(e?.message || '') };
+      }
+    };
 
-    let fast = await tryFast(false);
-    const retryCodes = new Set(['IMAGE_FETCH_FAILED', 'IMAGE_URL_UNREACHABLE', 'TIMEOUT', 'FAST_TIMEOUT']);
-    if ((!fast.ok || !fast.hkAnchorsLite) && retryCodes.has(String((fast as any)?.errorCode || '')) && imageDataUrl) {
+    // First attempt: imageUrl (even if missing), then auto fallback to imageDataUrl once.
+    let fast: any = await callVisionFast({ imageUrl: imageUrl || '' });
+    if (fast?.ok !== true && imageDataUrl) {
       upsertOptionsCard(
         analysisCardId,
         `【圖片分析】\n我再試一次…`,
         [],
         { kind: 'hk_flow', stage: 'analysis_fast', uploadId, loading: true, loadingType: 'analyzing' }
       );
-      fast = await tryFast(true);
+      fast = await callVisionFast({ imageDataUrl });
     }
 
-    if (!fast.ok || !(fast as any)?.hkAnchorsLite) {
+    const anchorsLite = fast?.hkAnchorsLite || fast?.anchorsLite || fast?.anchorsLite?.hkAnchorsLite || null;
+    if (fast?.ok !== true || !anchorsLite) {
       upsertOptionsCard(
         analysisCardId,
         `【圖片分析】\n暫時分析唔到。\n你可以再影一次或換角度，之後再上傳。`,
@@ -293,7 +317,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const hkAnchorsLite = (fast as any).hkAnchorsLite;
+    const hkAnchorsLite = anchorsLite;
     setUploads(prev => prev[uploadId] ? ({
       ...prev,
       [uploadId]: { ...prev[uploadId], hkAnchorsLite }
