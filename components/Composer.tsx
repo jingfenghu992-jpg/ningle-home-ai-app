@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Send, Image as ImageIcon } from 'lucide-react';
+import { CHAT_CONTAINER_CLASS } from '../constants';
 
 interface ComposerProps {
   onSendMessage: (text: string) => void;
@@ -43,7 +44,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
 
   return (
     <div className="bg-[#1F4D3A] border-t border-black/5 px-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#1F4D3A]/90">
-      <div className="max-w-md mx-auto flex items-end gap-2">
+      <div className={`${CHAT_CONTAINER_CLASS} flex items-end gap-2`}>
         <input 
           type="file" 
           ref={fileInputRef} 
@@ -54,7 +55,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
         <button 
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className="p-3 text-[#EBE8E3] hover:bg-white/10 rounded-full transition-colors disabled:opacity-40"
+          className="shrink-0 p-3 text-[#EBE8E3] hover:bg-white/10 rounded-full transition-colors disabled:opacity-40"
         >
           <ImageIcon size={26} strokeWidth={2.25} />
         </button>
@@ -68,14 +69,14 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
             placeholder="输入消息…（也可以直接上传照片）"
             disabled={disabled}
             rows={1}
-            className="w-full bg-transparent text-[#2F2A23] placeholder:text-[#4A453C]/55 outline-none resize-none text-[15px] leading-6 max-h-[120px] scrollbar-none"
+            className="w-full bg-transparent text-[#2F2A23] placeholder:text-[#4A453C]/55 outline-none resize-none text-[14px] leading-6 font-normal max-h-[120px] scrollbar-none"
           />
         </div>
 
         <button 
           onClick={handleSend}
           disabled={!text.trim() || disabled}
-          className="p-3 bg-[#1F4D3A] hover:bg-[#173C2D] text-white rounded-full shadow-md disabled:opacity-50 disabled:bg-black/10 transition-all"
+          className="shrink-0 p-3 bg-[#1F4D3A] hover:bg-[#173C2D] text-white rounded-full shadow-md disabled:opacity-50 disabled:bg-black/10 transition-all"
         >
           <Send size={22} strokeWidth={2.25} className={text.trim() ? "translate-x-0.5" : ""} />
         </button>
