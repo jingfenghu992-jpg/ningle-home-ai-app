@@ -1,6 +1,6 @@
 import React from 'react';
 import { Camera, Upload, MessageCircle } from 'lucide-react';
-import { WHATSAPP_LINK } from '../constants';
+import { CHAT_GUTTER_CLASS, CHAT_MAX_CLASS, CHAT_TEXT_HINT_CLASS, WHATSAPP_LINK } from '../constants';
 
 interface StartScreenProps {
   onUpload: (file: File) => void;
@@ -29,14 +29,14 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
 
   return (
     <div className="min-h-[100dvh] bg-[#F5F2ED] pb-[calc(env(safe-area-inset-bottom,0px)+24px)] animate-in fade-in duration-700">
-      <div className="mx-auto w-full max-w-md px-4 pt-4">
+      <div className={`mx-auto w-full ${CHAT_MAX_CLASS} ${CHAT_GUTTER_CLASS} pt-4`}>
         <div className="mt-4 rounded-3xl bg-[#FFFCF7] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] border border-black/5">
           {/* A) Title + Intro */}
           <h1 className="text-[28px] font-extrabold text-[#2F2A23] tracking-tight leading-tight">
             上传照片，生成订造建议
           </h1>
-          <p className="mt-3 text-[#4A453C]/75 text-[16px] leading-relaxed">
-            我会先分析空间与收纳，再提供用料和预算方向（你也可以补充需求）。
+          <p className="mt-3 text-[#4A453C]/75 text-[14px] leading-6">
+            我会先整理空间与收纳重点，再按你的需要给出改善方向（你也可以补充需求）。
           </p>
 
           {/* B) Selling points */}
@@ -103,8 +103,8 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
           </div>
 
           {/* D) Bottom hint text (must be visible) */}
-          <div className="mt-4 text-center text-xs text-[#4A453C]/65 leading-relaxed">
-            iPhone/Android 均可用：点「直接拍摄」会开相机；点「上传相片」会开相册/文件。WhatsApp 会带预填消息，我们会免费跟进。
+          <div className={`mt-4 text-center ${CHAT_TEXT_HINT_CLASS} text-[#4A453C]/75`}>
+            iPhone/Android 都得：点「直接拍摄」会开相机；点「上传相片」会开相册/文件。WhatsApp 会带预填消息。
           </div>
         </div>
       </div>
