@@ -2,6 +2,8 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { Message } from '../types';
 import { CHAT_TEXT_BASE_CLASS, CHAT_TEXT_HINT_CLASS, CHAT_TEXT_TITLE_CLASS } from '../constants';
+import { OptionChip } from './OptionChip';
+import { PrimaryActionButton } from './PrimaryActionButton';
 
 interface MessageCardProps {
   message: Message;
@@ -24,13 +26,6 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       .replace(/^(风格|目标|强度|風格|目標|強度)：\s*[◉○]\s*/g, '')
       .trim();
   const isSelected = (opt: string) => String(opt || '').includes('◉');
-
-  const chipClassBase =
-    'inline-flex items-center justify-center h-10 px-3 text-[14px] leading-6 font-medium rounded-xl border border-black/5 transition-all shadow-sm active:scale-95';
-  const chipClass = (selected: boolean) =>
-    `${chipClassBase} ${selected ? 'bg-white text-[#4A453C]' : 'bg-white/60 hover:bg-white text-[#4A453C]'}`;
-  const ctaClass =
-    'w-full h-11 px-4 text-[14px] leading-6 font-medium rounded-xl border border-black/10 bg-white/80 hover:bg-white text-[#4A453C] transition-all shadow-sm active:scale-95';
 
   const renderOptions = () => {
     if (!options.length) return null;
@@ -58,22 +53,23 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
           {nonCtas.length > 0 && (
             <div className={useGrid ? 'grid grid-cols-2 gap-2 justify-items-start' : 'flex flex-wrap gap-2'}>
               {nonCtas.map((opt, i) => (
-                <button
+                <OptionChip
                   key={`${i}-${opt}`}
+                  label={stripRadioPrefix(opt)}
+                  selected={isSelected(opt)}
                   onClick={() => onOptionClick?.(message, opt)}
-                  className={`${chipClass(isSelected(opt))} min-w-[140px] w-auto`}
-                >
-                  {stripRadioPrefix(opt)}
-                </button>
+                />
               ))}
             </div>
           )}
           {ctas.length > 0 && (
             <div className="mt-2">
               {ctas.map((opt, i) => (
-                <button key={`cta-${i}-${opt}`} onClick={() => onOptionClick?.(message, opt)} className={ctaClass}>
-                  {opt}
-                </button>
+                <PrimaryActionButton
+                  key={`cta-${i}-${opt}`}
+                  label={opt}
+                  onClick={() => onOptionClick?.(message, opt)}
+                />
               ))}
             </div>
           )}
@@ -91,13 +87,12 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
             <div className={`mb-2 ${CHAT_TEXT_HINT_CLASS}`}>{k}</div>
             <div className="flex flex-wrap gap-2">
               {(grouped[k] || []).map((opt, i) => (
-                <button
+                <OptionChip
                   key={`${k}-${i}-${opt}`}
+                  label={stripRadioPrefix(opt)}
+                  selected={isSelected(opt)}
                   onClick={() => onOptionClick?.(message, opt)}
-                  className={`${chipClass(isSelected(opt))} min-w-[140px] w-auto`}
-                >
-                  {stripRadioPrefix(opt)}
-                </button>
+                />
               ))}
             </div>
           </div>
@@ -105,9 +100,11 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
         {ctas.length > 0 && (
           <div>
             {ctas.map((opt, i) => (
-              <button key={`cta-${i}-${opt}`} onClick={() => onOptionClick?.(message, opt)} className={ctaClass}>
-                {opt}
-              </button>
+              <PrimaryActionButton
+                key={`cta-${i}-${opt}`}
+                label={opt}
+                onClick={() => onOptionClick?.(message, opt)}
+              />
             ))}
           </div>
         )}

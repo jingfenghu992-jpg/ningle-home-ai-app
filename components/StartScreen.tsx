@@ -30,7 +30,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
   return (
     <div className="min-h-[100dvh] bg-[#F5F2ED] pb-[calc(env(safe-area-inset-bottom,0px)+24px)] animate-in fade-in duration-700">
       <div className={`mx-auto w-full ${CHAT_MAX_CLASS} ${CHAT_GUTTER_CLASS} pt-4`}>
-        <div className="mt-4 rounded-3xl bg-[#FFFCF7] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.08)] border border-black/5">
+        <div className="mt-4 rounded-3xl bg-[#FFFCF7] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.08)] border border-black/5">
           {/* A) Title + Intro */}
           <h1 className="text-[28px] font-extrabold text-[#2F2A23] tracking-tight leading-tight">
             上传照片，生成订造建议
@@ -40,7 +40,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
           </p>
 
           {/* B) Selling points */}
-          <div className="mt-6 space-y-3 text-[15px] text-[#2F2A23]">
+          <div className="mt-6 space-y-3 text-[14px] leading-6 text-[#2F2A23]">
             <div className="flex gap-3">
               <div className="shrink-0">✅</div>
               <div>支持 厨房 / 衣柜 / 全屋订造</div>
@@ -77,7 +77,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
             <button
               type="button"
               onClick={() => cameraInputRef.current?.click()}
-              className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white py-4 rounded-2xl font-extrabold text-[17px] shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
+              className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white h-11 rounded-2xl font-semibold text-[14px] leading-5 shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <Camera size={20} />
               直接拍摄并开始分析
@@ -86,7 +86,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
             <button
               type="button"
               onClick={() => uploadInputRef.current?.click()}
-              className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white py-4 rounded-2xl font-extrabold text-[17px] shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
+              className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white h-11 rounded-2xl font-semibold text-[14px] leading-5 shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <Upload size={20} />
               上传相片并开始分析
@@ -95,7 +95,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
             <button
               type="button"
               onClick={handleWhatsApp}
-              className="w-full bg-[#DCE9E2] hover:bg-[#CFE2D8] text-[#1F4D3A] py-3.5 rounded-2xl font-semibold text-[15px] active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
+              className="w-full bg-[#DCE9E2] hover:bg-[#CFE2D8] text-[#1F4D3A] h-11 rounded-2xl font-semibold text-[14px] leading-5 active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <MessageCircle size={18} />
               想了解更多 / 一对一免费服务（WhatsApp）

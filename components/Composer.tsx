@@ -43,7 +43,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
   }, [text]);
 
   return (
-    <div className="bg-[#1F4D3A] border-t border-black/5 px-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#1F4D3A]/90">
+    <div className="bg-[#1F4D3A] border-t border-black/5 px-0 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#1F4D3A]/90">
       <div className={`${CHAT_CONTAINER_CLASS} flex items-end gap-2`}>
         <input 
           type="file" 
@@ -66,7 +66,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息…（也可以直接上传照片）"
+            placeholder="输入消息…"
             disabled={disabled}
             rows={1}
             className="w-full bg-transparent text-[#2F2A23] placeholder:text-[#4A453C]/55 outline-none resize-none text-[14px] leading-6 font-normal max-h-[120px] scrollbar-none"

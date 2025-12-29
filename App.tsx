@@ -50,7 +50,7 @@ const App: React.FC = () => {
       layoutChoice?: 'A' | 'B';
       roomWidthChi?: string;   // e.g. "8–10尺"
       roomHeightChi?: string;  // e.g. "7尺2–7尺8"
-      targetUse?: string; // 当空间类型=其他时，用于锁定文生图的目标用途（客厅/卧室等）
+      targetUse?: string; // 当空间类型=其他时，用于指定目标用途（客厅/卧室等）
       storage?: string;
       priority?: string;
       intensity?: string;
@@ -188,18 +188,14 @@ const App: React.FC = () => {
     ]
       .map(s => String(s).trim())
       .filter(Boolean)
-      .slice(0, 6);
+      .slice(0, 5);
 
     return `【圖片分析】\n${lines.join('\n')}`;
   };
 
   const getHKPreferenceOptions = (u: any) => {
     const picks = getQuickRenderPicks(u);
-    const styles = [
-      '現代簡約（白＋淺木）',
-      '奶油暖白（米白＋淺木）',
-      '日式木系（原木＋暖白）',
-    ];
+    const styles = ['現代簡約', '奶油暖白', '日式木系'];
     const goals = ['收納優先', '顯大清爽'];
     const intensities = ['更貼近原相', '設計感多啲'];
     const withRadio = (group: string, label: string, picked: string) =>
@@ -214,20 +210,18 @@ const App: React.FC = () => {
 
   const buildHKLayoutCardText = () => {
     const a = [
-      '方案 A：地台床＋到頂衣櫃',
+      '方案 A：地台床＋到頂櫃',
       '右牆：趟門衣櫃到頂',
-      '床下：抽屜收納',
       '窗邊：留通道採光',
-      '原因：右牆較完整',
+      '原因：動線更順',
     ].join('\n');
     const b = [
       '方案 B：活動床＋收納牆',
       '右牆：收納牆到頂',
-      '書枱：窗邊細書枱',
-      '動線：保留窗前位',
+      '窗邊：細書枱',
       '原因：顯大又夠用',
     ].join('\n');
-    return `【布置方案 A/B】\n揀一個（單選）：\n\n${a}\n\n${b}`;
+    return `【布置方案 A/B】\n揀一個：\n\n${a}\n\n${b}`;
   };
 
   const buildHKLayoutChoiceOptions = () => ['方案 A', '方案 B'];
@@ -513,7 +507,7 @@ const App: React.FC = () => {
   const getQuickRenderPicks = (u: any) => {
     const r = (u?.render || {}) as any;
     return {
-      style: String(r.style || '現代簡約（白＋淺木）'),
+      style: String(r.style || '現代簡約'),
       goal: String(r.priority || '收納優先'),
       intensity: String(r.intensity || '更貼近原相'),
     };
@@ -521,11 +515,7 @@ const App: React.FC = () => {
 
   const getQuickRenderOptions = (u: any, includeVision: boolean) => {
     const picks = getQuickRenderPicks(u);
-    const styles = [
-      '現代簡約（白＋淺木）',
-      '奶油暖白（米白＋淺木）',
-      '日式木系（原木＋暖白）',
-    ];
+    const styles = ['現代簡約', '奶油暖白', '日式木系'];
     const goals = ['收納優先', '顯大清爽'];
     const intensities = ['更貼近原相', '設計感多啲'];
     const withRadio = (group: string, label: string, picked: string) =>
@@ -536,8 +526,8 @@ const App: React.FC = () => {
       ...goals.map(g => withRadio('目標', g, picks.goal)),
       ...intensities.map(i => withRadio('強度', i, picks.intensity)),
       '一鍵出圖',
-      '概念示意（较快，不保证对位）',
-      ...(includeVision ? ['更似我间屋（精准校准，需要分析）'] : []),
+      '概念示意（较快）',
+      ...(includeVision ? ['更貼近原相（需要分析）'] : []),
     ];
     const uniq: string[] = [];
     for (const o of opts) {
@@ -1235,7 +1225,7 @@ const App: React.FC = () => {
                 return;
               }
               if (typeof code === 'string' && code.startsWith('UPSTREAM_I2I_')) {
-                await typeOutAI("精准模式暂时失败（我未有偷偷改用概念图，避免不对位）。你可以稍后再试一次，或者点「概念示意（较快，不保证对位）」。");
+                await typeOutAI("暂时出唔到，你可以稍后再试一次，或者点「概念示意（较快）」。");
                 setAppState('ANALYSIS_DONE');
                 return;
               }
@@ -1404,7 +1394,7 @@ const App: React.FC = () => {
                 ...(prev[uploadId].render || {}),
                 style: (prev[uploadId].render as any)?.style || '现代简约',
                 priority: (prev[uploadId].render as any)?.priority || '收纳优先',
-                intensity: (prev[uploadId].render as any)?.intensity || '保守（更对位）',
+                intensity: (prev[uploadId].render as any)?.intensity || '更貼近原相',
               }
             }
           }) : prev);
@@ -1449,7 +1439,7 @@ const App: React.FC = () => {
           const cleaned = String(opt || '')
             .replace(/^(风格|目标|强度|風格|目標|強度)：\s*[◉○]\s*/g, '')
             .trim();
-          const isStyle = ['現代簡約（白＋淺木）', '奶油暖白（米白＋淺木）', '日式木系（原木＋暖白）'].includes(cleaned);
+          const isStyle = ['現代簡約', '奶油暖白', '日式木系'].includes(cleaned);
           const isGoal = ['收納優先', '顯大清爽'].includes(cleaned);
           const isIntensity = ['更貼近原相', '設計感多啲'].includes(cleaned);
 
@@ -1560,14 +1550,14 @@ const App: React.FC = () => {
           .trim();
         const isStyle = ['现代简约', '奶油风', '日式木系', '轻奢'].includes(cleaned);
         const isGoal = ['收纳优先', '氛围舒适', '显大清爽'].includes(cleaned);
-        const isIntensity = ['保守（更对位）', '明显（更有设计感）'].includes(cleaned);
+        const isIntensity = ['更貼近原相', '設計感多啲'].includes(cleaned);
 
-        if (cleaned === '更似我间屋（精准校准，需要分析）') {
+        if (cleaned === '更貼近原相（需要分析）') {
           await runAnalysisForUpload(uploadId, u0.spaceType || '其他');
           return;
         }
 
-        if (cleaned === '概念示意（较快，不保证对位）') {
+        if (cleaned === '概念示意（较快）') {
           const picks = getQuickRenderPicks(u0);
           const base = {
             uploadId,
@@ -1881,7 +1871,7 @@ const App: React.FC = () => {
                   const roomHeightChi = (u.render as any)?.roomHeightChi || '';
                   const intake = {
                       space,
-                      // 当空间类型=其他时，用于文生图锁定目标用途（否则模型容易跑偏成日式房/茶室等）
+                      // 当空间类型=其他时，用于指定目标用途（否则容易跑偏到不相关空间）
                       targetUse: (u.render as any)?.targetUse,
                       style: style0,
                       color: color0,
@@ -1900,7 +1890,7 @@ const App: React.FC = () => {
                       styleChoice: (u.render as any)?.styleChoice,
                       // For t2i, we keep vision summary only as structure cues (approximate)
                       visionSummary: u.visionSummary,
-                      // 关键：把结构提取也带过去，供 /api/design/inspire 生成“结构锁定”提示词（更贴近原图）
+                      // 关键：把结构提取也带过去，供 /api/design/inspire 生成更贴近原图的提示词
                       visionExtraction: u.visionExtraction,
                       fixedConstraints: u.fixedConstraints,
                       layoutRecommended: u.layoutRecommended,
