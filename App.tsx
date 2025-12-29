@@ -5,6 +5,7 @@ import { StartScreen } from './components/StartScreen';
 import { MessageCard } from './components/MessageCard';
 import { Composer } from './components/Composer';
 import { Message } from './types';
+import { CHAT_CONTAINER_CLASS } from './constants';
 import { analyzeImage, analyzeImageFast } from './services/visionClient';
 import { chatWithDeepseekStream } from './services/chatClient';
 import { generateDesignImage, generateInspireImage, generateRenderImage, uploadImage } from './services/generateClient';
@@ -2191,7 +2192,7 @@ const App: React.FC = () => {
           <div className="flex-1 overflow-y-auto overflow-x-hidden relative scrollbar-none pb-4">
 
             {/* 3. Small Chat Stream (Toasts/Short interaction) */}
-            <div className="mt-4">
+            <div className={`mt-4 ${CHAT_CONTAINER_CLASS}`}>
                 {messages.map((msg) => (
                     <MessageCard key={msg.id} message={msg} onOptionClick={handleOptionClick} />
                 ))}
