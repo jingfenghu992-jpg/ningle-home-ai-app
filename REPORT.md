@@ -65,6 +65,50 @@
 - 出图后只有 `【設計重點】`，无精修按钮：✅
 - 聊天改图：最多再出 2 次；之后只引导 WhatsApp（不提次数/限制）：✅
 
+---
+
+## 14) FAST 圖片分析穩定性（問題定位與修正）
+
+### 14.1 現象（Production）
+
+- **症狀**：上傳圖片並已選空間（例如：小睡房），但 `【圖片分析】` 卡有機會顯示「暫時分析唔到」。
+
+### 14.2 定位記錄（用 Production API 直接重現）
+
+> 本環境無法打開瀏覽器 DevTools，因此改用 Production 域名直接呼叫 API，記錄 request 欄位名與 response 狀態（不記錄用戶私隱）。
+
+- **POST `/api/upload`**
+  - **request headers**：`x-vercel-filename`
+  - **request body**：binary image
+  - **response**：HTTP 200；回傳欄位：`url/downloadUrl/pathname/contentType/contentDisposition`
+
+- **POST `/api/vision-fast`（第一次：imageUrl）**
+  - **request payload 欄位名**：`clientId`、`spaceType`、`imageUrl`
+  - **response**：HTTP 200（一般）／HTTP 408（偶發）
+  - **關鍵錯誤（debug=1）**：`errorCode=FAST_TIMEOUT`（上游 VLM 超時）
+
+- **POST `/api/vision-fast`（fallback：imageDataUrl）**
+  - **request payload 欄位名**：`clientId`、`spaceType`、`imageDataUrl`
+  - **response**：HTTP 200；`ok:true`
+
+### 14.3 Root cause（結論）
+
+- **主要根因**：FAST 分析會遇到上游 VLM latency → 觸發 `FAST_TIMEOUT`；若前端只做單次嘗試或 imageUrl 未就緒，就會直接落入 fail 分支。
+
+### 14.4 修正策略（落地）
+
+- **前端（`App.tsx`）**
+  - 第一次固定用 `imageUrl` 呼叫 `/api/vision-fast`
+  - 只要 `ok!==true` 或 HTTP>=400，就會自動用 `imageDataUrl` 再試一次
+  - 客戶可見卡片/提示只用短句；不顯示 `errorCode/debug/技術詞`
+
+- **後端（`api/vision.js` → `/api/vision-fast` rewrite）**
+  - 同時支援 `imageUrl` / `imageDataUrl`
+  - FAST 回傳 schema 統一：
+    - 成功：`{ ok:true, extraction, summary, anchorsLite }`（並保留 `hkAnchorsLite` 作兼容）
+    - 失敗：`{ ok:false, message:"暫時分析唔到", errorCode, retryable }`
+  - `debug` 只在 `debug=1` 才回傳（含 `usedInput/bytes/elapsedMs/model`）
+
 ## 1) 系统概览（技术栈 / 部署方式 / 结构）
 
 ### 1.1 技术栈
