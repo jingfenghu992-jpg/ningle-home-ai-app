@@ -109,6 +109,47 @@
     - 失敗：`{ ok:false, message:"暫時分析唔到", errorCode, retryable }`
   - `debug` 只在 `debug=1` 才回傳（含 `usedInput/bytes/elapsedMs/model`）
 
+---
+
+## 15) UI 统一样式与对齐（本轮）
+
+### 15.1 统一字体规格（聊天区所有内容）
+
+- **基础文字**：`14px`（`text-[14px]`）+ `leading-6`
+- **卡片标题（同一条消息第一行）**：`14px` + `font-semibold` + `leading-5`（仅卡片类消息）
+- **次要信息（时间戳）**：`13px` + `leading-5` + `opacity-80`
+
+已覆盖组件/区域：
+- `components/MessageCard.tsx`：普通消息、卡片类消息、加载提示、选项按钮、时间戳
+- `components/Composer.tsx`：输入框文字规格统一为 `14px/leading-6`
+
+### 15.2 聊天区与底部输入条宽度对齐
+
+实现方式（复用同一套变量，不改布局/主题色）：
+- `constants.ts`：新增
+  - `CHAT_MAX_CLASS = max-w-[520px]`
+  - `CHAT_GUTTER_CLASS = px-4`
+  - `CHAT_CONTAINER_CLASS = w-full mx-auto + 上述两项`
+- `App.tsx`：消息列表外层使用 `CHAT_CONTAINER_CLASS`
+- `Composer.tsx`：底部输入条内部容器使用同一 `CHAT_CONTAINER_CLASS`
+
+验收点：390px / 414px / 768px 宽度下，聊天内容区与底部输入条左右边距一致。
+
+### 15.3 用户可见敏感词清理
+
+已从**用户可见**文案中移除/替换（仅保留在 console/server log 或内部变量里，不进入 UI）：
+- `AI`、`模型`
+- `图生图`、`文生图`、`i2i`、`t2i`
+- `prompt`、`debug`
+- `风险`、`禁止`、`强制`
+- `fisheye`、`wide-angle`
+- `次数`、`限制`、`最多`、`超过`
+
+### 15.4 Production 记录
+
+- Production URL：`https://ningle-home-ai-lafnzdrph-kings-projects-bb32b161.vercel.app`
+- Latest main commit：`87ac7e7c559e156e8ccd6df93330589fbfa073fa`
+
 ## 1) 系统概览（技术栈 / 部署方式 / 结构）
 
 ### 1.1 技术栈

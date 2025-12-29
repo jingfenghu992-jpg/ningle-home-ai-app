@@ -1243,33 +1243,11 @@ const App: React.FC = () => {
             }
 
             const resultUrl = res.resultUrl;
+            // debugEnabled: keep debug output in console only (do not render into chat UI)
             if (debugEnabled && (res as any)?.debug?.usedText) {
               const d: any = (res as any).debug || {};
-              const i2i = d.i2iParams ? ` i2i(str=${d.i2iParams.strength}, sw=${d.i2iParams.source_weight}, cfg=${d.i2iParams.cfg_scale}, st=${d.i2iParams.steps})` : '';
-              const base = (d.baseImageBytes || d.baseImageWidth || d.baseImageHeight)
-                ? ` base=${d.baseImageWidth ?? ''}x${d.baseImageHeight ?? ''} bytes=${d.baseImageBytes ?? ''}`
-                : '';
-              const ar = d.aspectRatio ? ` ar=${Number(d.aspectRatio).toFixed(3)}` : '';
-              const sizeInfo = d.targetSize ? ` target=${d.targetSize}` : (d.sentSize ? ` target=${d.sentSize}` : '');
-              const pad = (typeof d.padded === 'boolean') ? ` padded=${d.padded}` : '';
-              const fetchOk = (typeof d.imageFetchOk === 'boolean') ? ` fetchOk=${d.imageFetchOk}` : '';
-              const lite = d.hkAnchorsLite
-                ? ` lite(win=${d.hkAnchorsLite.window_wall ?? ''}/${d.hkAnchorsLite.window_count ?? ''}, lens=${d.hkAnchorsLite.lens_risk ?? ''})`
-                : '';
-              const header =
-                `endpoint=${d.usedEndpoint ?? d.requestedEndpoint ?? ''} | mode=${d.outputMode ?? ''} | fallback=${d.fallbackUsed ?? ''} | mismatch=${d.mismatch ?? ''} | chars=${d.promptChars ?? ''} | hash=${d.promptHash ?? ''} | hkSpace=${d.hkSpace ?? ''} | A/B=${d.layoutVariant ?? ''} | dropped=${(d.dropped || []).join(',')}` +
-                `${fetchOk}${i2i}${base}${ar}${sizeInfo}${pad}${lite}`;
               const usedText = String(d.usedText || '').trim();
-              if (usedText) {
-                console.log('[DEBUG] inspire usedText', usedText);
-                setMessages(prev => [
-                  ...prev,
-                  { id: `${Date.now()}-debug-prompt`, type: 'text', content: `[[DEBUG_PROMPT]]\n${header}\n\n${usedText}`, sender: 'ai', timestamp: Date.now() }
-                ]);
-              }
-              if (d.fallbackUsed) {
-                await typeOutAI("提示：精准模式暂时失败，已改用快速概念图（可能不对位）。");
-              }
+              if (usedText) console.log('[DEV] inspire usedText', usedText);
             }
             setLastGeneratedImage(resultUrl);
             if (uploadId) {
@@ -1284,21 +1262,14 @@ const App: React.FC = () => {
               { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
             ]);
 
-            // Notes must be consistent with the generated image (same renderId).
+            // Post-render copy: keep it short; no technical terms; no quota wording.
             const renderId = (res as any)?.renderId;
             const notes = String((res as any)?.designNotes || '').trim();
             const refineOptions = ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"];
-            if (notes) {
-              await typeOutAI(
-                `【设计说明（与本次效果图一致）】${renderId ? `\nrenderId: ${renderId}` : ''}\n${notes}\n\n想再改一张？点下面一个：`,
-                { options: refineOptions, meta: { kind: 'generated', uploadId } }
-              );
-            } else {
-              await typeOutAI(
-                `效果图已出。${renderId ? `\nrenderId: ${renderId}` : ''}\n想再改一张？点下面一个：`,
-                { options: refineOptions, meta: { kind: 'generated', uploadId } }
-              );
-            }
+            await typeOutAI(
+              `【设计说明】${renderId ? `\nrenderId: ${renderId}` : ''}\n${notes || '效果图已出。'}\n\n想再调整边度？你打几句（例如：衣柜改趟门／加书枱／灯光暖啲），我帮你再出一张。`,
+              { options: refineOptions, meta: { kind: 'generated', uploadId } }
+            );
           } finally {
             stopLoadingToast(genLoadingId);
           }
@@ -1358,17 +1329,11 @@ const App: React.FC = () => {
               }
 
               const resultUrl = res.resultBlobUrl;
-              if (debugEnabled && (res as any)?.debug?.usedText) {
+            // debugEnabled: keep debug output in console only (do not render into chat UI)
+            if (debugEnabled && (res as any)?.debug?.usedText) {
                 const d: any = (res as any).debug || {};
-                const header = `Prompt chars: ${d.promptChars ?? ''} | hash: ${d.promptHash ?? ''}`;
                 const usedText = String(d.usedText || '').trim();
-                if (usedText) {
-                  console.log('[DEBUG] generate usedText', usedText);
-                  setMessages(prev => [
-                    ...prev,
-                    { id: `${Date.now()}-debug-prompt`, type: 'text', content: `[[DEBUG_PROMPT]]\n${header}\n\n${usedText}`, sender: 'ai', timestamp: Date.now() }
-                  ]);
-                }
+                if (usedText) console.log('[DEV] generate usedText', usedText);
               }
               setLastGeneratedImage(resultUrl);
               if (uploadId) {
@@ -1460,7 +1425,7 @@ const App: React.FC = () => {
 
           const u0 = uploadId ? uploads[uploadId] : undefined;
           if (u0 && Number.isInteger(u0.revisionIndex) && (u0.revisionIndex as number) >= 3) {
-            await typeOutAI("我已帮你改到第 3 次啦～为保证对位和落地质量，建议你直接 WhatsApp 我哋 1对1继续：+852 56273817");
+            await typeOutAI("我可以一对一免费帮你再调到更贴合你屋企，方便 WhatsApp 我哋：+852 56273817");
             return;
           }
           const base0 = (lastRenderIntakeRef.current && typeof lastRenderIntakeRef.current === 'object')
@@ -1581,7 +1546,7 @@ const App: React.FC = () => {
           if (cleaned === '一鍵出圖' || cleaned === '一键出图（推荐）' || cleaned === '一键出图') {
             const rev = Number.isInteger(u.revisionIndex) ? (u.revisionIndex as number) : 0;
             if (rev >= 3) {
-              await typeOutAI("我已帮你改到第 3 次啦～为保证对位和落地质量，建议你直接 WhatsApp 我哋 1对1继续：+852 56273817");
+              await typeOutAI("我可以一对一免费帮你再调到更贴合你屋企，方便 WhatsApp 我哋：+852 56273817");
               return;
             }
             // Build render intake
@@ -1617,7 +1582,7 @@ const App: React.FC = () => {
               ...quickI2IOverridesByIntensity(picks.intensity),
             };
             setAppState('GENERATING');
-            const genLoadingId = addLoadingToast("收到～我而家帮你生成对位效果图（图生图），请稍等…", { loadingType: 'generating', uploadId });
+            const genLoadingId = addLoadingToast("收到，我而家帮你出效果图，请稍等…", { loadingType: 'generating', uploadId });
             const res = await generateRenderImage({
               renderIntake,
               sourceImageUrl,
@@ -1637,7 +1602,7 @@ const App: React.FC = () => {
             setMessages(prev => [...prev, { id: `${Date.now()}-img`, type: 'image', content: res.resultUrl!, sender: 'ai', timestamp: Date.now() }]);
             const note = String(res.designNotes || '').trim();
             await typeOutAI(
-              `【设计说明（与本次效果图一致）】${res.renderId ? `\nrenderId: ${res.renderId}` : ''}\n${note || '（已按结构锁定生成，可继续点下面微调）'}\n\n最多还能再改 2 次（超过会引导 WhatsApp）。`,
+              `【设计说明】${res.renderId ? `\nrenderId: ${res.renderId}` : ''}\n${note || '效果图已出。'}\n\n想再调整边度？你打几句（例如：衣柜改趟门／加书枱／灯光暖啲），我帮你再出一张。`,
               { options: ["更似我间屋（保留窗位/透视）", "收纳更强（加到顶柜/地台）", "氛围更靓（灯光+软装）"], meta: { kind: 'generated', uploadId } }
             );
             return;

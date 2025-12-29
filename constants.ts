@@ -26,7 +26,7 @@ export const INITIAL_MESSAGE: Message = {
 // Background: #0b141a
 // Header/Input: #202c33
 // User Bubble: #005c4b
-// AI Bubble: #202c33
+// Assistant Bubble: #202c33
 // Text Main: #e9edef
 // Text Secondary: #8696a0
 // Accent Green: #00a884
