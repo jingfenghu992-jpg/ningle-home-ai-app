@@ -51,7 +51,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       return (
         <div className="mt-3 pt-2 border-t border-black/5">
           {nonCtas.length > 0 && (
-            <div className={useGrid ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}>
+            <div className={useGrid ? 'grid grid-cols-2 gap-3' : 'flex flex-wrap gap-3'}>
               {nonCtas.map((opt, i) => (
                 <OptionChip
                   key={`${i}-${opt}`}
@@ -86,7 +86,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
         {keys.map(k => (
           <div key={k}>
             <div className={`mb-2 ${CHAT_TEXT_HINT_CLASS}`}>{k}</div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {(grouped[k] || []).map((opt, i) => (
                 <OptionChip
                   key={`${k}-${i}-${opt}`}
@@ -114,11 +114,11 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
   };
   
   return (
-    <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-4 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-      <div 
+    <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+      <div
         className={`
-          ${isCardLike ? 'w-full max-w-none' : 'max-w-[85%]'}
-          nl-card ${CHAT_TEXT_BASE_CLASS}
+          ${isCardLike ? 'w-full max-w-none nl-card' : 'max-w-[78%] nl-bubble'}
+          ${CHAT_TEXT_BASE_CLASS}
           ${isUser
             ? (isUploadImage ? 'bg-[#1F4D3A] text-[#EBE8E3] rounded-tr-sm' : 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm')
             : 'bg-[#E6DED2] text-[#4A453C] rounded-tl-sm'}

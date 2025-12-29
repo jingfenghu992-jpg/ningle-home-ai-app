@@ -5,7 +5,8 @@
 @layer components {
   /* Mobile-first UI tokens (chat only) */
   .nl-card {
-    @apply rounded-[20px] p-3 shadow-sm;
+    /* cards: compact padding (12px) */
+    @apply rounded-[18px] p-3 shadow-sm;
   }
   .nl-title {
     @apply text-[15px] leading-6 font-semibold;
@@ -17,13 +18,19 @@
     @apply text-[14px] leading-5 opacity-80;
   }
   .nl-chip {
-    @apply inline-flex items-center justify-center h-11 px-3 text-[15px] leading-6 font-medium rounded-xl border border-black/5 bg-white/60 hover:bg-white transition-all shadow-sm active:scale-95 whitespace-nowrap;
+    /* option buttons: 44px height; 12px horizontal padding; 12-14 radius */
+    @apply inline-flex items-center justify-center h-11 px-3 text-[15px] leading-6 font-medium rounded-[14px] border border-black/5 bg-white/60 hover:bg-white transition-all shadow-sm active:scale-95 whitespace-nowrap;
   }
   .nl-chip--selected {
     @apply bg-white border-black/10;
   }
   .nl-primary {
     @apply w-full h-11 px-4 text-[15px] leading-6 font-semibold rounded-xl border border-black/10 bg-white/80 hover:bg-white text-[#4A453C] transition-all shadow-sm active:scale-95;
+  }
+
+  /* chat bubble padding/width */
+  .nl-bubble {
+    @apply rounded-[18px] px-3.5 py-3;
   }
 }
 

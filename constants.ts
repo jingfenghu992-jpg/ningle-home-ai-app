@@ -1,8 +1,12 @@
 import { Message } from './types';
 
 // --- Shared chat layout/typography (UI only; do NOT change theme colors) ---
-export const CHAT_MAX_CLASS = 'max-w-[520px]';
-export const CHAT_GUTTER_CLASS = 'px-4';
+// Mobile-first: keep chat readable like WhatsApp.
+// - container max-width: min(92vw, 420px) on mobile
+// - widen slightly on md+
+export const CHAT_MAX_CLASS = 'max-w-[min(92vw,420px)] md:max-w-[520px]';
+// 12px on mobile, 16px on md+ (avoid贴边)
+export const CHAT_GUTTER_CLASS = 'px-3 md:px-4';
 export const CHAT_CONTAINER_CLASS = `w-full mx-auto ${CHAT_MAX_CLASS} ${CHAT_GUTTER_CLASS}`;
 
 // Mobile-first: min 14px; main text 15px; comfortable line-height.

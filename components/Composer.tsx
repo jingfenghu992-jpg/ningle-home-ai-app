@@ -43,7 +43,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
   }, [text]);
 
   return (
-    <div className="bg-[#1F4D3A] border-t border-black/5 px-0 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#1F4D3A]/90">
+    <div className="bg-[#1F4D3A] border-t border-black/5 px-0 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.10)] backdrop-blur supports-[backdrop-filter]:bg-[#1F4D3A]/90">
       <div className={`${CHAT_CONTAINER_CLASS} flex items-end gap-2`}>
         <input 
           type="file" 
@@ -60,7 +60,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
           <ImageIcon size={26} strokeWidth={2.25} />
         </button>
         
-        <div className="flex-1 bg-white/70 rounded-[24px] border border-black/10 focus-within:border-[#1F4D3A]/35 transition-colors flex items-center min-h-[48px] px-4 py-2 shadow-sm">
+        <div className="flex-1 bg-white/70 rounded-[22px] border border-black/10 focus-within:border-[#1F4D3A]/35 transition-colors flex items-center min-h-[46px] px-4 py-2 shadow-sm">
           <textarea
             ref={textareaRef}
             value={text}
