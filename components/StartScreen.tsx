@@ -35,23 +35,23 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
           <h1 className="text-[28px] font-extrabold text-[#2F2A23] tracking-tight leading-tight">
             上传照片，生成订造建议
           </h1>
-          <p className="mt-3 text-[#4A453C]/75 text-[14px] leading-6">
-            我会先整理空间与收纳重点，再按你的需要给出改善方向（你也可以补充需求）。
+          <p className="mt-3 text-[#4A453C]/75 text-[15px] leading-6">
+            我會先整理空間同收納重點，再按你需要俾改善方向（你都可以補充需求）。
           </p>
 
           {/* B) Selling points */}
           <div className="mt-6 space-y-3 text-[14px] leading-6 text-[#2F2A23]">
             <div className="flex gap-3">
               <div className="shrink-0">✅</div>
-              <div>支持 厨房 / 衣柜 / 全屋订造</div>
+              <div>支援 廚房／衣櫃／全屋訂造</div>
             </div>
             <div className="flex gap-3">
               <div className="shrink-0">✅</div>
-              <div>自动整理重点问题和改善方向</div>
+              <div>幫你整理重點同改善方向</div>
             </div>
             <div className="flex gap-3">
               <div className="shrink-0">✅</div>
-              <div>你可选择偏好：耐用 / 易打理 / 性价比</div>
+              <div>你可揀取向：耐用／易打理／性價比</div>
             </div>
           </div>
 
@@ -77,34 +77,34 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onUpload }) => {
             <button
               type="button"
               onClick={() => cameraInputRef.current?.click()}
-              className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white h-11 rounded-2xl font-semibold text-[14px] leading-5 shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
+              className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white h-11 rounded-2xl font-semibold text-[15px] leading-6 shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <Camera size={20} />
-              直接拍摄并开始分析
+              直接影相並開始
             </button>
 
             <button
               type="button"
               onClick={() => uploadInputRef.current?.click()}
-              className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white h-11 rounded-2xl font-semibold text-[14px] leading-5 shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
+              className="w-full bg-[#1F4D3A] hover:bg-[#173C2D] text-white h-11 rounded-2xl font-semibold text-[15px] leading-6 shadow-md active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <Upload size={20} />
-              上传相片并开始分析
+              上載相片並開始
             </button>
 
             <button
               type="button"
               onClick={handleWhatsApp}
-              className="w-full bg-[#DCE9E2] hover:bg-[#CFE2D8] text-[#1F4D3A] h-11 rounded-2xl font-semibold text-[14px] leading-5 active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
+              className="w-full bg-[#DCE9E2] hover:bg-[#CFE2D8] text-[#1F4D3A] h-11 rounded-2xl font-semibold text-[15px] leading-6 active:scale-[0.99] transition-transform flex items-center justify-center gap-2"
             >
               <MessageCircle size={18} />
-              想了解更多 / 一对一免费服务（WhatsApp）
+              想了解更多／一對一免費跟進（WhatsApp）
             </button>
           </div>
 
           {/* D) Bottom hint text (must be visible) */}
           <div className={`mt-4 text-center ${CHAT_TEXT_HINT_CLASS} text-[#4A453C]/75`}>
-            iPhone/Android 都得：点「直接拍摄」会开相机；点「上传相片」会开相册/文件。WhatsApp 会带预填消息。
+            iPhone／Android 都得：撳「直接影相」會開相機；撳「上載相片」會開相簿／檔案。WhatsApp 會帶預填訊息。
           </div>
         </div>
       </div>

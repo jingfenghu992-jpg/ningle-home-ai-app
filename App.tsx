@@ -195,7 +195,11 @@ const App: React.FC = () => {
 
   const getHKPreferenceOptions = (u: any) => {
     const picks = getQuickRenderPicks(u);
-    const styles = ['現代簡約', '奶油暖白', '日式木系'];
+    const styles = [
+      '現代簡約（白＋淺木）',
+      '奶油暖白（暖白＋淺木）',
+      '日式木系（原木＋暖白）',
+    ];
     const goals = ['收納優先', '顯大清爽'];
     const intensities = ['更貼近原相', '設計感多啲'];
     const withRadio = (group: string, label: string, picked: string) =>
@@ -397,7 +401,7 @@ const App: React.FC = () => {
   const runAnalysisForUpload = async (uploadId: string, spaceTypeText: string) => {
     const active = uploads[uploadId];
     if (!active?.dataUrl) {
-      await typeOutAI("找不到对应的图片，麻烦你再上传一次～");
+      await typeOutAI("搵唔到你嗰張相，麻煩你再上載一次～");
       setAppState('START');
       return;
     }
@@ -407,11 +411,11 @@ const App: React.FC = () => {
       return;
     }
     if (active.analysisStatus === 'done' && String(active.spaceType || '') === String(spaceTypeText || '')) {
-      await typeOutAI("这张图片我已经分析完成啦～你可以直接点「生成智能效果图」。");
+      await typeOutAI("呢張相我已經整理好啦～你可以直接撳「出效果圖」。");
       return;
     }
 
-    const analysisLoadingId = addLoadingToast("收到，图片正在分析中，请稍等…", { loadingType: 'analyzing', uploadId });
+    const analysisLoadingId = addLoadingToast("收到，分析緊呢張相，請稍等…", { loadingType: 'analyzing', uploadId });
     setAppState('ANALYZING');
     try {
       // Mark running + update spaceType; clear old analysis messages for this upload to avoid duplicates
@@ -475,16 +479,16 @@ const App: React.FC = () => {
         );
 
         await typeOutAI(
-          `【图片分析】\n${visionRes.vision_summary}\n点「生成智能效果图」继续。`,
-          { options: ["生成智能效果图"], meta: { kind: 'analysis', uploadId } }
+          `【圖片分析】\n${visionRes.vision_summary}\n撳「出效果圖」繼續。`,
+          { options: ["出效果圖"], meta: { kind: 'analysis', uploadId } }
         );
       } else {
         stopLoadingToast(analysisLoadingId);
         setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], analysisStatus: 'idle' } }) : prev);
         if (visionRes?.errorCode === 'IMAGE_URL_UNREACHABLE') {
-          await typeOutAI("图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。");
+          await typeOutAI("相片連結開唔到（可能過期／冇權限）。麻煩你再上載一次同一張相～");
         } else {
-          await typeOutAI("分析失败，请重试。");
+          await typeOutAI("暫時分析唔到，你可以再試一次～");
         }
         setAppState('WAITING_FOR_SPACE');
       }
@@ -495,9 +499,9 @@ const App: React.FC = () => {
       // If backend reports image URL unreachable, user must re-upload to refresh the URL.
       const msg = String((e as any)?.message || '');
       if (msg.includes('IMAGE_URL_UNREACHABLE')) {
-        await typeOutAI("图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。");
+        await typeOutAI("相片連結開唔到（可能過期／冇權限）。麻煩你再上載一次同一張相～");
       } else {
-        await typeOutAI("系统错误，请重试。");
+        await typeOutAI("系統小問題，你可以再試一次～");
       }
       setAppState('WAITING_FOR_SPACE');
     }
@@ -507,7 +511,7 @@ const App: React.FC = () => {
   const getQuickRenderPicks = (u: any) => {
     const r = (u?.render || {}) as any;
     return {
-      style: String(r.style || '現代簡約'),
+      style: String(r.style || '現代簡約（白＋淺木）'),
       goal: String(r.priority || '收納優先'),
       intensity: String(r.intensity || '更貼近原相'),
     };
@@ -515,7 +519,11 @@ const App: React.FC = () => {
 
   const getQuickRenderOptions = (u: any, includeVision: boolean) => {
     const picks = getQuickRenderPicks(u);
-    const styles = ['現代簡約', '奶油暖白', '日式木系'];
+    const styles = [
+      '現代簡約（白＋淺木）',
+      '奶油暖白（暖白＋淺木）',
+      '日式木系（原木＋暖白）',
+    ];
     const goals = ['收納優先', '顯大清爽'];
     const intensities = ['更貼近原相', '設計感多啲'];
     const withRadio = (group: string, label: string, picked: string) =>
@@ -526,7 +534,7 @@ const App: React.FC = () => {
       ...goals.map(g => withRadio('目標', g, picks.goal)),
       ...intensities.map(i => withRadio('強度', i, picks.intensity)),
       '一鍵出圖',
-      '概念示意（较快）',
+      '概念示意（較快）',
       ...(includeVision ? ['更貼近原相（需要分析）'] : []),
     ];
     const uniq: string[] = [];
@@ -601,7 +609,7 @@ const App: React.FC = () => {
                     setAppState('WAITING_FOR_SPACE');
                     // Auto classify space, then ask user to confirm with buttons (more robust than free text)
                     (async () => {
-                      const classifyId = addLoadingToast("我先帮你判断这张图是什么空间，请稍等…", { loadingType: 'classifying', uploadId });
+                      const classifyId = addLoadingToast("我先幫你估下呢張相係咩空間，等我一陣…", { loadingType: 'classifying', uploadId });
                       try {
                         const sres = await classifySpace({ imageUrl: uploadedUrl, imageDataUrl: uploadedUrl ? undefined : dataUrl, clientId });
                         stopLoadingToast(classifyId);
@@ -622,7 +630,7 @@ const App: React.FC = () => {
 
                         upsertOptionsCard(
                           `${uploadId}-space_pick`,
-                          `我猜你这张图是「${primary}」\n你点一下确认就行（不对也可以改）`,
+                          `我估呢張相係「${primary}」\n你撳一下確認就得（唔啱都可以改）`,
                           options,
                           { kind: 'space_pick', uploadId }
                         );
@@ -1164,13 +1172,13 @@ const App: React.FC = () => {
             : base;
 
           // FINAL render：使用文生图（/api/design/inspire），但通过 visionExtraction + 动线/尺寸指令尽量贴近原图结构（目标 80%+）
-          const genLoadingId = addLoadingToast("收到～我现在帮你生成效果图，请稍等…", { loadingType: 'generating', uploadId });
+          const genLoadingId = addLoadingToast("收到～我而家幫你出效果圖，請稍等…", { loadingType: 'generating', uploadId });
           try {
             const u = uploadId ? uploads[uploadId] : undefined;
             const sourceImageUrl = u?.imageUrl;
             if (!sourceImageUrl) {
               stopLoadingToast(genLoadingId);
-              await typeOutAI("图片链接还没准备好（需要可访问的上传链接）。请重新上传同一张图片再试一次。");
+              await typeOutAI("相片連結未準備好。麻煩你再上載一次同一張相～");
               setAppState('ANALYSIS_DONE');
               return;
             }
@@ -1202,12 +1210,12 @@ const App: React.FC = () => {
               const code = (res as any)?.errorCode;
               const msg = (res as any)?.message || '生成失败';
               if (code === 'BASE_IMAGE_REQUIRED') {
-                await typeOutAI("相片链接无法读取（更贴原相需要相片可访问）。请重新上传同一张图片再试一次。");
+                await typeOutAI("相片連結讀唔到。麻煩你再上載一次同一張相～");
                 setAppState('ANALYSIS_DONE');
                 return;
               }
               if (code === 'IMAGE_URL_UNREACHABLE') {
-                await typeOutAI("图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。");
+                await typeOutAI("相片連結開唔到（可能過期／冇權限）。麻煩你再上載一次同一張相～");
                 setAppState('ANALYSIS_DONE');
                 return;
               }
@@ -1225,7 +1233,7 @@ const App: React.FC = () => {
                 return;
               }
               if (typeof code === 'string' && code.startsWith('UPSTREAM_I2I_')) {
-                await typeOutAI("暂时出唔到，你可以稍后再试一次，或者点「概念示意（较快）」。");
+                await typeOutAI("暫時出唔到，你可以稍後再試一次，或者撳「概念示意（較快）」。");
                 setAppState('ANALYSIS_DONE');
                 return;
               }
@@ -1557,7 +1565,7 @@ const App: React.FC = () => {
           return;
         }
 
-        if (cleaned === '概念示意（较快）') {
+        if (cleaned === '概念示意（較快）') {
           const picks = getQuickRenderPicks(u0);
           const base = {
             uploadId,
@@ -1577,7 +1585,7 @@ const App: React.FC = () => {
           return;
         }
 
-        if (cleaned === '一键出图（推荐）') {
+        if (cleaned === '一鍵出圖（推薦）' || cleaned === '一键出图（推荐）') {
           const picks = getQuickRenderPicks(u0);
           const base = {
             uploadId,
@@ -1625,7 +1633,7 @@ const App: React.FC = () => {
           const cardId = `${uploadId}-quick_render-picks`;
           upsertOptionsCard(
             cardId,
-            `已选：风格=${picks.style}｜目标=${picks.goal}｜强度=${picks.intensity}\n点「一键出图（推荐）」就会开始生成。`,
+            `已選：風格=${picks.style}｜目標=${picks.goal}｜強度=${picks.intensity}\n撳「一鍵出圖」就會開始。`,
             getQuickRenderOptions(previewU, debugEnabled),
             { kind: 'quick_render', stage: 'picks', uploadId }
           );
@@ -1634,7 +1642,7 @@ const App: React.FC = () => {
         return;
       }
 
-      if (opt === '生成智能效果图') {
+      if (opt === '出效果圖') {
           // Prevent repeated taps from spamming; but don't make it "no response"
           if (message.isLocked) {
               await typeOutAI("收到～我已經開始處理緊，你等我幾秒先～");
@@ -1643,7 +1651,7 @@ const App: React.FC = () => {
 
           // If blob URL not ready, guide user to wait to avoid "Missing baseImageBlobUrl"
           if (!uploadId || !u) {
-              await typeOutAI("找不到对应的图片，麻烦你再上传一次～");
+              await typeOutAI("搵唔到你嗰張相，麻煩你再上載一次～");
               return;
           }
           // Lock this message after we confirm we can start the flow
@@ -2032,8 +2040,8 @@ const App: React.FC = () => {
               const color = u.render?.color || '淺木+米白';
               const focus = u.render?.focus || '全屋整體';
               const storage = u.render?.storage || '隱藏收納為主';
-              await typeOutAI(`好，我帮你用「${style}｜${color}｜${focus}｜${storage}」出一张效果图。准备好就按下面开始生成～`, {
-                  options: ["开始生成效果图"],
+              await typeOutAI(`好，我幫你用「${style}｜${color}｜${focus}｜${storage}」出一張效果圖。準備好就撳下面開始～`, {
+                  options: ["開始出效果圖"],
                   meta: { kind: 'render_flow', stage: 'confirm', uploadId }
               });
               return;
