@@ -1197,16 +1197,14 @@ const App: React.FC = () => {
           const genLoadingId = addLoadingToast("收到～我而家幫你出效果圖，請稍等…", { loadingType: 'generating', uploadId });
           try {
             const u = uploadId ? uploads[uploadId] : undefined;
-            const sourceImageUrl = u?.imageUrl;
-            if (!sourceImageUrl) {
-              stopLoadingToast(genLoadingId);
-              await typeOutAI("相片連結未準備好。麻煩你再上載一次同一張相～");
-              setAppState('ANALYSIS_DONE');
-              return;
-            }
-            const outputMode = 'PRECISE_I2I';
-            const keep_structure = true;
+            // 对于 T2I，sourceImageUrl 主要用于后端可能的兜底或 reference，核心是靠 prompt
+            const sourceImageUrl = u?.imageUrl; 
+            
+            // 核心修改：默认强制使用 FAST_T2I (文生图)
+            const outputMode = 'FAST_T2I';
+            const keep_structure = true; // 依然通过 prompt 锁定结构
             const qualityPreset = 'STRUCTURE_LOCK';
+            
             const payload: any = {
               renderIntake,
               sourceImageUrl,
@@ -1218,9 +1216,9 @@ const App: React.FC = () => {
               sizeChoice: (u?.render as any)?.sizeChoice,
               styleChoice: (u?.render as any)?.styleChoice,
               response_format: 'url',
-              // 速度优先：默认稍低 steps；同时保持一定 cfg 让“有设计感”
-              steps: 24,
-              cfg_scale: 6.6,
+              // 文生图参数优化
+              steps: 25, 
+              cfg_scale: 7.0, // 略微提高相关性
               size,
               debug: debugEnabled,
               ...(overrides || {}),
@@ -1228,38 +1226,13 @@ const App: React.FC = () => {
             const res = await generateRenderImage(payload);
             stopLoadingToast(genLoadingId);
 
+            // T2I: No longer "distortion suspected" logic needed as much, but we can keep generic failure handling
             if (!res.ok || !res.resultUrl) {
               const code = (res as any)?.errorCode;
-              const msg = (res as any)?.message || '生成失败';
-              if (code === 'BASE_IMAGE_REQUIRED') {
-                await typeOutAI("相片連結讀唔到。麻煩你再上載一次同一張相～");
-                setAppState('ANALYSIS_DONE');
-                return;
-              }
-              if (code === 'IMAGE_URL_UNREACHABLE') {
-                await typeOutAI("相片連結開唔到（可能過期／冇權限）。麻煩你再上載一次同一張相～");
-                setAppState('ANALYSIS_DONE');
-                return;
-              }
-              if (code === 'DISTORTION_SUSPECTED') {
-                const plan = (res as any)?.fallbackPlan;
-                lastGuardrailRef.current = { uploadId, renderIntake, sourceImageUrl, plan };
-                await typeOutAI(
-                  "我发现呢张效果图可能唔够自然，所以先唔出住。\n你想点边个方案继续？",
-                  {
-                    options: ["再试：更保守（推荐）", "改用概念图（较快）"],
-                    meta: { kind: 'guardrail', stage: 'distortion', uploadId }
-                  }
-                );
-                setAppState('ANALYSIS_DONE');
-                return;
-              }
-              if (typeof code === 'string' && code.startsWith('UPSTREAM_I2I_')) {
-                await typeOutAI("暫時出唔到，你可以稍後再試一次，或者撳「概念示意（較快）」。");
-                setAppState('ANALYSIS_DONE');
-                return;
-              }
-              throw new Error(msg);
+              // ... simpler error handling for T2I ...
+              await typeOutAI(res.message || '生成失败，请重试。');
+              setAppState('ANALYSIS_DONE');
+              return;
             }
 
             const resultUrl = res.resultUrl;
@@ -1281,11 +1254,20 @@ const App: React.FC = () => {
               ...prev,
               { id: `${Date.now()}-img`, type: 'image', content: resultUrl, sender: 'ai', timestamp: Date.now() }
             ]);
-
-            await typeOutAI(
-              `【設計重點】\n- 收納：到頂櫃更整齊\n- 睡眠：床位更順手\n- 燈光：主燈＋燈帶\n- 色調：跟你揀嘅風格\n\n想再調整？直接打字講你想改邊樣（例如：衣櫃改趟門／加書枱／想暖啲光），我幫你再出一張。`,
-              { meta: { kind: 'generated', uploadId } }
-            );
+            
+            // Revision limit check (3 times)
+            const currentRev = renderIntake.revisionIndex || 0;
+            if (currentRev >= 3) {
+                 await typeOutAI(
+                  `【設計完成】\n這張圖已經按你要求調整好啦。\n\n如需更精準的一對一設計服務（免費諮詢），歡迎 WhatsApp 我哋：+852 56273817`,
+                  { meta: { kind: 'generated', uploadId } }
+                );
+            } else {
+                 await typeOutAI(
+                  `【設計重點】\n- 結構：已鎖定門窗/梁柱位置\n- 尺寸：按你揀嘅尺數比例\n- 風格：${renderIntake.style || '現代簡約'}\n\n想再調整？直接打字講你想改邊樣（例如：衣櫃改趟門／加書枱／想暖啲光），我幫你再出一張。`,
+                  { meta: { kind: 'generated', uploadId } }
+                );
+            }
           } finally {
             stopLoadingToast(genLoadingId);
           }
@@ -1381,33 +1363,12 @@ const App: React.FC = () => {
       const uploadId = message.meta?.uploadId;
       const u = uploadId ? uploads[uploadId] : undefined;
 
-      if (message.meta?.kind === 'guardrail' && message.meta?.stage === 'distortion') {
-          const ctx = lastGuardrailRef.current || {};
-          const ru = ctx?.renderIntake || lastRenderIntakeRef.current || {};
-          const upId = ctx?.uploadId || uploadId || ru?.uploadId;
-          const sourceUrl = ctx?.sourceImageUrl || (upId ? uploads[upId]?.imageUrl : undefined);
-          setAppState('GENERATING');
-          if (opt.startsWith('再试')) {
-              await triggerGeneration(ru, undefined, {
-                  sourceImageUrl: sourceUrl,
-                  outputMode: 'PRECISE_I2I',
-                  keep_structure: true,
-                  qualityPreset: 'STRUCTURE_LOCK',
-                  i2i_source_weight: 0.97,
-                  i2i_strength: 0.25,
-                  cfg_scale: 4.2,
-              });
+          if (message.meta?.kind === 'guardrail') {
+              // T2I 模式下不需要 distortion guardrail，直接 return
               return;
           }
-          if (opt.startsWith('改用概念图')) {
-              await triggerGeneration(ru, undefined, {
-                  outputMode: 'FAST_T2I',
-              });
-              return;
-          }
-      }
-
-      // Post-generation adjustments are handled via chat text only (no refine button groups).
+      
+          // Post-generation adjustments are handled via chat text only (no refine button groups).
 
       if (message.meta?.kind === 'space_pick' && uploadId) {
           // Lock this message to prevent double-trigger
@@ -1500,16 +1461,15 @@ const App: React.FC = () => {
             setUploads(prev => prev[uploadId] ? ({ ...prev, [uploadId]: { ...prev[uploadId], revisionIndex: rev + 1 } }) : prev);
 
             const sourceImageUrl = u.imageUrl;
-            if (!sourceImageUrl) {
-              await typeOutAI("图片链接还没准备好（需要可访问的上传链接）。请重新上传同一张图片再试一次。");
-              return;
-            }
+            
             const overrides = {
-              outputMode: 'PRECISE_I2I',
+              outputMode: 'FAST_T2I', // 强制 T2I
               keep_structure: true,
               qualityPreset: 'STRUCTURE_LOCK',
               fastAnchors: true,
-              ...quickI2IOverridesByIntensity(picks.intensity),
+              // T2I 不需要 i2i strength overrides
+              steps: 25,
+              cfg_scale: 7.0
             };
             setAppState('GENERATING');
             const genLoadingId = addLoadingToast("收到，我而家帮你出效果图，请稍等…", { loadingType: 'generating', uploadId });
@@ -1531,7 +1491,7 @@ const App: React.FC = () => {
             setAppState('RENDER_DONE');
             setMessages(prev => [...prev, { id: `${Date.now()}-img`, type: 'image', content: res.resultUrl!, sender: 'ai', timestamp: Date.now() }]);
             await typeOutAI(
-              `【設計重點】\n- 收納：到頂櫃更整齊\n- 睡眠：床位更順手\n- 燈光：主燈＋燈帶\n- 色調：跟你揀嘅風格\n\n想再調整？直接打字講你想改邊樣（例如：衣櫃改趟門／加書枱／想暖啲光），我幫你再出一張。`,
+              `【設計重點】\n- 結構：已鎖定門窗/梁柱位置\n- 尺寸：按你揀嘅尺數比例\n- 風格：${picks.style}\n\n想再調整？直接打字講你想改邊樣（例如：衣櫃改趟門／加書枱／想暖啲光），我幫你再出一張。`,
               { meta: { kind: 'generated', uploadId } }
             );
             return;
@@ -1601,8 +1561,8 @@ const App: React.FC = () => {
           await triggerGeneration(base, undefined, {
             outputMode: 'FAST_T2I',
             sourceImageUrl: null,
-            keep_structure: false,
-            qualityPreset: undefined,
+            keep_structure: true, // 强制开启结构锁
+            qualityPreset: 'STRUCTURE_LOCK',
           });
           return;
         }
@@ -1619,11 +1579,12 @@ const App: React.FC = () => {
             intensity: picks.intensity,
           };
           await triggerGeneration(base, undefined, {
-            outputMode: 'PRECISE_I2I',
+            outputMode: 'FAST_T2I',
             keep_structure: true,
             qualityPreset: 'STRUCTURE_LOCK',
             fastAnchors: true,
-            ...quickI2IOverridesByIntensity(picks.intensity),
+            steps: 25,
+            cfg_scale: 7.0
           });
           return;
         }
@@ -1836,36 +1797,24 @@ const App: React.FC = () => {
               const intensity0 = r0.intensity || getDefaultIntensityForHK();
               const hall0 = r0.hallType || '不确定';
 
-              const preferPrecise = hasSource ? ((u?.render as any)?.preferPrecise ?? true) : false;
-              const toggleOpt = preferPrecise ? '☑ 更贴原相（推荐）' : '☐ 更贴原相（更快）';
-              const opts = hasSource ? [toggleOpt, "直接生成（推荐）"] : ["直接生成（推荐）"];
+              // 简化流程：不再询问是否“更贴原相”（i2i），直接使用 T2I 生成
+              // const preferPrecise = hasSource ? ((u?.render as any)?.preferPrecise ?? true) : false;
+              // const toggleOpt = preferPrecise ? '☑ 更贴原相（推荐）' : '☐ 更贴原相（更快）';
+              // const opts = hasSource ? [toggleOpt, "直接生成（推荐）"] : ["直接生成（推荐）"];
+              
+              const opts = ["直接生成效果圖"];
+              
               await typeOutAI(
-                `收到～我建议先用「香港推荐预设」直接出图：\n${isLivingDiningSpace(space) ? `- 厅型：${hall0}\n` : ''}- 收纳：${storage0}｜风格：${style0}｜色板：${color0}\n- 灯光：${vibe0}｜软装：${decor0}｜强度：${intensity0}\n${hasSource ? '（默认：更贴原相＝保留窗位/透视/光向，更少变形；取消勾选会更快）\n' : ''}要不要直接生成？`,
+                `收到～我建議用「香港推薦預設」直接出圖：\n${isLivingDiningSpace(space) ? `- 廳型：${hall0}\n` : ''}- 收納：${storage0}｜風格：${style0}｜色板：${color0}\n- 燈光：${vibe0}｜軟裝：${decor0}｜強度：${intensity0}\n\n結構我會跟足你張相（門窗/梁柱位置），要唔要直接生成？`,
                 { options: opts, meta: { kind: 'render_flow', stage: 'fast_confirm', uploadId } }
               );
               return;
           }
 
           if (message.meta.stage === 'fast_confirm') {
-              if (opt.includes('更贴原相') && uploadId) {
-                  const current = Boolean((u?.render as any)?.preferPrecise ?? true);
-                  const next = !current;
-                  setUploads(prev => prev[uploadId] ? ({
-                      ...prev,
-                      [uploadId]: { ...prev[uploadId], render: { ...(prev[uploadId].render || {}), preferPrecise: next } }
-                  }) : prev);
-                  // Update the same message's options to reflect the checkbox state
-                  setMessages(prev => prev.map(m => {
-                      if (m.id !== message.id) return m;
-                      const hasSource = Boolean(u?.imageUrl);
-                      if (!hasSource) return m;
-                      const toggleOpt = next ? '☑ 更贴原相（推荐）' : '☐ 更贴原相（更快）';
-                      const rest = (m.options || []).filter(x => !String(x).includes('更贴原相'));
-                      return { ...m, options: [toggleOpt, ...rest] };
-                  }));
-                  return;
-              }
-              if (opt === "直接生成（推荐）") {
+              // 移除 i2i toggle 逻辑
+              
+              if (opt === "直接生成效果圖" || opt === "直接生成（推荐）") {
                   const space = u.spaceType || '';
                   const r0 = (u.render as any) || {};
                   const style0 = r0.style || getDefaultStyleForHK();

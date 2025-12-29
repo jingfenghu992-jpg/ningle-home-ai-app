@@ -553,7 +553,7 @@ export default async function handler(req, res) {
     const hasSource = Boolean(String(sourceImageUrl || '').trim());
     const desiredMode = outputMode === 'FAST_T2I' || outputMode === 'PRECISE_I2I'
       ? outputMode
-      : (hasSource ? 'PRECISE_I2I' : 'FAST_T2I');
+      : 'FAST_T2I'; // 默认改为 FAST_T2I (文生图)
 
     const userSelected = {
       spaceType: String(intake?.space || '').trim(),
