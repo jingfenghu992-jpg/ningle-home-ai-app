@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  /* Mobile-first UI tokens (chat only) */
+  .nl-card {
+    @apply rounded-[20px] p-3 shadow-sm;
+  }
+  .nl-title {
+    @apply text-[15px] leading-6 font-semibold;
+  }
+  .nl-body {
+    @apply text-[15px] leading-6 font-normal;
+  }
+  .nl-hint {
+    @apply text-[14px] leading-5 opacity-80;
+  }
+  .nl-chip {
+    @apply inline-flex items-center justify-center h-11 px-3 text-[15px] leading-6 font-medium rounded-xl border border-black/5 bg-white/60 hover:bg-white transition-all shadow-sm active:scale-95 whitespace-nowrap;
+  }
+  .nl-chip--selected {
+    @apply bg-white border-black/10;
+  }
+  .nl-primary {
+    @apply w-full h-11 px-4 text-[15px] leading-6 font-semibold rounded-xl border border-black/10 bg-white/80 hover:bg-white text-[#4A453C] transition-all shadow-sm active:scale-95;
+  }
+}
+
 :root {
   /* Warm Home Palette */
   --app-bg: #F5F2ED;          /* Warm Beige background */

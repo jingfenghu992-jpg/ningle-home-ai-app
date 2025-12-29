@@ -45,19 +45,20 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
           }, {})
         : null;
 
-    // Space pick / generic: 2-col grid of chips, not full-width.
+    // Space pick / generic: 2-col grid of thumb-friendly buttons.
     if (!grouped) {
       const useGrid = nonCtas.length >= 4 || nonCtas.length === 2;
       return (
         <div className="mt-3 pt-2 border-t border-black/5">
           {nonCtas.length > 0 && (
-            <div className={useGrid ? 'grid grid-cols-2 gap-2 justify-items-start' : 'flex flex-wrap gap-2'}>
+            <div className={useGrid ? 'grid grid-cols-2 gap-2' : 'flex flex-wrap gap-2'}>
               {nonCtas.map((opt, i) => (
                 <OptionChip
                   key={`${i}-${opt}`}
                   label={stripRadioPrefix(opt)}
                   selected={isSelected(opt)}
                   onClick={() => onOptionClick?.(message, opt)}
+                  className={useGrid ? 'w-full' : ''}
                 />
               ))}
             </div>
@@ -117,7 +118,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       <div 
         className={`
           ${isCardLike ? 'w-full max-w-none' : 'max-w-[85%]'}
-          rounded-[20px] p-4 shadow-sm ${CHAT_TEXT_BASE_CLASS}
+          nl-card ${CHAT_TEXT_BASE_CLASS}
           ${isUser
             ? (isUploadImage ? 'bg-[#1F4D3A] text-[#EBE8E3] rounded-tr-sm' : 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm')
             : 'bg-[#E6DED2] text-[#4A453C] rounded-tl-sm'}

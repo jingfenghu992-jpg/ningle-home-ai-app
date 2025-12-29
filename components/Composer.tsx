@@ -66,10 +66,10 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, onSendImage, 
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息…"
+            placeholder="輸入訊息…"
             disabled={disabled}
             rows={1}
-            className="w-full bg-transparent text-[#2F2A23] placeholder:text-[#4A453C]/55 outline-none resize-none text-[14px] leading-6 font-normal max-h-[120px] scrollbar-none"
+            className="w-full bg-transparent text-[#2F2A23] placeholder:text-[#4A453C]/55 outline-none resize-none text-[15px] leading-6 font-normal max-h-[120px] scrollbar-none"
           />
         </div>
 
