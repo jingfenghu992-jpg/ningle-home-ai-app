@@ -1961,9 +1961,9 @@ const App: React.FC = () => {
                   // Build a compact intake and run a single t2i generation as the final render.
                   const focus = (u.render as any)?.focus || '布置方案（按你选择）';
                   const bedType = (u.render as any)?.bedType || '';
-                  const roomWidthChi = r.roomWidthChi;
-                  const roomDepthChi = r.roomDepthChi;
-                  const roomHeightChi = r.roomHeightChi;
+                  const roomWidthChi = r0.roomWidthChi;
+                  const roomDepthChi = r0.roomDepthChi;
+                  const roomHeightChi = r0.roomHeightChi;
                   const intake = {
                       space,
                       // 当空间类型=其他时，用于指定目标用途（否则容易跑偏到不相关空间）
