@@ -47,18 +47,25 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
 
     // Space pick / generic: 2-col grid of thumb-friendly buttons.
     if (!grouped) {
-      const useGrid = nonCtas.length >= 4 || nonCtas.length === 2;
+      // 4-column layout for space picker (compact items like "客餐厅", "厨房")
+      // or short options.
+      const isShort = nonCtas.every(o => stripRadioPrefix(o).length <= 4);
+      // If items are short (<=4 chars like "大睡房"), use grid-cols-4.
+      // Otherwise fallback to 2 columns to avoid truncation.
+      const useFourCols = isShort && nonCtas.length >= 4;
+      const useGrid = nonCtas.length >= 2;
+      
       return (
         <div className="mt-3 pt-2 border-t border-black/5">
           {nonCtas.length > 0 && (
-            <div className={useGrid ? 'grid grid-cols-2 gap-3' : 'flex flex-wrap gap-3'}>
+            <div className={useGrid ? (useFourCols ? 'grid grid-cols-4 gap-2' : 'grid grid-cols-2 gap-2') : 'flex flex-wrap gap-2'}>
               {nonCtas.map((opt, i) => (
                 <OptionChip
                   key={`${i}-${opt}`}
                   label={stripRadioPrefix(opt)}
                   selected={isSelected(opt)}
                   onClick={() => onOptionClick?.(message, opt)}
-                  className={useGrid ? 'w-full' : ''}
+                  className={useGrid ? 'w-full !min-w-0' : ''}
                 />
               ))}
             </div>
@@ -129,7 +136,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
             <img src={message.content} alt="result" className="w-full h-auto object-cover" />
           </div>
         ) : (
-          <div className={`whitespace-pre-wrap ${isCardLike ? CHAT_TEXT_TITLE_CLASS : ''}`}>
+          <div className={`whitespace-pre-wrap text-[17px] leading-[1.6] ${isCardLike ? CHAT_TEXT_TITLE_CLASS : ''}`}>
               {message.content}
               {/* Spinner for streaming/loading */}
               {!isUser && (message.isStreaming || message.meta?.loading) && (

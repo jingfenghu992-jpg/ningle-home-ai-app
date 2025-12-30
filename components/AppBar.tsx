@@ -13,7 +13,7 @@ export const AppBar: React.FC = () => {
         <div className="w-9 h-9 bg-[#1F4D3A] rounded-full flex items-center justify-center text-white font-bold">
           N
         </div>
-        <span className="text-[#2F2A23] font-semibold text-[15px] leading-6">宁乐家居助手</span>
+        <span className="text-[#2F2A23] font-semibold text-[17px] leading-6 tracking-wide">寧樂家居助手</span>
       </div>
       <div className="flex items-center gap-3">
         <button 
