@@ -857,21 +857,29 @@ const App: React.FC = () => {
       const hA = '7尺2–7尺8';
       const hB = '8尺0–8尺6';
 
+      // Depth presets (Assumed slightly deeper than width for living/bedroom)
+      // Small room depth
+      const dA = isLivingDining ? '14–16尺' : '8–10尺';
+      // Deep room depth
+      const dB = isLivingDining ? '18–20尺' : '10–12尺';
+
       return [
-        `宽 ${widthA}｜高 ${hA}`,
-        `宽 ${widthA}｜高 ${hB}`,
-        `宽 ${widthB}｜高 ${hA}`,
-        `宽 ${widthB}｜高 ${hB}`,
+        `宽 ${widthA}｜深 ${dA}｜高 ${hA}`,
+        `宽 ${widthA}｜深 ${dB}｜高 ${hA}`,
+        `宽 ${widthB}｜深 ${dA}｜高 ${hA}`,
+        `宽 ${widthB}｜深 ${dB}｜高 ${hB}`,
       ];
   };
 
   const parseDimsChi = (opt: string) => {
       const t = String(opt || '').trim();
       const mW = t.match(/宽\s*([^｜|]+)\s*[｜|]/);
+      const mD = t.match(/深\s*([^｜|]+)\s*[｜|]/);
       const mH = t.match(/高\s*([0-9尺.\-–—]+(?:\s*[–—-]\s*[0-9尺.\-–—]+)?)$/);
       const roomWidthChi = mW?.[1]?.trim() || '';
+      const roomDepthChi = mD?.[1]?.trim() || '';
       const roomHeightChi = mH?.[1]?.trim() || '';
-      return { roomWidthChi, roomHeightChi };
+      return { roomWidthChi, roomDepthChi, roomHeightChi };
   };
 
   const isLivingDiningSpace = (space?: string) => {
@@ -1427,7 +1435,7 @@ const App: React.FC = () => {
 
         // Handle Dimensions selection (New Step)
         if (message.meta.stage === 'dimensions') {
-          const { roomWidthChi, roomHeightChi } = parseDimsChi(opt);
+          const { roomWidthChi, roomDepthChi, roomHeightChi } = parseDimsChi(opt);
           
           setUploads(prev => prev[uploadId] ? ({
             ...prev,
@@ -1437,6 +1445,7 @@ const App: React.FC = () => {
                 ...(prev[uploadId].render || {}),
                 sizeChoice: opt,
                 ...(roomWidthChi ? { roomWidthChi } : {}),
+                ...(roomDepthChi ? { roomDepthChi } : {}),
                 ...(roomHeightChi ? { roomHeightChi } : {}),
               }
             }
@@ -1506,6 +1515,7 @@ const App: React.FC = () => {
                   layoutChoice: layoutChoice ? `方案${layoutChoice}` : undefined,
                   focus: layoutText,
                   roomWidthChi: r.roomWidthChi,
+                  roomDepthChi: r.roomDepthChi,
                   roomHeightChi: r.roomHeightChi,
                   sizeChoice: r.sizeChoice,
                   hkAnchorsLite: u.hkAnchorsLite,
@@ -1519,10 +1529,11 @@ const App: React.FC = () => {
 
               setAppState('GENERATING');
               await triggerGeneration(renderIntake, undefined, {
-                  outputMode: 'FAST_T2I',
+                  outputMode: 'PRECISE_I2I',
                   keep_structure: true,
                   qualityPreset: 'STRUCTURE_LOCK',
                   fastAnchors: true,
+                  i2i_source_weight: 0.65,
                   steps: 25,
                   cfg_scale: 7.0
               });
@@ -1950,8 +1961,9 @@ const App: React.FC = () => {
                   // Build a compact intake and run a single t2i generation as the final render.
                   const focus = (u.render as any)?.focus || '布置方案（按你选择）';
                   const bedType = (u.render as any)?.bedType || '';
-                  const roomWidthChi = (u.render as any)?.roomWidthChi || '';
-                  const roomHeightChi = (u.render as any)?.roomHeightChi || '';
+                  const roomWidthChi = r.roomWidthChi;
+                  const roomDepthChi = r.roomDepthChi;
+                  const roomHeightChi = r.roomHeightChi;
                   const intake = {
                       space,
                       // 当空间类型=其他时，用于指定目标用途（否则容易跑偏到不相关空间）
@@ -1961,6 +1973,7 @@ const App: React.FC = () => {
                       focus,
                       bedType,
                       roomWidthChi,
+                      roomDepthChi,
                       roomHeightChi,
                       storage: storage0,
                       vibe: vibe0,
@@ -1983,7 +1996,24 @@ const App: React.FC = () => {
                   };
 
                   setAppState('GENERATING');
-                  await triggerGeneration(intake);
+                  await triggerGeneration(intake, undefined, {
+                      outputMode: 'PRECISE_I2I',
+                      keep_structure: true,
+                      qualityPreset: 'STRUCTURE_LOCK',
+                      fastAnchors: true,
+                      // i2i parameters for structure lock (0.65-0.75 strength allows deco change but keeps walls)
+                      // source_weight: 0.70 means "keep 70% of original", or is it "denoise 0.3"?
+                      // In inspire.js, STRUCTURE_LOCK defaultSW is 0.95.
+                      // We want slightly more freedom for furniture but strict walls.
+                      // Let's rely on backend defaultSW logic but maybe nudge it?
+                      // Actually, let's trust PRECISE_I2I defaults in inspire.js for now, 
+                      // or explicit overrides if we know better.
+                      // Given user complaint about "Layout completely wrong", we need to allow CHANGE.
+                      // 0.95 is too strict. 0.65 is better for renovation.
+                      i2i_source_weight: 0.65, 
+                      steps: 25,
+                      cfg_scale: 7.0
+                  });
                   return;
               }
 

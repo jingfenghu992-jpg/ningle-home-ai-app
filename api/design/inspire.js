@@ -138,6 +138,7 @@ export default async function handler(req, res) {
   const focus = normalize(intake?.focus);
   const bedType = normalize(intake?.bedType);
   const roomWidthChi = normalize(intake?.roomWidthChi);
+  const roomDepthChi = normalize(intake?.roomDepthChi);
   const roomHeightChi = normalize(intake?.roomHeightChi);
   const storage = normalize(intake?.storage);
   const decor = normalize(intake?.decor);
@@ -164,8 +165,8 @@ export default async function handler(req, res) {
     }
     return spaceEn ? `Room type lock: this MUST be a ${spaceEn}. Do NOT depict any other room type.` : '';
   })();
-  const dimsLine = (roomWidthChi || roomHeightChi)
-    ? `Approx room size (chi): width ${cap(roomWidthChi || 'unknown', 16)}, ceiling height ${cap(roomHeightChi || 'unknown', 16)}.`
+  const dimsLine = (roomWidthChi || roomDepthChi || roomHeightChi)
+    ? `Approx room size (chi): width ${cap(roomWidthChi || 'unknown', 16)}, depth ${cap(roomDepthChi || 'unknown', 16)}, ceiling height ${cap(roomHeightChi || 'unknown', 16)}.`
     : '';
 
   const builtInsFromFocus = (() => {
@@ -277,8 +278,8 @@ export default async function handler(req, res) {
       return `Column/protrusion constraint: keep the column/protrusion on the ${wall || 'same wall as in the photo'}; do NOT remove.`;
     })();
 
-    const dims = (roomWidthChi || roomHeightChi)
-      ? `Room proportions (approx, HK chi): width ${cap(roomWidthChi || 'unknown', 16)}, ceiling height ${cap(roomHeightChi || 'unknown', 16)}.`
+    const dims = (roomWidthChi || roomDepthChi || roomHeightChi)
+      ? `Room proportions (approx, HK chi): width ${cap(roomWidthChi || 'unknown', 16)}, depth ${cap(roomDepthChi || 'unknown', 16)}, ceiling height ${cap(roomHeightChi || 'unknown', 16)}.`
       : '';
 
     // 粗略的“长窄房间”判断：用户选的宽度档较小，或结构描述里出现“长/窄”
@@ -553,7 +554,7 @@ export default async function handler(req, res) {
     const hasSource = Boolean(String(sourceImageUrl || '').trim());
     const desiredMode = outputMode === 'FAST_T2I' || outputMode === 'PRECISE_I2I'
       ? outputMode
-      : 'FAST_T2I'; // 默认改为 FAST_T2I (文生图)
+      : 'PRECISE_I2I'; // 默认改为 PRECISE_I2I (图生图)
 
     const userSelected = {
       spaceType: String(intake?.space || '').trim(),
