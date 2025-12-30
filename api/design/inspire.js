@@ -543,10 +543,19 @@ export default async function handler(req, res) {
       if (raw.startsWith('blob:')) return { ok: false, reason: 'BLOB_URL' };
       if (raw.startsWith('data:')) return { ok: true, reason: 'DATA_URL' };
       if (!raw.startsWith('http')) return { ok: false, reason: 'INVALID_SCHEME' };
+      
+      // Forcefully check accessibility even for Vercel Blob URLs
+      // Sometimes Blob URLs expire or are private, causing StepFun fetch to fail silently.
       try {
         const p = await fetchProbe(raw);
-        return { ok: p.ok, reason: p.ok ? 'OK' : (p.status ? `HTTP_${p.status}` : 'FETCH_ERROR'), probe: p };
-      } catch {
+        // If probe fails (e.g. 403 Forbidden or 404 Not Found), return explicit error.
+        if (!p.ok) {
+            console.warn('[ValidateSourceUrl] Probe failed:', raw, p.status);
+            return { ok: false, reason: p.status ? `HTTP_${p.status}` : 'FETCH_ERROR', probe: p };
+        }
+        return { ok: true, reason: 'OK', probe: p };
+      } catch (e) {
+        console.warn('[ValidateSourceUrl] Exception:', e);
         return { ok: false, reason: 'FETCH_ERROR' };
       }
     };
@@ -639,36 +648,19 @@ export default async function handler(req, res) {
     if (desiredMode === 'PRECISE_I2I') {
       const v = await validateSourceUrl(sourceImageUrl);
       if (!v.ok) {
+        // Fallback: if URL is unreachable, try to use FAST_T2I instead of hard failing?
+        // No, user explicitly wants PRECISE_I2I. Better to fail loudly or ask re-upload.
+        // Actually, for "blob:" URLs that client sent (if any), we can't fetch them. 
+        // But here we expect http/https.
         res.status(400).json({
           ok: false,
           errorCode: 'IMAGE_URL_UNREACHABLE',
           message: '图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。',
           debug: {
             outputMode: 'PRECISE_I2I',
-            requestedEndpoint: 'image2image',
-            usedEndpoint: 'image2image',
-            imageFetchOk: false,
-            usedKey,
-            model: 'step-1x-medium',
-            elapsedMs: Date.now() - startedAt,
-            promptChars: built?.promptChars,
-            promptHash: built?.promptHash,
-            hkSpace: built?.hkSpace,
-            layoutVariant: built?.layoutVariant,
-            dropped: built?.dropped,
-            anchorDropped: built?.anchorDropped,
-            antiDistortDropped: built?.antiDistortDropped,
-            userSelected,
-            applied,
-            mismatch,
-            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
-            sentSize: finalSize,
-            baseImageBytes: v?.probe?.bytes || 0,
-            baseImage: v?.probe ? { w: v.probe.w, h: v.probe.h, contentType: v.probe.contentType, bytes: v.probe.bytes, contentLength: v.probe.contentLength } : undefined,
-            baseImageContentType: v?.probe?.contentType || null,
-            baseImageWidth: v?.probe?.w || null,
-            baseImageHeight: v?.probe?.h || null,
-            aspectRatio: (v?.probe?.w && v?.probe?.h) ? (v.probe.w / v.probe.h) : null,
+            reason: v.reason,
+            url: sourceImageUrl ? sourceImageUrl.slice(0, 50) + '...' : 'empty',
+            // ... rest debug
           }
         });
         return;
@@ -718,39 +710,26 @@ export default async function handler(req, res) {
       const full = await fetchFullImageAsDataUrl(String(sourceImageUrl));
       imageFetchOk = Boolean(full.ok && full.bytes && full.bytes > 0);
       if (!full.ok || !full.dataUrl || !full.bytes) {
-        res.status(400).json({
-          ok: false,
-          errorCode: 'IMAGE_URL_UNREACHABLE',
-          message: '图片链接访问失败（可能过期/无权限）。请重新上传同一张图片再试一次。',
-          debug: {
-            outputMode: 'PRECISE_I2I',
-            requestedEndpoint: 'image2image',
-            usedEndpoint: 'image2image',
-            imageFetchOk,
-            usedKey,
-            model: 'step-1x-medium',
-            elapsedMs: Date.now() - startedAt,
-            promptChars: built?.promptChars,
-            promptHash: built?.promptHash,
-            hkSpace: built?.hkSpace,
-            layoutVariant: built?.layoutVariant,
-            dropped: built?.dropped,
-            anchorDropped: built?.anchorDropped,
-            antiDistortDropped: built?.antiDistortDropped,
-            userSelected,
-            applied,
-            mismatch,
-            i2iParams: { strength: finalI2IStrength, source_weight: finalI2ISourceWeight, cfg_scale: finalCfgI2I, steps: finalSteps },
-            sentSize: finalSize,
-            baseImageBytes: full.bytes || 0,
-            baseImage: { w: full.w, h: full.h, contentType: full.contentType, bytes: full.bytes, contentLength: null },
-            baseImageContentType: full.contentType,
-            baseImageWidth: full.w,
-            baseImageHeight: full.h,
-            aspectRatio: (full.w && full.h) ? (full.w / full.h) : null,
-          }
-        });
-        return;
+        // Retry logic: if fetch fails, maybe the URL is flaky. Wait 1s and retry once.
+        await new Promise(r => setTimeout(r, 1000));
+        const fullRetry = await fetchFullImageAsDataUrl(String(sourceImageUrl));
+        if (fullRetry.ok && fullRetry.dataUrl && fullRetry.bytes) {
+             Object.assign(full, fullRetry); // Success on retry
+             imageFetchOk = true;
+        } else {
+            res.status(400).json({
+              ok: false,
+              errorCode: 'IMAGE_URL_UNREACHABLE',
+              message: '图片链接下载失败（可能过期/无权限）。请重新上传同一张图片再试一次。',
+              debug: {
+                outputMode: 'PRECISE_I2I',
+                fetchStatus: full.status,
+                retryStatus: fullRetry.status,
+                // ... rest debug
+              }
+            });
+            return;
+        }
       }
       baseImage = { w: full.w, h: full.h, contentType: full.contentType, bytes: full.bytes, contentLength: null };
       baseImageBytes = full.bytes;
