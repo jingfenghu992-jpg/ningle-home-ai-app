@@ -46,7 +46,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
 
     const content = typeof message.content === 'string' ? message.content : '';
     
-    // 1. Image Analysis: compact grid
+    // 1. Image Analysis: cleaner text grid (Key: Value)
     // Matches 【图片分析】 or 【圖片分析】
     if (content.includes('【圖片分析】') || content.includes('【图片分析】')) {
       const lines = content.split('\n').filter(l => l.trim());
@@ -62,11 +62,11 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
 
       return (
         <div className="w-full">
-          <div className={`${CHAT_TEXT_TITLE_CLASS} mb-1.5`}>{title}</div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          <div className={`${CHAT_TEXT_TITLE_CLASS} mb-1`}>{title}</div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {items.map((item, idx) => (
-              <div key={idx} className="text-[15px] leading-snug break-words"> 
-                <span className="font-medium opacity-70 block text-xs mb-0.5">{item.k}</span>
+              <div key={idx} className={`${CHAT_TEXT_BASE_CLASS} truncate`}> 
+                <span className="font-bold">{item.k}: </span>
                 <span>{item.v}</span>
               </div>
             ))}
@@ -76,42 +76,33 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       );
     }
 
-    // 2. Layout Proposals A/B: side-by-side
+    // 2. Layout Proposals A/B: side-by-side text columns (no heavy boxes)
     // Pattern: Has "方案 A" and "方案 B"
     if (content.includes('方案 A') && content.includes('方案 B')) {
        const lines = content.split('\n');
-       // Assume title is the first line starting with 【
        const titleLine = lines.find(l => l.trim().startsWith('【')) || '';
        
-       // Remove title from content to parse A/B
        let raw = content.replace(titleLine, '').trim();
        
-       // Extract intro (text before "方案 A")
        let intro = '';
        const matchAStart = raw.indexOf('方案 A');
        if (matchAStart > 0) {
            intro = raw.substring(0, matchAStart).trim();
            raw = raw.substring(matchAStart);
-       } else if (matchAStart === 0) {
-           // No intro or intro is empty
        }
 
-       // Split A and B
-       // Regex to find "方案 B" start
        const matchB = raw.match(/(方案 B[:：]?[\s\S]*)$/);
        let contentA = '';
        let contentB = '';
        
        if (matchB) {
            const idxB = matchB.index!;
-           contentA = raw.substring(0, idxB).trim(); // "方案 A..."
-           contentB = matchB[1].trim(); // "方案 B..."
+           contentA = raw.substring(0, idxB).trim(); 
+           contentB = matchB[1].trim(); 
        } else {
-           // Fallback
            contentA = raw;
        }
        
-       // Helper to clean "方案 A" prefix if redundant in grid header
        const cleanPrefix = (text: string, prefix: string) => {
            return text.replace(new RegExp(`^${prefix}[:：]?\\s*`), '');
        };
@@ -119,18 +110,20 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
        return (
          <div className="w-full">
            {titleLine && <div className={`${CHAT_TEXT_TITLE_CLASS} mb-2`}>{titleLine}</div>}
-           {intro && <div className={`${CHAT_TEXT_BASE_CLASS} mb-2 text-[15px]`}>{intro}</div>}
+           {intro && <div className={`${CHAT_TEXT_BASE_CLASS} mb-2`}>{intro}</div>}
            
-           <div className="grid grid-cols-2 gap-3">
-             <div className="bg-black/5 rounded-md p-2.5">
-               <div className="font-semibold mb-1 text-[14px] text-black/70">方案 A</div>
-               <div className="whitespace-pre-wrap text-[15px] leading-snug opacity-90">
+           <div className="grid grid-cols-2 gap-4">
+             {/* Scheme A */}
+             <div className="border-r border-black/10 pr-2">
+               <div className={`${CHAT_TEXT_TITLE_CLASS} mb-1`}>方案 A</div>
+               <div className={`${CHAT_TEXT_BASE_CLASS} opacity-90 whitespace-pre-wrap`}>
                  {cleanPrefix(contentA, '方案 A')}
                </div>
              </div>
-             <div className="bg-black/5 rounded-md p-2.5">
-               <div className="font-semibold mb-1 text-[14px] text-black/70">方案 B</div>
-               <div className="whitespace-pre-wrap text-[15px] leading-snug opacity-90">
+             {/* Scheme B */}
+             <div className="pl-1">
+               <div className={`${CHAT_TEXT_TITLE_CLASS} mb-1`}>方案 B</div>
+               <div className={`${CHAT_TEXT_BASE_CLASS} opacity-90 whitespace-pre-wrap`}>
                  {cleanPrefix(contentB, '方案 B')}
                </div>
              </div>
@@ -141,7 +134,6 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
     }
     
     // 3. Design Focus / General Card with Title
-    // If starts with 【, treat first line as title
     if (content.trim().startsWith('【')) {
         const firstLineEnd = content.indexOf('\n');
         if (firstLineEnd > 0) {
@@ -169,7 +161,6 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
   const renderOptions = () => {
     if (!options.length) return null;
 
-    // CTA button (single prominent action) — keep as full width but only this one.
     const ctas = options.filter(isCTA);
     const nonCtas = options.filter(o => !isCTA(o));
 
@@ -184,7 +175,6 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
           }, {})
         : null;
 
-    // Space pick / generic: Flow layout (wrap) for compact height
     if (!grouped) {
       return (
         <div className="mt-2.5 pt-2 border-t border-black/5">
@@ -215,7 +205,6 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       );
     }
 
-    // Grouped (style/goal/intensity): headings + chips (horizontal flow)
     const order = ['風格', '风格', '目標', '目标', '強度', '强度'];
     const keys = Object.keys(grouped).sort((a, b) => order.indexOf(a) - order.indexOf(b));
     return (
