@@ -8,11 +8,11 @@ type OptionChipProps = {
 };
 
 export const OptionChip: React.FC<OptionChipProps> = ({ label, onClick, selected, className }) => {
-  const base = 'nl-chip text-[#4A453C] text-[15px] px-1'; // reduced padding for 4-col
+  const base = 'nl-chip text-[#4A453C] text-[17px] px-3 py-1.5'; // compact padding, matched font size
   const tone = selected ? 'nl-chip--selected' : '';
-  // Removed min-w-[140px] constraint to allow 4-col grid
+  // fit-content width, minimal height
   return (
-    <button onClick={onClick} className={`${base} ${tone} w-auto ${className || ''}`}>
+    <button onClick={onClick} className={`${base} ${tone} w-auto max-w-full truncate ${className || ''}`}>
       {label}
     </button>
   );

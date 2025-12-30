@@ -45,27 +45,18 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
           }, {})
         : null;
 
-    // Space pick / generic: 2-col grid of thumb-friendly buttons.
+    // Space pick / generic: Flow layout (wrap) for compact height
     if (!grouped) {
-      // 4-column layout for space picker (compact items like "客餐厅", "厨房")
-      // or short options.
-      const isShort = nonCtas.every(o => stripRadioPrefix(o).length <= 4);
-      // If items are short (<=4 chars like "大睡房"), use grid-cols-4.
-      // Otherwise fallback to 2 columns to avoid truncation.
-      const useFourCols = isShort && nonCtas.length >= 4;
-      const useGrid = nonCtas.length >= 2;
-      
       return (
-        <div className="mt-3 pt-2 border-t border-black/5">
+        <div className="mt-2.5 pt-2 border-t border-black/5">
           {nonCtas.length > 0 && (
-            <div className={useGrid ? (useFourCols ? 'grid grid-cols-4 gap-2' : 'grid grid-cols-2 gap-2') : 'flex flex-wrap gap-2'}>
+            <div className="flex flex-wrap gap-2">
               {nonCtas.map((opt, i) => (
                 <OptionChip
                   key={`${i}-${opt}`}
                   label={stripRadioPrefix(opt)}
                   selected={isSelected(opt)}
                   onClick={() => onOptionClick?.(message, opt)}
-                  className={useGrid ? 'w-full !min-w-0' : ''}
                 />
               ))}
             </div>
@@ -85,15 +76,15 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       );
     }
 
-    // Grouped (style/goal/intensity): headings + chips.
+    // Grouped (style/goal/intensity): headings + chips (horizontal flow)
     const order = ['風格', '风格', '目標', '目标', '強度', '强度'];
     const keys = Object.keys(grouped).sort((a, b) => order.indexOf(a) - order.indexOf(b));
     return (
-      <div className="mt-3 pt-2 border-t border-black/5 space-y-3">
+      <div className="mt-2.5 pt-2 border-t border-black/5 space-y-2">
         {keys.map(k => (
-          <div key={k}>
-            <div className={`mb-2 ${CHAT_TEXT_HINT_CLASS}`}>{k}</div>
-            <div className="flex flex-wrap gap-3">
+          <div key={k} className="flex items-baseline gap-2 flex-wrap">
+            <span className={`shrink-0 ${CHAT_TEXT_HINT_CLASS} font-medium mr-1`}>{k}</span>
+            <div className="flex flex-wrap gap-2 items-center">
               {(grouped[k] || []).map((opt, i) => (
                 <OptionChip
                   key={`${k}-${i}-${opt}`}
@@ -106,7 +97,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
           </div>
         ))}
         {ctas.length > 0 && (
-          <div>
+          <div className="pt-1">
             {ctas.map((opt, i) => (
               <PrimaryActionButton
                 key={`cta-${i}-${opt}`}
@@ -124,7 +115,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
     <div className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} mb-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
       <div
         className={`
-          ${isCardLike ? 'w-full max-w-none nl-card' : 'max-w-[78%] nl-bubble'}
+          ${isCardLike ? 'w-full max-w-none nl-card px-3.5 py-3' : 'max-w-[85%] nl-bubble px-3 py-2'} 
           ${CHAT_TEXT_BASE_CLASS}
           ${isUser
             ? (isUploadImage ? 'bg-[#1F4D3A] text-[#EBE8E3] rounded-tr-sm' : 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm')
@@ -136,7 +127,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
             <img src={message.content} alt="result" className="w-full h-auto object-cover" />
           </div>
         ) : (
-          <div className={`whitespace-pre-wrap text-[17px] leading-[1.6] ${isCardLike ? CHAT_TEXT_TITLE_CLASS : ''}`}>
+          <div className={`whitespace-pre-wrap ${isCardLike ? CHAT_TEXT_TITLE_CLASS : ''}`}>
               {message.content}
               {/* Spinner for streaming/loading */}
               {!isUser && (message.isStreaming || message.meta?.loading) && (
@@ -150,7 +141,7 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
         {/* Options */}
         {renderOptions()}
         
-        <div className={`${CHAT_TEXT_HINT_CLASS} mt-1.5 text-right ${isUser ? 'text-white/30' : 'text-black/30'}`}>
+        <div className={`${CHAT_TEXT_HINT_CLASS} mt-1 text-[12px] text-right ${isUser ? 'text-white/30' : 'text-black/30'}`}>
           {new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
         </div>
       </div>

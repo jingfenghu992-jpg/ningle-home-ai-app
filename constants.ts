@@ -9,9 +9,9 @@ export const CHAT_MAX_CLASS = 'max-w-[min(92vw,420px)] md:max-w-[520px]';
 export const CHAT_GUTTER_CLASS = 'px-3 md:px-4';
 export const CHAT_CONTAINER_CLASS = `w-full mx-auto ${CHAT_MAX_CLASS} ${CHAT_GUTTER_CLASS}`;
 
-// Mobile-first: min 14px; main text 15px; comfortable line-height.
-export const CHAT_TEXT_BASE_CLASS = 'text-[15px] leading-6 font-normal';
-export const CHAT_TEXT_TITLE_CLASS = 'first-line:text-[15px] first-line:leading-6 first-line:font-semibold';
+// Mobile-first: min 14px; main text 17px (unified); comfortable line-height.
+export const CHAT_TEXT_BASE_CLASS = 'text-[17px] leading-[1.5] font-normal';
+export const CHAT_TEXT_TITLE_CLASS = 'text-[17px] leading-[1.5] font-semibold text-[#2F2A23]'; // dark title, same size
 export const CHAT_TEXT_HINT_CLASS = 'text-[14px] leading-5 opacity-80';
 
 export const INITIAL_MESSAGE: Message = {
