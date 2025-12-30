@@ -1428,7 +1428,6 @@ const App: React.FC = () => {
         // Handle Dimensions selection (New Step)
         if (message.meta.stage === 'dimensions') {
           const { roomWidthChi, roomHeightChi } = parseDimsChi(opt);
-          const defaultStyle = '現代簡約';
           
           setUploads(prev => prev[uploadId] ? ({
             ...prev,
@@ -1439,17 +1438,40 @@ const App: React.FC = () => {
                 sizeChoice: opt,
                 ...(roomWidthChi ? { roomWidthChi } : {}),
                 ...(roomHeightChi ? { roomHeightChi } : {}),
-                // Hardcode defaults since style selection is removed
-                style: defaultStyle,
-                color: '淺木+米白',
-                intensity: '明显改造'
               }
             }
           }) : prev);
 
-          // Proceed directly to confirmation
+          // Next: Style Selection (Restored as per user request)
+          upsertOptionsCard(
+            `${uploadId}-style_tone`,
+            `尺寸收到。最後揀埋「風格色調」：`,
+            getStyleToneOptionsHK(),
+            { kind: 'hk_flow', stage: 'style_tone', uploadId }
+          );
+          return;
+        }
+
+        // Handle Style/Tone selection (New Step in HK Flow)
+        if (message.meta.stage === 'style_tone') {
+          const { style, color } = parseStyleTone(opt);
+          setUploads(prev => prev[uploadId] ? ({
+            ...prev,
+            [uploadId]: {
+              ...prev[uploadId],
+              render: {
+                ...(prev[uploadId].render || {}),
+                styleChoice: opt,
+                style,
+                color,
+                intensity: '明显改造' // Default intensity for HK flow
+              }
+            }
+          }) : prev);
+
+          // Proceed to confirmation
           await typeOutAI(
-            `收到～已鎖定尺寸。\n結構鎖定：門窗/梁柱跟足原相。\n風格預設：${defaultStyle}。\n\n準備好就撳下面開始～`,
+            `收到～已鎖定尺寸與風格（${style} / ${color}）。\n結構鎖定：門窗/梁柱跟足原相。\n\n準備好就撳下面開始～`,
             { options: ["直接生成效果圖"], meta: { kind: 'hk_flow', stage: 'fast_confirm', uploadId } }
           );
           return;
