@@ -27,6 +27,145 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       .trim();
   const isSelected = (opt: string) => String(opt || '').includes('◉');
 
+  const renderSpinner = () => (
+    !isUser && (message.isStreaming || message.meta?.loading) && (
+      <span className="inline-flex items-center ml-1 align-middle">
+        <Loader2 size={14} className="animate-spin text-[#8A8F79]" />
+      </span>
+    )
+  );
+
+  const renderContent = () => {
+    if (message.type === 'image') {
+      return (
+        <div className="max-w-xs md:max-w-sm rounded-[14px] overflow-hidden bg-black/5">
+          <img src={message.content} alt="result" className="w-full h-auto object-cover" />
+        </div>
+      );
+    }
+
+    const content = typeof message.content === 'string' ? message.content : '';
+    
+    // 1. Image Analysis: compact grid
+    // Matches 【图片分析】 or 【圖片分析】
+    if (content.includes('【圖片分析】') || content.includes('【图片分析】')) {
+      const lines = content.split('\n').filter(l => l.trim());
+      // First line is title
+      const title = lines[0]; 
+      // Rest are key-value pairs
+      const items = lines.slice(1).map(l => {
+        // simple split by colon
+        const parts = l.split(/[:：]/);
+        if (parts.length < 2) return { k: l, v: '' };
+        return { k: parts[0], v: parts.slice(1).join(':') }; 
+      });
+
+      return (
+        <div className="w-full">
+          <div className={`${CHAT_TEXT_TITLE_CLASS} mb-1.5`}>{title}</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+            {items.map((item, idx) => (
+              <div key={idx} className="text-[15px] leading-snug break-words"> 
+                <span className="font-medium opacity-70 block text-xs mb-0.5">{item.k}</span>
+                <span>{item.v}</span>
+              </div>
+            ))}
+          </div>
+          {renderSpinner()}
+        </div>
+      );
+    }
+
+    // 2. Layout Proposals A/B: side-by-side
+    // Pattern: Has "方案 A" and "方案 B"
+    if (content.includes('方案 A') && content.includes('方案 B')) {
+       const lines = content.split('\n');
+       // Assume title is the first line starting with 【
+       const titleLine = lines.find(l => l.trim().startsWith('【')) || '';
+       
+       // Remove title from content to parse A/B
+       let raw = content.replace(titleLine, '').trim();
+       
+       // Extract intro (text before "方案 A")
+       let intro = '';
+       const matchAStart = raw.indexOf('方案 A');
+       if (matchAStart > 0) {
+           intro = raw.substring(0, matchAStart).trim();
+           raw = raw.substring(matchAStart);
+       } else if (matchAStart === 0) {
+           // No intro or intro is empty
+       }
+
+       // Split A and B
+       // Regex to find "方案 B" start
+       const matchB = raw.match(/(方案 B[:：]?[\s\S]*)$/);
+       let contentA = '';
+       let contentB = '';
+       
+       if (matchB) {
+           const idxB = matchB.index!;
+           contentA = raw.substring(0, idxB).trim(); // "方案 A..."
+           contentB = matchB[1].trim(); // "方案 B..."
+       } else {
+           // Fallback
+           contentA = raw;
+       }
+       
+       // Helper to clean "方案 A" prefix if redundant in grid header
+       const cleanPrefix = (text: string, prefix: string) => {
+           return text.replace(new RegExp(`^${prefix}[:：]?\\s*`), '');
+       };
+
+       return (
+         <div className="w-full">
+           {titleLine && <div className={`${CHAT_TEXT_TITLE_CLASS} mb-2`}>{titleLine}</div>}
+           {intro && <div className={`${CHAT_TEXT_BASE_CLASS} mb-2 text-[15px]`}>{intro}</div>}
+           
+           <div className="grid grid-cols-2 gap-3">
+             <div className="bg-black/5 rounded-md p-2.5">
+               <div className="font-semibold mb-1 text-[14px] text-black/70">方案 A</div>
+               <div className="whitespace-pre-wrap text-[15px] leading-snug opacity-90">
+                 {cleanPrefix(contentA, '方案 A')}
+               </div>
+             </div>
+             <div className="bg-black/5 rounded-md p-2.5">
+               <div className="font-semibold mb-1 text-[14px] text-black/70">方案 B</div>
+               <div className="whitespace-pre-wrap text-[15px] leading-snug opacity-90">
+                 {cleanPrefix(contentB, '方案 B')}
+               </div>
+             </div>
+           </div>
+           {renderSpinner()}
+         </div>
+       );
+    }
+    
+    // 3. Design Focus / General Card with Title
+    // If starts with 【, treat first line as title
+    if (content.trim().startsWith('【')) {
+        const firstLineEnd = content.indexOf('\n');
+        if (firstLineEnd > 0) {
+            const title = content.substring(0, firstLineEnd);
+            const body = content.substring(firstLineEnd + 1).trim();
+            return (
+                <div className="w-full">
+                    <div className={`${CHAT_TEXT_TITLE_CLASS} mb-1`}>{title}</div>
+                    <div className={`${CHAT_TEXT_BASE_CLASS} whitespace-pre-wrap`}>{body}</div>
+                    {renderSpinner()}
+                </div>
+            )
+        }
+    }
+
+    // Default: regular text
+    return (
+      <div className={`whitespace-pre-wrap ${isCardLike ? CHAT_TEXT_TITLE_CLASS : CHAT_TEXT_BASE_CLASS}`}>
+          {content}
+          {renderSpinner()}
+      </div>
+    );
+  };
+
   const renderOptions = () => {
     if (!options.length) return null;
 
@@ -116,27 +255,12 @@ export const MessageCard: React.FC<MessageCardProps> = ({ message, onOptionClick
       <div
         className={`
           ${isCardLike ? 'w-full max-w-none nl-card px-3.5 py-3' : 'max-w-[85%] nl-bubble px-3 py-2'} 
-          ${CHAT_TEXT_BASE_CLASS}
           ${isUser
             ? (isUploadImage ? 'bg-[#1F4D3A] text-[#EBE8E3] rounded-tr-sm' : 'bg-[#3E3C38] text-[#EBE8E3] rounded-tr-sm')
             : 'bg-[#E6DED2] text-[#4A453C] rounded-tl-sm'}
         `}
       >
-        {message.type === 'image' ? (
-          <div className="max-w-xs md:max-w-sm rounded-[14px] overflow-hidden bg-black/5">
-            <img src={message.content} alt="result" className="w-full h-auto object-cover" />
-          </div>
-        ) : (
-          <div className={`whitespace-pre-wrap ${isCardLike ? CHAT_TEXT_TITLE_CLASS : ''}`}>
-              {message.content}
-              {/* Spinner for streaming/loading */}
-              {!isUser && (message.isStreaming || message.meta?.loading) && (
-                <span className="inline-flex items-center ml-1 align-middle">
-                  <Loader2 size={14} className="animate-spin text-[#8A8F79]" />
-                </span>
-              )}
-          </div>
-        )}
+        {renderContent()}
 
         {/* Options */}
         {renderOptions()}
