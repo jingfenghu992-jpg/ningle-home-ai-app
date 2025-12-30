@@ -1414,14 +1414,43 @@ const App: React.FC = () => {
             }
           }) : prev);
 
-          // Preferences card (single-select, then one-click render)
-          const prefsCardId = `${uploadId}-prefs`;
-          const prefU = uploads[uploadId] || u;
+          // REPLACED: Removed Style Selection. Added Dimensions Selection.
+          const space = u.spaceType || '';
           upsertOptionsCard(
-            prefsCardId,
-            `【風格選擇】\n揀一款就得，我先幫你出第一張。`,
-            getHKPreferenceOptions(prefU),
-            { kind: 'hk_flow', stage: 'prefs', uploadId }
+            `${uploadId}-dimensions`,
+            `方案已揀。最後確認一下「空間大约尺寸」（會影響傢俬比例）：`,
+            getDimensionOptionsHK(space),
+            { kind: 'hk_flow', stage: 'dimensions', uploadId }
+          );
+          return;
+        }
+
+        // Handle Dimensions selection (New Step)
+        if (message.meta.stage === 'dimensions') {
+          const { roomWidthChi, roomHeightChi } = parseDimsChi(opt);
+          const defaultStyle = '現代簡約';
+          
+          setUploads(prev => prev[uploadId] ? ({
+            ...prev,
+            [uploadId]: {
+              ...prev[uploadId],
+              render: {
+                ...(prev[uploadId].render || {}),
+                sizeChoice: opt,
+                ...(roomWidthChi ? { roomWidthChi } : {}),
+                ...(roomHeightChi ? { roomHeightChi } : {}),
+                // Hardcode defaults since style selection is removed
+                style: defaultStyle,
+                color: '淺木+米白',
+                intensity: '明显改造'
+              }
+            }
+          }) : prev);
+
+          // Proceed directly to confirmation
+          await typeOutAI(
+            `收到～已鎖定尺寸。\n結構鎖定：門窗/梁柱跟足原相。\n風格預設：${defaultStyle}。\n\n準備好就撳下面開始～`,
+            { options: ["直接生成效果圖"], meta: { kind: 'hk_flow', stage: 'fast_confirm', uploadId } }
           );
           return;
         }
