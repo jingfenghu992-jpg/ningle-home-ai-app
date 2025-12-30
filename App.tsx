@@ -1455,6 +1455,59 @@ const App: React.FC = () => {
           return;
         }
 
+        if (message.meta.stage === 'fast_confirm') {
+          if (opt === "直接生成效果圖") {
+              const space = u.spaceType || '';
+              const r = u.render || {} as any;
+              
+              const style0 = r.style || '現代簡約';
+              const color0 = r.color || '淺木+米白';
+              const storage0 = '隐藏收纳为主';
+              const vibe0 = '明亮通透';
+              const decor0 = '标准搭配';
+              const intensity0 = '明显改造';
+              
+              const layoutChoice = u.layoutChoice;
+              const layouts = u.hkLayouts || {};
+              const chosen = layoutChoice === 'B' ? layouts?.B : layouts?.A;
+              const layoutText = chosen?.layout_name ? `${layoutChoice || ''} ${chosen.layout_name}` : String(layoutChoice || '');
+
+              const renderIntake = {
+                  uploadId,
+                  space,
+                  style: style0,
+                  color: color0,
+                  storage: storage0,
+                  vibe: vibe0,
+                  decor: decor0,
+                  intensity: intensity0,
+                  layoutChoice: layoutChoice ? `方案${layoutChoice}` : undefined,
+                  focus: layoutText,
+                  roomWidthChi: r.roomWidthChi,
+                  roomHeightChi: r.roomHeightChi,
+                  sizeChoice: r.sizeChoice,
+                  hkAnchorsLite: u.hkAnchorsLite,
+                  visionSummary: u.visionSummary,
+                  visionExtraction: u.visionExtraction,
+                  fixedConstraints: u.fixedConstraints,
+                  baseWidth: u.width,
+                  baseHeight: u.height,
+                  revisionIndex: 0
+              };
+
+              setAppState('GENERATING');
+              await triggerGeneration(renderIntake, undefined, {
+                  outputMode: 'FAST_T2I',
+                  keep_structure: true,
+                  qualityPreset: 'STRUCTURE_LOCK',
+                  fastAnchors: true,
+                  steps: 25,
+                  cfg_scale: 7.0
+              });
+              return;
+          }
+        }
+
         if (message.meta.stage === 'prefs') {
           const cleaned = String(opt || '')
             .replace(/^(风格|目标|强度|風格|目標|強度)：\s*[◉○]\s*/g, '')
