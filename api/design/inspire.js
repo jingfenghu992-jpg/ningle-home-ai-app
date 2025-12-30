@@ -561,9 +561,18 @@ export default async function handler(req, res) {
     };
 
     const hasSource = Boolean(String(sourceImageUrl || '').trim());
+    // For T2I (Text-to-Image), we do NOT use image2image endpoint.
+    // If outputMode is FAST_T2I, we MUST use generations endpoint.
+    // If outputMode is PRECISE_I2I, we MUST use image2image endpoint.
     const desiredMode = outputMode === 'FAST_T2I' || outputMode === 'PRECISE_I2I'
       ? outputMode
-      : 'PRECISE_I2I'; // 默认改为 PRECISE_I2I (图生图)
+      : 'PRECISE_I2I'; // Default to PRECISE_I2I (图生图)
+
+    // FORCE T2I mode if user selected FAST_T2I, regardless of source image availability
+    // BUT since user wants "图生图" (I2I), we stick to PRECISE_I2I by default.
+    
+    // Safety: if PRECISE_I2I requested but no valid source URL, fallback or error?
+    // We already handle this in validation.
 
     const userSelected = {
       spaceType: String(intake?.space || '').trim(),

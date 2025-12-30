@@ -152,8 +152,7 @@ export async function generateRenderImage(params: Parameters<typeof generateInsp
     const url = debug ? '/api/design/render?debug=1' : '/api/design/render';
     // If outputMode is PRECISE_I2I, ensure sourceImageUrl is present
     if (rest.outputMode === 'PRECISE_I2I' && !rest.sourceImageUrl) {
-        // Fallback to FAST_T2I if no source image (should not happen in correct flow)
-        console.warn('[Render Client] PRECISE_I2I requested but no sourceImageUrl. Fallback to FAST_T2I.');
+        console.warn('[Render Client] PRECISE_I2I requested but no sourceImageUrl. Aborting I2I, fallback to FAST_T2I.');
         rest.outputMode = 'FAST_T2I';
     }
     return await fetchJSON<InspireResponse>(url, {

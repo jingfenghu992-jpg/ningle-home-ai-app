@@ -1422,18 +1422,23 @@ const App: React.FC = () => {
             }
           }) : prev);
 
-          // REPLACED: Removed Style Selection. Added Dimensions Selection.
+          // REPLACED: Removed Dimensions Selection as per user request ("I2I doesn't need dimensions").
+          // Directly proceed to Style Selection.
           const space = u.spaceType || '';
+          
+          // Pre-calculate style options
+          const styleOptions = getStyleToneOptionsHK();
+          
           upsertOptionsCard(
-            `${uploadId}-dimensions`,
-            `方案已揀。最後確認一下「空間大约尺寸」（會影響傢俬比例）：`,
-            getDimensionOptionsHK(space),
-            { kind: 'hk_flow', stage: 'dimensions', uploadId }
+            `${uploadId}-style_tone`,
+            `方案已揀。最後揀埋「風格色調」：`,
+            styleOptions,
+            { kind: 'hk_flow', stage: 'style_tone', uploadId }
           );
           return;
         }
 
-        // Handle Dimensions selection (New Step)
+        // Handle Dimensions selection (Skipped in this flow, but kept code for ref)
         if (message.meta.stage === 'dimensions') {
           const { roomWidthChi, roomDepthChi, roomHeightChi } = parseDimsChi(opt);
           
@@ -1480,7 +1485,7 @@ const App: React.FC = () => {
 
           // Proceed to confirmation
           await typeOutAI(
-            `收到～已鎖定尺寸與風格（${style} / ${color}）。\n結構鎖定：門窗/梁柱跟足原相。\n\n準備好就撳下面開始～`,
+            `收到～已鎖定風格（${style} / ${color}）。\n結構鎖定：門窗/梁柱跟足原相。\n\n準備好就撳下面開始～`,
             { options: ["直接生成效果圖"], meta: { kind: 'hk_flow', stage: 'fast_confirm', uploadId } }
           );
           return;
@@ -2001,16 +2006,10 @@ const App: React.FC = () => {
                       keep_structure: true,
                       qualityPreset: 'STRUCTURE_LOCK',
                       fastAnchors: true,
-                      // i2i parameters for structure lock (0.65-0.75 strength allows deco change but keeps walls)
-                      // source_weight: 0.70 means "keep 70% of original", or is it "denoise 0.3"?
-                      // In inspire.js, STRUCTURE_LOCK defaultSW is 0.95.
-                      // We want slightly more freedom for furniture but strict walls.
-                      // Let's rely on backend defaultSW logic but maybe nudge it?
-                      // Actually, let's trust PRECISE_I2I defaults in inspire.js for now, 
-                      // or explicit overrides if we know better.
-                      // Given user complaint about "Layout completely wrong", we need to allow CHANGE.
-                      // 0.95 is too strict. 0.65 is better for renovation.
-                      i2i_source_weight: 0.65, 
+                      // i2i parameters: Higher source_weight = Keep more structure.
+                      // User complains structure is lost. 0.65 is too low.
+                      // 0.85 should lock walls/windows while allowing materials to change.
+                      i2i_source_weight: 0.85, 
                       steps: 25,
                       cfg_scale: 7.0
                   });
